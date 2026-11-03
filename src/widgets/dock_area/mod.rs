@@ -28,6 +28,7 @@ pub struct DockArea<'tree, Tab> {
     show_close_buttons: bool,
     tab_context_menus: bool,
     draggable_tabs: bool,
+    tab_focus: TabFocus,
     hidable_tab_bars: bool,
     show_tab_name_on_hover: bool,
     show_window_close_buttons: bool,
@@ -75,6 +76,18 @@ impl DockArea<'_, ()> {
     }
 }
 
+/// How the keyboard focus reaches the tabs of a tab bar, set with [`DockArea::tab_focus`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TabFocus {
+    /// Every tab, and every tab's close button, is a Tab stop.
+    #[default]
+    Each,
+    /// One Tab stop per tab bar, the active tab, as in WAI-ARIA's tab list: once it has the
+    /// focus, Left and Right select and focus the previous and next tab (wrapping around), Home
+    /// and End the first and last. Close buttons are not Tab stops; they stay clickable.
+    Roving,
+}
+
 // Builder
 impl<'tree, Tab> DockArea<'tree, Tab> {
     /// Creates a new [`DockArea`] from the provided [`DockState`].
@@ -90,6 +103,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             show_close_buttons: true,
             tab_context_menus: true,
             draggable_tabs: true,
+            tab_focus: TabFocus::Each,
             hidable_tab_bars: false,
             show_tab_name_on_hover: false,
             allowed_splits: AllowedSplits::default(),
@@ -128,6 +142,13 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     #[inline(always)]
     pub fn labels(mut self, labels: Labels) -> Self {
         self.labels = labels;
+        self
+    }
+
+    /// Sets how the keyboard focus reaches the tabs. By default it's [`TabFocus::Each`].
+    #[inline(always)]
+    pub fn tab_focus(mut self, tab_focus: TabFocus) -> Self {
+        self.tab_focus = tab_focus;
         self
     }
 

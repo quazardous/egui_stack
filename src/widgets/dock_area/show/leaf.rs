@@ -1,9 +1,9 @@
 use std::ops::RangeInclusive;
 
 use egui::{
-    Align, Align2, Button, Color32, CornerRadius, CursorIcon, Frame, Id, Key, LayerId, Layout,
-    NumExt, Order, Popup, PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape, Stroke,
-    StrokeKind, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role,
+    Align, Align2, Button, Color32, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId,
+    Layout, NumExt, Order, Popup, PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape,
+    Stroke, StrokeKind, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role,
     emath::TSTransform, epaint::TextShape, lerp, pos2, vec2,
 };
 
@@ -12,8 +12,8 @@ use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
-    DockArea, DraggedTab, Node, NodeIndex, Style, SurfaceIndex, TabAddAlign, TabIndex, TabStyle,
-    TabViewer,
+    DockArea, DraggedTab, Node, NodeIndex, Style, SurfaceIndex, TabAddAlign, TabFocus, TabIndex,
+    TabStyle, TabViewer,
     dock_area::{
         drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
         state::State,
@@ -404,6 +404,7 @@ impl<Tab> DockArea<'_, Tab> {
             tabs.len()
         };
 
+        let mut roved = false;
         for tab_index in 0..tabs_len {
             let id = self
                 .id
@@ -588,6 +589,51 @@ impl<Tab> DockArea<'_, Tab> {
             {
                 leaf.active = tab_index;
                 self.new_focused = Some(path);
+            }
+
+            // Roving focus: the arrows, Home and End select and focus another tab of the bar.
+            // The focus moves at once, so the tab it lands on must not act on the same key.
+            if self.tab_focus == TabFocus::Roving
+                && !roved
+                && tabs_ui.memory(|m| m.has_focus(title_id))
+            {
+                tabs_ui.memory_mut(|m| {
+                    m.set_focus_lock_filter(
+                        title_id,
+                        EventFilter {
+                            horizontal_arrows: true,
+                            vertical_arrows: false,
+                            tab: false,
+                            escape: false,
+                        },
+                    )
+                });
+                let target = tabs_ui.input(|i| {
+                    if i.key_pressed(Key::ArrowRight) {
+                        Some((tab_index.0 + 1) % tabs_len)
+                    } else if i.key_pressed(Key::ArrowLeft) {
+                        Some((tab_index.0 + tabs_len - 1) % tabs_len)
+                    } else if i.key_pressed(Key::Home) {
+                        Some(0)
+                    } else if i.key_pressed(Key::End) {
+                        Some(tabs_len - 1)
+                    } else {
+                        None
+                    }
+                });
+                if let Some(target) = target
+                    && target != tab_index.0
+                {
+                    leaf.active = TabIndex(target);
+                    self.new_focused = Some(path);
+                    let target_id = self
+                        .id
+                        .with((path.surface, "surface"))
+                        .with((path.node, "node"))
+                        .with((target, "tab"));
+                    tabs_ui.memory_mut(|m| m.request_focus(target_id));
+                    roved = true;
+                }
             }
 
             tab_viewer.on_tab_button(tab, &response);
@@ -1139,7 +1185,14 @@ impl<Tab> DockArea<'_, Tab> {
         let tab_width = preferred_width.unwrap_or(0.0).at_least(minimum_width);
 
         let (_, tab_rect) = ui.allocate_space(vec2(tab_width, ui.available_height()));
-        let mut response = ui.interact(tab_rect, id, Sense::click_and_drag());
+        // With roving focus, only the active tab is a Tab stop.
+        let roving = self.tab_focus == TabFocus::Roving;
+        let sense = if roving && !active {
+            Sense::CLICK | Sense::DRAG
+        } else {
+            Sense::click_and_drag()
+        };
+        let mut response = ui.interact(tab_rect, id, sense);
         {
             // Expose the tab to assistive technology: role `Tab`, named by its title.
             // AccessKit's `selected` is set directly, as `WidgetInfo::selected` maps to `toggled`.
@@ -1213,7 +1266,11 @@ impl<Tab> DockArea<'_, Tab> {
                 Rect::from_center_size(close_button_rect.center(), Vec2::splat(close_button_size));
 
             let close_response = ui
-                .interact(close_button_rect, id.with("close-button"), Sense::click())
+                .interact(
+                    close_button_rect,
+                    id.with("close-button"),
+                    if roving { Sense::CLICK } else { Sense::click() },
+                )
                 .on_hover_cursor(CursorIcon::PointingHand);
             let enabled = ui.is_enabled();
             close_response
