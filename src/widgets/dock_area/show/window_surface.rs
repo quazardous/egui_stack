@@ -168,6 +168,14 @@ impl<Tab> DockArea<'_, Tab> {
         );
 
         let (rect, mut response) = ui.allocate_exact_size(ui.available_size(), Sense::click());
+        let enabled = ui.is_enabled();
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::accesskit::Role::Button,
+                enabled,
+                &self.labels.restore_window,
+            )
+        });
 
         response = response.on_hover_cursor(CursorIcon::PointingHand);
 

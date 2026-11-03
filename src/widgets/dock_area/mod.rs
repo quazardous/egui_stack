@@ -6,11 +6,13 @@ mod show;
 // Various components of the `DockArea` which is used when rendering
 mod allowed_splits;
 mod drag_and_drop;
+mod labels;
 mod state;
 mod tab_removal;
 
 pub use allowed_splits::AllowedSplits;
 use egui::{Id, Modifiers, emath::*};
+pub use labels::Labels;
 use tab_removal::TabRemoval;
 
 use crate::{NodePath, Style, TabIndex, TabPath, dock_state::DockState};
@@ -20,6 +22,7 @@ pub struct DockArea<'tree, Tab> {
     id: Id,
     dock_state: &'tree mut DockState<Tab>,
     style: Option<Style>,
+    labels: Labels,
     show_add_popup: bool,
     show_add_buttons: bool,
     show_close_buttons: bool,
@@ -53,6 +56,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             id: Id::unique("egui_stack::DockArea"),
             dock_state: tree,
             style: None,
+            labels: Labels::ENGLISH,
             show_add_popup: false,
             show_add_buttons: false,
             show_close_buttons: true,
@@ -88,6 +92,14 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     #[inline(always)]
     pub fn style(mut self, style: Style) -> Self {
         self.style = Some(style);
+        self
+    }
+
+    /// Sets the accessible names of the buttons and separators, read by screen readers through
+    /// AccessKit. By default they are [`Labels::ENGLISH`].
+    #[inline(always)]
+    pub fn labels(mut self, labels: Labels) -> Self {
+        self.labels = labels;
         self
     }
 
