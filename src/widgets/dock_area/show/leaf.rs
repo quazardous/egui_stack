@@ -519,9 +519,10 @@ impl<Tab> DockArea<'_, Tab> {
                         }
                         if show_close_button && ui.add(close_button).clicked() {
                             match tab_viewer.on_close(tab) {
+                                // The viewer already agreed: remove without asking again.
                                 OnCloseResponse::Close => self.to_remove.push(TabRemoval::Tab(
                                     (path, tab_index).into(),
-                                    ForcedRemoval(false),
+                                    ForcedRemoval(true),
                                 )),
                                 OnCloseResponse::Focus => {
                                     leaf.active = tab_index;
