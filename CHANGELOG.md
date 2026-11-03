@@ -9,6 +9,10 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 - The crate is renamed `egui_stack`.
 - egui 0.37 (from egui_dock pull request #354 by crumblingstatue: version bump and deprecations fixed).
 
+### Fixed
+
+- The tab context menu's Close asks `TabViewer::on_close` once, not twice. ([#1](https://github.com/quazardous/egui_stack/issues/1))
+
 # egui_dock changelog (before the fork)
 
 ## egui_dock 0.21.1 - 2026/08/06
