@@ -12,7 +12,8 @@ use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
-    DockArea, Node, NodeIndex, Style, SurfaceIndex, TabAddAlign, TabIndex, TabStyle, TabViewer,
+    DockArea, DraggedTab, Node, NodeIndex, Style, SurfaceIndex, TabAddAlign, TabIndex, TabStyle,
+    TabViewer,
     dock_area::{
         drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
         state::State,
@@ -1004,6 +1005,10 @@ impl<Tab> DockArea<'_, Tab> {
         let start = *state.drag_start.get_or_insert(pointer_pos);
         let delta = pointer_pos - start;
         (delta.x.abs() > 30.0 || delta.y.abs() > 6.0).then(|| {
+            state.dragged = Some(DraggedTab {
+                path: (path, tab_index).into(),
+                pointer: pointer_pos,
+            });
             ui.memory_mut(|mem| {
                 mem.data.insert_temp(
                     self.id.with("drag_data"),

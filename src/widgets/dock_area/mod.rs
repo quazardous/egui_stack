@@ -11,7 +11,7 @@ mod state;
 mod tab_removal;
 
 pub use allowed_splits::AllowedSplits;
-use egui::{Id, Modifiers, emath::*};
+use egui::{Context, Id, Modifiers, emath::*};
 pub use labels::Labels;
 use tab_removal::TabRemoval;
 
@@ -47,13 +47,41 @@ pub struct DockArea<'tree, Tab> {
     tab_hover_rect: Option<(Rect, TabIndex)>,
 }
 
+/// A tab being dragged in a [`DockArea`], from [`DockArea::dragged_tab`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct DraggedTab {
+    /// Where the dragged tab is in the [`DockState`].
+    pub path: TabPath,
+    /// The pointer's position.
+    pub pointer: Pos2,
+}
+
+// Not generic over the tab type, so that `DockArea::dragged_tab(ctx, id)` needs no annotation.
+impl DockArea<'_, ()> {
+    /// The id of a [`DockArea`] whose [`id`](Self::id) was not set.
+    pub fn default_id() -> Id {
+        Id::unique("egui_stack::DockArea")
+    }
+
+    /// The tab being dragged in the [`DockArea`] with this `id`, as of its last
+    /// [`show_inside`](DockArea::show_inside).
+    ///
+    /// A tab counts as dragged once it has moved far enough to leave its tab bar, until it is
+    /// released. Use [`default_id`](Self::default_id) if the [`DockArea`]'s id was not set.
+    pub fn dragged_tab(ctx: &Context, id: Id) -> Option<DraggedTab> {
+        ctx.data(|d| d.get_temp::<state::State>(id))
+            .and_then(|state| state.dragged)
+    }
+}
+
 // Builder
 impl<'tree, Tab> DockArea<'tree, Tab> {
     /// Creates a new [`DockArea`] from the provided [`DockState`].
     #[inline(always)]
     pub fn new(tree: &'tree mut DockState<Tab>) -> DockArea<'tree, Tab> {
         Self {
-            id: Id::unique("egui_stack::DockArea"),
+            id: DockArea::default_id(),
             dock_state: tree,
             style: None,
             labels: Labels::ENGLISH,

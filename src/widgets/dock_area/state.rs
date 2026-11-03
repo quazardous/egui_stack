@@ -1,6 +1,9 @@
 use egui::{Context, Id, Pos2};
 
-use super::drag_and_drop::{DragData, DragDropState, HoverData};
+use super::{
+    DraggedTab,
+    drag_and_drop::{DragData, DragDropState, HoverData},
+};
 use crate::{Style, SurfaceIndex};
 
 #[derive(Clone, Debug, Default)]
@@ -9,6 +12,8 @@ pub(super) struct State {
     pub last_hover_pos: Option<Pos2>,
     pub dnd: Option<DragDropState>,
     pub window_fade: Option<(f64, SurfaceIndex)>,
+    /// The tab dragged during the last frame, if any.
+    pub dragged: Option<DraggedTab>,
 }
 
 impl State {
@@ -19,6 +24,7 @@ impl State {
             last_hover_pos: None,
             dnd: None,
             window_fade: None,
+            dragged: None,
         })
     }
 
