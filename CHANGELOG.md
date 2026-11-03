@@ -24,6 +24,9 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 - `DockArea::dragged_tab(ctx, id)` returns the tab being dragged (its `TabPath`) and the pointer's position, as a
   `DraggedTab`, so callers need not rebuild the tab buttons' private ids; `DockArea::default_id()` is the id of a
   `DockArea` whose id was not set. ([#5](https://github.com/quazardous/egui_stack/issues/5))
+- A focused separator moves with the arrow keys along its axis, 16 points per press or 64 with Shift, and Enter resets
+  it to the middle. Before, it moved only with Ctrl or Shift held, by 16 points either way, and with any arrow.
+  ([#7](https://github.com/quazardous/egui_stack/issues/7))
 
 ### Fixed
 

@@ -23,6 +23,9 @@ mod window_surface;
 /// How far, in points, the arrow keys and assistive technology move a separator per step.
 const SEPARATOR_KEY_STEP: f32 = 16.0;
 
+/// How far, in points, the arrow keys move a separator per step with Shift held.
+const SEPARATOR_LARGE_KEY_STEP: f32 = 64.0;
+
 impl<Tab> DockArea<'_, Tab> {
     /// Shows the docking hierarchy inside a [`Ui`].
     pub fn show_inside(mut self, ui: &mut Ui, tab_viewer: &mut impl TabViewer<Tab = Tab>) {
@@ -482,9 +485,9 @@ impl<Tab> DockArea<'_, Tab> {
 
         duplicate! {
             [
-                orientation   dim_point  dim_size  separator_orientation;
-                [Horizontal]  [x]        [width]   [Vertical];
-                [Vertical]    [y]        [height]  [Horizontal];
+                orientation   dim_point  dim_size  separator_orientation  back_key     forward_key   lock_horizontal  lock_vertical;
+                [Horizontal]  [x]        [width]   [Vertical]             [ArrowLeft]  [ArrowRight]  [true]           [false];
+                [Vertical]    [y]        [height]  [Horizontal]           [ArrowUp]    [ArrowDown]   [false]          [true];
             ]
             if let Node::orientation(split) = &mut self.dock_state[path.surface][path.node] {
                 let rect = split.rect;
@@ -501,33 +504,35 @@ impl<Tab> DockArea<'_, Tab> {
                 let response = ui.allocate_rect(interact_rect, Sense::click_and_drag())
                     .on_hover_and_drag_cursor(paste!{ CursorIcon::[<Resize orientation>]});
 
-                let should_respond_to_arrow_keys = ui.input(|i| i.modifiers.command || i.modifiers.shift);
-
+                // A focused separator moves with the arrow keys along its axis, by a larger step
+                // with Shift, and Enter resets it. The arrows across its axis still move the focus.
                 if response.has_focus() {
-                    // Prevent the default behaviour of removing focus from the separators when the
-                    // arrow keys are pressed
                     ui.memory_mut(|m| m.set_focus_lock_filter(response.id, EventFilter {
-                        horizontal_arrows: should_respond_to_arrow_keys,
-                        vertical_arrows: should_respond_to_arrow_keys,
+                        horizontal_arrows: lock_horizontal,
+                        vertical_arrows: lock_vertical,
                         tab: false,
                         escape: false
                     }));
                 }
 
-                let arrow_key_offset = if response.has_focus() && should_respond_to_arrow_keys {
-                    if ui.input(|i| i.key_pressed(Key::ArrowUp)) {
-                        Some(egui::vec2(0., -SEPARATOR_KEY_STEP))
-                    } else if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
-                        Some(egui::vec2(0., SEPARATOR_KEY_STEP))
-                    } else if ui.input(|i| i.key_pressed(Key::ArrowLeft)) {
-                        Some(egui::vec2(-SEPARATOR_KEY_STEP, 0.))
-                    } else if ui.input(|i| i.key_pressed(Key::ArrowRight)) {
-                        Some(egui::vec2(SEPARATOR_KEY_STEP, 0.))
-                    } else {
-                        None
-                    }
+                let (arrow_key_offset, reset) = if response.has_focus() {
+                    ui.input(|i| {
+                        let step = if i.modifiers.shift {
+                            SEPARATOR_LARGE_KEY_STEP
+                        } else {
+                            SEPARATOR_KEY_STEP
+                        };
+                        let offset = if i.key_pressed(Key::back_key) {
+                            Some(-step)
+                        } else if i.key_pressed(Key::forward_key) {
+                            Some(step)
+                        } else {
+                            None
+                        };
+                        (offset, i.key_pressed(Key::Enter))
+                    })
                 } else {
-                    None
+                    (None, false)
                 };
 
                 let midpoint = rect.min.dim_point + rect.dim_size() * split.fraction;
@@ -578,13 +583,13 @@ impl<Tab> DockArea<'_, Tab> {
                     (split.fraction, split.fraction)
                 };
                 if range > 0.0 {
-                    let delta = arrow_key_offset.unwrap_or(response.drag_delta()).dim_point;
+                    let delta = arrow_key_offset.unwrap_or(response.drag_delta().dim_point);
                     let fraction = accesskit_value.unwrap_or(split.fraction);
                     split.fraction =
                         (fraction + delta / range + accesskit_steps * accesskit_step).clamp(min, max);
                 }
 
-                if response.double_clicked() {
+                if response.double_clicked() || reset {
                     split.fraction = 0.5;
                 }
 
