@@ -18,6 +18,9 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
   expanded. ([#3](https://github.com/quazardous/egui_stack/issues/3))
 - Separators are exposed to AccessKit as `Splitter`s named by `Labels::separator`, with the split fraction as value and
   the increment, decrement and set-value actions. ([#3](https://github.com/quazardous/egui_stack/issues/3))
+- `TabViewer::drop_allowed(tab, destination)` returns a `DropVerdict` (`Allow` by default, or `Refuse` with an optional
+  reason): a refused destination is drawn as refused on the drop overlay, with its reason next to the pointer, and
+  releasing the tab there leaves the layout unchanged. ([#4](https://github.com/quazardous/egui_stack/issues/4))
 
 ### Fixed
 

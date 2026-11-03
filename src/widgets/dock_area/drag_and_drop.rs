@@ -1,7 +1,8 @@
 use std::ops::BitOrAssign;
 
 use egui::{
-    Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2,
+    Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, Stroke, StrokeKind, TextStyle,
+    TextWrapMode, Ui, Vec2, WidgetText,
     emath::{GuiRounding, inverse_lerp},
     vec2,
 };
@@ -403,6 +404,63 @@ impl DragDropState {
                 elapsed < style.overlay.feel.max_preference_time
             }
             None => false,
+        }
+    }
+
+    /// Draws a refused destination over its preview, with the reason next to the pointer.
+    pub(super) fn draw_refusal(
+        &self,
+        ui: &Ui,
+        style: &Style,
+        destination: &TabDestination,
+        reason: Option<WidgetText>,
+        window_bounds: Rect,
+    ) {
+        let hover = self.hover.rect;
+        let center = hover.center();
+        let rect = match *destination {
+            TabDestination::Window(rect) => {
+                constrain_rect_to_area(ui, self.window_preview_rect(rect), window_bounds)
+            }
+            TabDestination::Node(_, TabInsert::Split(split)) => hover.intersect(match split {
+                Split::Above => Rect::everything_above(center.y),
+                Split::Below => Rect::everything_below(center.y),
+                Split::Left => Rect::everything_left_of(center.x),
+                Split::Right => Rect::everything_right_of(center.x),
+            }),
+            TabDestination::Node(..) => self.hover.tab.unwrap_or(hover),
+            TabDestination::EmptySurface(_) => hover,
+        };
+
+        let visuals = ui.visuals();
+        let color = visuals.error_fg_color;
+        let painter = make_overlay_painter(ui);
+        painter.rect(
+            rect,
+            0.0,
+            color.gamma_multiply(0.25),
+            Stroke::new(style.overlay.selection_stroke_width.max(1.0), color),
+            StrokeKind::Inside,
+        );
+
+        if let Some(reason) = reason {
+            let galley = reason.into_galley(
+                ui,
+                Some(TextWrapMode::Extend),
+                f32::INFINITY,
+                TextStyle::Body,
+            );
+            let margin = vec2(6.0, 4.0);
+            let min = self.pointer + vec2(16.0, 16.0);
+            let frame = Rect::from_min_size(min, galley.size() + 2.0 * margin);
+            painter.rect(
+                frame,
+                visuals.menu_corner_radius,
+                visuals.window_fill(),
+                Stroke::new(1.0, color),
+                StrokeKind::Inside,
+            );
+            painter.galley(min + margin, galley, visuals.text_color());
         }
     }
 
