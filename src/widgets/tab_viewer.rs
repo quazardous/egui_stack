@@ -1,6 +1,6 @@
 use egui::{Id, Ui, WidgetText};
 
-use crate::{NodePath, TabStyle};
+use crate::{NodePath, TabDestination, TabStyle};
 
 /// Defines how a tab should behave and be rendered inside a [`Tree`](crate::Tree).
 pub trait TabViewer {
@@ -94,6 +94,18 @@ pub trait TabViewer {
         true
     }
 
+    /// Whether `tab` may be dropped at `destination`.
+    ///
+    /// Asked every frame while `tab` is dragged over a destination the dock would otherwise accept
+    /// (windows refused by [`allowed_in_windows`](Self::allowed_in_windows) are never offered).
+    /// A [`DropVerdict::Refuse`] is shown on the drop overlay, with its reason if it has one, and
+    /// releasing the tab there leaves the layout unchanged.
+    ///
+    /// By default every destination is allowed.
+    fn drop_allowed(&self, _tab: &Self::Tab, _destination: &TabDestination) -> DropVerdict {
+        DropVerdict::Allow
+    }
+
     /// Whether the tab body will be cleared with the color specified in
     /// [`TabBarStyle::bg_fill`](crate::TabBarStyle::bg_fill).
     fn clear_background(&self, _tab: &Self::Tab) -> bool {
@@ -106,6 +118,16 @@ pub trait TabViewer {
     fn scroll_bars(&self, _tab: &Self::Tab) -> [bool; 2] {
         [true, true]
     }
+}
+
+/// Whether a dragged tab may be dropped at a destination, from [`TabViewer::drop_allowed`].
+#[derive(Clone, Debug, Default)]
+pub enum DropVerdict {
+    /// The tab may be dropped there.
+    #[default]
+    Allow,
+    /// The tab may not be dropped there. The reason, if any, is shown next to the pointer.
+    Refuse(Option<WidgetText>),
 }
 
 /// Determines what happens to a tab when a user attempts to close it.

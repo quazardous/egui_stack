@@ -9,7 +9,7 @@ use paste::paste;
 use super::{drag_and_drop::TreeComponent, state::State, tab_removal::TabRemoval};
 use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
-use crate::tab_viewer::OnCloseResponse;
+use crate::tab_viewer::{DropVerdict, OnCloseResponse};
 use crate::{
     AllowedSplits, DockArea, Node, NodeIndex, OverlayType, Style, SurfaceIndex, TabDestination,
     TabViewer,
@@ -239,7 +239,7 @@ impl<Tab> DockArea<'_, Tab> {
         }
 
         let window_bounds = self.window_bounds.unwrap();
-        match (style.overlay.overlay_type, drag_state.is_on_title_bar()) {
+        let destination = match (style.overlay.overlay_type, drag_state.is_on_title_bar()) {
             (OverlayType::HighlightedAreas, _) | (_, true) => drag_state.resolve_traditional(
                 ui,
                 style,
@@ -254,6 +254,21 @@ impl<Tab> DockArea<'_, Tab> {
                 allowed_in_window,
                 window_bounds,
             ),
+        }?;
+
+        // Last, the viewer's veto for this tab at this destination.
+        let TreeComponent::Tab(path) = drag_state.drag.src else {
+            unreachable!("only tabs can be dragged")
+        };
+        let tab = &self.dock_state[path.node_path()]
+            .tabs()
+            .expect("tab drags can only come from leaf nodes")[path.tab.0];
+        match tab_viewer.drop_allowed(tab, &destination) {
+            DropVerdict::Allow => Some(destination),
+            DropVerdict::Refuse(reason) => {
+                drag_state.draw_refusal(ui, style, &destination, reason, window_bounds);
+                None
+            }
         }
     }
 
