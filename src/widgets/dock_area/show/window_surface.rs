@@ -80,7 +80,7 @@ impl<Tab> DockArea<'_, Tab> {
             .get_window_state(surf_index)
             .unwrap()
             .is_minimized();
-        if minimized {
+        let window = if minimized {
             let height = tab_bar_height;
             window
                 .resizable([true, false])
@@ -95,8 +95,8 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             window
         }
-        .frame(frame)
-        .show(ui.ctx(), |ui| {
+        .frame(frame);
+        let shown = window.show(ui.ctx(), |ui| {
             // Fade inner ui (if necessary)
             if fade_factor != 1.0 {
                 fade_visuals(ui.visuals_mut(), fade_factor);
@@ -113,6 +113,14 @@ impl<Tab> DockArea<'_, Tab> {
                 self.render_nodes(ui, tab_viewer, state, surf_index, fade_style);
             }
         });
+
+        // Remember where the window is and whether it is dragged, for `WindowState::rect` and
+        // `WindowState::dragged`.
+        if let Some(shown) = shown
+            && let Some(window_state) = self.dock_state.get_window_state_mut(surf_index)
+        {
+            window_state.set_shown(shown.response.rect, shown.response.dragged());
+        }
 
         if !open {
             self.to_remove.push(TabRemoval::Window(surf_index));

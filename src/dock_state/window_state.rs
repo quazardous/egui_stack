@@ -65,7 +65,7 @@ impl WindowState {
         self
     }
 
-    /// Get the [`Rect`] which this window occupies.
+    /// Get the [`Rect`] which this window occupied when last shown, in screen coordinates.
     /// If this window hasn't been shown before, this will be [`Rect::NOTHING`].
     pub fn rect(&self) -> Rect {
         // The reason why we're unwrapping an Option with a default value instead of
@@ -74,9 +74,16 @@ impl WindowState {
         self.screen_rect.unwrap_or(Rect::NOTHING)
     }
 
-    /// Returns if this window is currently being dragged or not.
+    /// Returns whether this window was being dragged when last shown.
     pub fn dragged(&self) -> bool {
         self.dragged
+    }
+
+    /// Records where the window was shown this frame and whether it is dragged.
+    #[inline(always)]
+    pub(crate) fn set_shown(&mut self, rect: Rect, dragged: bool) {
+        self.screen_rect = Some(rect);
+        self.dragged = dragged;
     }
 
     /// Set the height of this window when it is expanded.
