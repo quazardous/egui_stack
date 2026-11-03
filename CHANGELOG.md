@@ -27,6 +27,9 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 - A focused separator moves with the arrow keys along its axis, 16 points per press or 64 with Shift, and Enter resets
   it to the middle. Before, it moved only with Ctrl or Shift held, by 16 points either way, and with any arrow.
   ([#7](https://github.com/quazardous/egui_stack/issues/7))
+- `DockArea::tab_focus(TabFocus::Roving)`: one Tab stop per tab bar, its active tab; Left and Right select and focus
+  the previous and next tab, Home and End the first and last, and close buttons leave the Tab order. `TabFocus::Each`,
+  the default, keeps every tab a Tab stop. ([#10](https://github.com/quazardous/egui_stack/issues/10))
 
 ### Fixed
 
