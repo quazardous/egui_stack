@@ -11,6 +11,9 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 - `TabViewer::context_menu` gets the tab's `TabPath` instead of its leaf's `NodePath`, so a menu item can name the tab.
   Migration: change the last parameter's type to `TabPath`; `path.node_path()` gives the former `NodePath`.
   ([#9](https://github.com/quazardous/egui_stack/issues/9))
+- `TabStyle` has a new public field, `padding`: the space on each side of a tab's title, `8.0` by default as before,
+  which can be lowered for narrower tabs. Migration: a `TabStyle { .. }` literal needs `padding` or
+  `..TabStyle::default()`. ([#12](https://github.com/quazardous/egui_stack/issues/12))
 
 ### Added
 

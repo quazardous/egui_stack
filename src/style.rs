@@ -258,6 +258,13 @@ pub struct TabStyle {
     /// The tab title or [`TabBarStyle::fill_tab_bar`] may make the tab
     /// wider than this but never shorter.
     pub minimum_width: Option<f32>,
+
+    /// The space, in points, left on each side of the tab's title.
+    ///
+    /// A tab is at least as wide as its title, plus twice this padding, plus its close button if
+    /// it has one. Lower it, down to `0.0`, for narrower tabs; [`minimum_width`](Self::minimum_width)
+    /// can then set the width. By `Default` it's `8.0`.
+    pub padding: f32,
 }
 
 /// Specifies the look and feel of individual tabs while they are being interacted with.
@@ -520,6 +527,7 @@ impl Default for TabStyle {
             tab_body: TabBodyStyle::default(),
             hline_below_active_tab_name: false,
             minimum_width: None,
+            padding: 8.0,
         }
     }
 }

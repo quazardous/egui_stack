@@ -1172,7 +1172,7 @@ impl<Tab> DockArea<'_, Tab> {
     ) -> (Response, Option<Response>) {
         let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
         let galley = label.into_galley(ui, None, f32::INFINITY, TextStyle::Button);
-        let x_spacing = 8.0;
+        let x_spacing = tab_style.padding.at_least(0.0);
         let text_width = galley.size().x + 2.0 * x_spacing;
         let close_button_size = if show_close_button {
             Style::TAB_CLOSE_BUTTON_SIZE.min(style.tab_bar.height)
