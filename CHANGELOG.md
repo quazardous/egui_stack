@@ -13,6 +13,11 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 
 - Tabs are exposed to AccessKit with the role `Tab`, their title as name and `selected` when active, inside a
   `TabList` per tab bar. ([#2](https://github.com/quazardous/egui_stack/issues/2))
+- The close, add, close-all, collapse, minimize, restore and show-tab-bar buttons have accessible names, from a new
+  `Labels` struct with English defaults, set with `DockArea::labels`. The collapse button reports whether its leaf is
+  expanded. ([#3](https://github.com/quazardous/egui_stack/issues/3))
+- Separators are exposed to AccessKit as `Splitter`s named by `Labels::separator`, with the split fraction as value and
+  the increment, decrement and set-value actions. ([#3](https://github.com/quazardous/egui_stack/issues/3))
 
 ### Fixed
 

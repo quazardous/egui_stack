@@ -1,6 +1,8 @@
 use duplicate::duplicate;
 use egui::{
     Context, CornerRadius, CursorIcon, EventFilter, Key, Pos2, Rect, Sense, StrokeKind, Ui, Vec2,
+    WidgetInfo,
+    accesskit::{Action, ActionData, Orientation, Role},
 };
 use paste::paste;
 
@@ -17,6 +19,9 @@ use crate::{
 mod leaf;
 mod main_surface;
 mod window_surface;
+
+/// How far, in points, the arrow keys and assistive technology move a separator per step.
+const SEPARATOR_KEY_STEP: f32 = 16.0;
 
 impl<Tab> DockArea<'_, Tab> {
     /// Shows the docking hierarchy inside a [`Ui`].
@@ -460,9 +465,9 @@ impl<Tab> DockArea<'_, Tab> {
 
         duplicate! {
             [
-                orientation   dim_point  dim_size;
-                [Horizontal]  [x]        [width];
-                [Vertical]    [y]        [height];
+                orientation   dim_point  dim_size  separator_orientation;
+                [Horizontal]  [x]        [width]   [Vertical];
+                [Vertical]    [y]        [height]  [Horizontal];
             ]
             if let Node::orientation(split) = &mut self.dock_state[path.surface][path.node] {
                 let rect = split.rect;
@@ -494,13 +499,13 @@ impl<Tab> DockArea<'_, Tab> {
 
                 let arrow_key_offset = if response.has_focus() && should_respond_to_arrow_keys {
                     if ui.input(|i| i.key_pressed(Key::ArrowUp)) {
-                        Some(egui::vec2(0., -16.))
+                        Some(egui::vec2(0., -SEPARATOR_KEY_STEP))
                     } else if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
-                        Some(egui::vec2(0., 16.))
+                        Some(egui::vec2(0., SEPARATOR_KEY_STEP))
                     } else if ui.input(|i| i.key_pressed(Key::ArrowLeft)) {
-                        Some(egui::vec2(-16., 0.))
+                        Some(egui::vec2(-SEPARATOR_KEY_STEP, 0.))
                     } else if ui.input(|i| i.key_pressed(Key::ArrowRight)) {
-                        Some(egui::vec2(16., 0.))
+                        Some(egui::vec2(SEPARATOR_KEY_STEP, 0.))
                     } else {
                         None
                     }
@@ -534,17 +539,61 @@ impl<Tab> DockArea<'_, Tab> {
                 // otherwise it may overlap on other separator / bodies when
                 // shrunk fast.
                 let range = rect.max.dim_point - rect.min.dim_point;
-                if range > 0.0 {
+                // Assistive technology moves the separator by the arrow keys' step.
+                let accesskit_step = if range > 0.0 { (SEPARATOR_KEY_STEP / range).min(1.0) } else { 0.0 };
+                let (accesskit_steps, accesskit_value) = ui.input(|i| {
+                    let steps = i.num_accesskit_action_requests(response.id, Action::Increment) as f32
+                        - i.num_accesskit_action_requests(response.id, Action::Decrement) as f32;
+                    let value = i
+                        .accesskit_action_requests(response.id, Action::SetValue)
+                        .filter_map(|request| match request.data {
+                            Some(ActionData::NumericValue(value)) => Some(value as f32),
+                            _ => None,
+                        })
+                        .last();
+                    (steps, value)
+                });
+                let (min, max) = if range > 0.0 {
                     let min = (style.separator.extra / range).min(1.0);
                     let max = 1.0 - min;
-                    let (min, max) = (min.min(max), max.max(min));
+                    (min.min(max), max.max(min))
+                } else {
+                    (split.fraction, split.fraction)
+                };
+                if range > 0.0 {
                     let delta = arrow_key_offset.unwrap_or(response.drag_delta()).dim_point;
-                    split.fraction = (split.fraction + delta / range).clamp(min, max);
+                    let fraction = accesskit_value.unwrap_or(split.fraction);
+                    split.fraction =
+                        (fraction + delta / range + accesskit_steps * accesskit_step).clamp(min, max);
                 }
 
                 if response.double_clicked() {
                     split.fraction = 0.5;
                 }
+
+                // Expose the separator as a splitter whose value is the split fraction.
+                let fraction = split.fraction;
+                let enabled = ui.is_enabled();
+                response.widget_info(|| {
+                    let mut info = WidgetInfo::labeled(Role::Splitter, enabled, &self.labels.separator);
+                    info.value = Some(f64::from(fraction));
+                    info
+                });
+                ui.ctx().accesskit_node_builder(response.id, |node| {
+                    node.set_orientation(Orientation::separator_orientation);
+                    node.set_min_numeric_value(f64::from(min));
+                    node.set_max_numeric_value(f64::from(max));
+                    node.set_numeric_value_step(f64::from(accesskit_step));
+                    if range > 0.0 {
+                        node.add_action(Action::SetValue);
+                        if fraction < max {
+                            node.add_action(Action::Increment);
+                        }
+                        if min < fraction {
+                            node.add_action(Action::Decrement);
+                        }
+                    }
+                });
             }
         }
     }

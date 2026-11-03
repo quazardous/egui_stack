@@ -138,6 +138,9 @@ impl<Tab> DockArea<'_, Tab> {
             .with((path.node, "node"))
             .with("show_tab_bar_btn");
         let btn_response = ui.interact(btn_rect, btn_id, Sense::click());
+        let enabled = ui.is_enabled();
+        btn_response
+            .widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.show_tab_bar));
         let (draw_rect, color) = if btn_response.hovered() {
             let expanded_size = Vec2::splat(btn_size + btn_expand);
             (
@@ -624,6 +627,8 @@ impl<Tab> DockArea<'_, Tab> {
         );
 
         let (rect, mut response) = ui.allocate_exact_size(ui.available_size(), Sense::click());
+        let enabled = ui.is_enabled();
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.add_tab));
 
         response = response.on_hover_cursor(CursorIcon::PointingHand);
 
@@ -704,6 +709,14 @@ impl<Tab> DockArea<'_, Tab> {
 
         // Whether we're on "secondary button mode" due to modifier keys
         let on_secondary_button = self.is_on_secondary_button(path.surface, ui, &response);
+
+        let (label, enabled) = if on_secondary_button {
+            (&self.labels.close_window, !close_window_disabled)
+        } else {
+            (&self.labels.close_all_tabs, !disabled)
+        };
+        let enabled = enabled && ui.is_enabled();
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
 
         let mut stroke_color = if disabled {
             style.buttons.close_all_tabs_disabled_color
@@ -841,6 +854,18 @@ impl<Tab> DockArea<'_, Tab> {
 
         // Whether we're on "secondary button mode" due to modifier keys
         let on_secondary_button = self.is_on_secondary_button(path.surface, ui, &response);
+
+        let enabled = ui.is_enabled();
+        if on_secondary_button {
+            response.widget_info(|| {
+                WidgetInfo::labeled(Role::Button, enabled, &self.labels.minimize_window)
+            });
+        } else {
+            response
+                .widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.collapse));
+            ui.ctx()
+                .accesskit_node_builder(response.id, |node| node.set_expanded(!collapsed));
+        }
 
         let color = if response.hovered() || response.has_focus() {
             ui.painter().rect_filled(
@@ -1185,6 +1210,9 @@ impl<Tab> DockArea<'_, Tab> {
             let close_response = ui
                 .interact(close_button_rect, id.with("close-button"), Sense::click())
                 .on_hover_cursor(CursorIcon::PointingHand);
+            let enabled = ui.is_enabled();
+            close_response
+                .widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.close_tab));
 
             let color = if close_response.hovered() || close_response.has_focus() {
                 style.buttons.close_tab_active_color
