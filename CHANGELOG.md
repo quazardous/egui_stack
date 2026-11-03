@@ -36,6 +36,10 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 ### Fixed
 
 - The tab context menu's Close asks `TabViewer::on_close` once, not twice. ([#1](https://github.com/quazardous/egui_stack/issues/1))
+- `WindowState::rect` and `WindowState::dragged` report the window's rect and drag as last shown; they always returned
+  `Rect::NOTHING` and `false`. `DockState::get_window_state` takes `&self` instead of `&mut self`, and both window-state
+  getters return `None` for a surface that does not exist instead of panicking.
+  ([#11](https://github.com/quazardous/egui_stack/issues/11))
 
 # egui_dock changelog (before the fork)
 

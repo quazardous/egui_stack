@@ -154,7 +154,7 @@ impl<Tab> DockState<Tab> {
     /// window_state.set_size(Vec2::splat(100.0));
     /// ```
     pub fn get_window_state_mut(&mut self, surface: SurfaceIndex) -> Option<&mut WindowState> {
-        match &mut self.surfaces[surface.0] {
+        match self.surfaces.get_mut(surface.0)? {
             Surface::Window(_, state) => Some(state),
             _ => None,
         }
@@ -163,8 +163,8 @@ impl<Tab> DockState<Tab> {
     /// Get the [`WindowState`] which corresponds to a [`SurfaceIndex`].
     ///
     /// Returns `None` if the surface is an [`Empty`](Surface::Empty), [`Main`](Surface::Main), or doesn't exist.
-    pub fn get_window_state(&mut self, surface: SurfaceIndex) -> Option<&WindowState> {
-        match &self.surfaces[surface.0] {
+    pub fn get_window_state(&self, surface: SurfaceIndex) -> Option<&WindowState> {
+        match self.surfaces.get(surface.0)? {
             Surface::Window(_, state) => Some(state),
             _ => None,
         }
