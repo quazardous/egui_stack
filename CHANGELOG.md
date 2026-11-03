@@ -1,6 +1,6 @@
 # egui_stack changelog
 
-## egui_stack 0.22.0 - unreleased
+## egui_stack 0.22.0 - 2026-11-03
 
 Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui_dock's history.
 
