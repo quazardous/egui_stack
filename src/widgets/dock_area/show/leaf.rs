@@ -3,8 +3,8 @@ use std::ops::RangeInclusive;
 use egui::{
     Align, Align2, Button, Color32, CornerRadius, CursorIcon, Frame, Id, Key, LayerId, Layout,
     NumExt, Order, Popup, PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape, Stroke,
-    StrokeKind, TextStyle, Ui, UiBuilder, Vec2, WidgetText, emath::TSTransform, epaint::TextShape,
-    lerp, pos2, vec2,
+    StrokeKind, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role,
+    emath::TSTransform, epaint::TextShape, lerp, pos2, vec2,
 };
 
 use crate::NodePath;
@@ -277,7 +277,8 @@ impl<Tab> DockArea<'_, Tab> {
                 UiBuilder::new()
                     .max_rect(tabbar_inner_rect)
                     .layout(Layout::left_to_right(Align::Center))
-                    .id_salt("tabs"),
+                    .id_salt("tabs")
+                    .accessibility_role(Role::TabList),
             );
 
             let mut clip_rect = tabbar_outer_rect;
@@ -1109,6 +1110,15 @@ impl<Tab> DockArea<'_, Tab> {
 
         let (_, tab_rect) = ui.allocate_space(vec2(tab_width, ui.available_height()));
         let mut response = ui.interact(tab_rect, id, Sense::click_and_drag());
+        {
+            // Expose the tab to assistive technology: role `Tab`, named by its title.
+            // AccessKit's `selected` is set directly, as `WidgetInfo::selected` maps to `toggled`.
+            let title = galley.clone();
+            let enabled = ui.is_enabled();
+            response.widget_info(|| WidgetInfo::labeled(Role::Tab, enabled, title.text()));
+            ui.ctx()
+                .accesskit_node_builder(response.id, |node| node.set_selected(active));
+        }
         if ui.ctx().dragged_id().is_none() && self.draggable_tabs {
             response = response.on_hover_cursor(CursorIcon::Grab);
         }
