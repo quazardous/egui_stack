@@ -27,6 +27,7 @@ pub struct DockArea<'tree, Tab> {
     show_add_buttons: bool,
     show_close_buttons: bool,
     tab_context_menus: bool,
+    show_builtin_tab_menu: bool,
     draggable_tabs: bool,
     tab_focus: TabFocus,
     hidable_tab_bars: bool,
@@ -102,6 +103,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             show_add_buttons: false,
             show_close_buttons: true,
             tab_context_menus: true,
+            show_builtin_tab_menu: true,
             draggable_tabs: true,
             tab_focus: TabFocus::Each,
             hidable_tab_bars: false,
@@ -177,6 +179,18 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     /// By default it's `true`.
     pub fn tab_context_menus(mut self, tab_context_menus: bool) -> Self {
         self.tab_context_menus = tab_context_menus;
+        self
+    }
+
+    /// Shows or hides the built-in items of the tab context menus: Eject, Close, and Hide or Show
+    /// tab bar. Hidden, a tab's menu holds only what [`TabViewer::context_menu`] adds, for
+    /// applications that offer those actions as their own commands.
+    /// By default it's `true`.
+    ///
+    /// [`TabViewer::context_menu`]: crate::TabViewer::context_menu
+    #[inline(always)]
+    pub fn show_builtin_tab_menu(mut self, show_builtin_tab_menu: bool) -> Self {
+        self.show_builtin_tab_menu = show_builtin_tab_menu;
         self
     }
 

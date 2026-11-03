@@ -170,7 +170,7 @@ impl<Tab> DockArea<'_, Tab> {
         let on_button = btn_response.hovered() || btn_response.clicked();
 
         // right-click context menu to show the tab bar
-        if self.tab_context_menus && !on_button {
+        if self.tab_context_menus && self.show_builtin_tab_menu && !on_button {
             let show_button = Button::new(
                 &self
                     .dock_state
@@ -516,6 +516,9 @@ impl<Tab> DockArea<'_, Tab> {
                         let tab = &mut leaf.tabs[tab_index.0];
 
                         tab_viewer.context_menu(ui, tab, path);
+                        if !self.show_builtin_tab_menu {
+                            return;
+                        }
                         if (path.surface.is_main() || !is_lonely_tab)
                             && tab_viewer.allowed_in_windows(tab)
                             && ui.add(eject_button).clicked()
