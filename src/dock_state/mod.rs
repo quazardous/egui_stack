@@ -27,7 +27,7 @@ use crate::{
     Tree,
 };
 
-/// The heart of `egui_dock`.
+/// The heart of `egui_stack`.
 ///
 /// This structure holds a collection of surfaces, each of which stores a tree in which tabs are arranged.
 ///
@@ -144,7 +144,7 @@ impl<Tab> DockState<Tab> {
     /// # Examples
     ///
     /// ```rust
-    /// # use egui_dock::DockState;
+    /// # use egui_stack::DockState;
     /// # use egui::{Vec2, Pos2};
     /// let mut dock_state = DockState::new(vec![]);
     /// let mut surface_index = dock_state.add_window(vec!["Window Tab".to_string()]);
@@ -609,7 +609,7 @@ impl<Tab> DockState<Tab> {
     /// Any remaining empty [`Node`]s and [`Surface`]s are removed.
     ///
     /// ```
-    /// # use egui_dock::{DockState, Node};
+    /// # use egui_stack::{DockState, Node};
     /// let dock_state = DockState::new(vec![1, 2, 3]);
     /// let mapped_dock_state = dock_state.filter_map_tabs(|tab| (tab % 2 == 1).then(|| tab.to_string()));
     ///
@@ -642,7 +642,7 @@ impl<Tab> DockState<Tab> {
     /// Returns a new [`DockState`] while mapping the tab type.
     ///
     /// ```
-    /// # use egui_dock::{DockState, Node};
+    /// # use egui_stack::{DockState, Node};
     /// let dock_state = DockState::new(vec![1, 2, 3]);
     /// let mapped_dock_state = dock_state.map_tabs(|tab| tab.to_string());
     ///
@@ -660,7 +660,7 @@ impl<Tab> DockState<Tab> {
     /// Any remaining empty [`Node`]s and [`Surface`]s are removed.
     ///
     /// ```
-    /// # use egui_dock::{DockState, Node};
+    /// # use egui_stack::{DockState, Node};
     /// let dock_state = DockState::new(["tab1", "tab2", "outlier"].map(str::to_string).to_vec());
     /// let filtered_dock_state = dock_state.filter_tabs(|tab| tab.starts_with("tab"));
     ///
@@ -679,7 +679,7 @@ impl<Tab> DockState<Tab> {
     /// Any remaining empty [`Node`]s and [`Surface`]s are also removed.
     ///
     /// ```
-    /// # use egui_dock::{DockState, Node};
+    /// # use egui_stack::{DockState, Node};
     /// let mut dock_state = DockState::new(["tab1", "tab2", "outlier"].map(str::to_string).to_vec());
     /// dock_state.retain_tabs(|tab| tab.starts_with("tab"));
     ///

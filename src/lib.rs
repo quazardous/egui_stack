@@ -1,4 +1,4 @@
-//! # `egui_dock`: docking support for `egui`
+//! # `egui_stack`: docking support for `egui`
 //!
 //! Originally created by [@lain-dono](https://github.com/lain-dono), this library provides docking support for `egui`.
 //! It lets you open and close tabs, freely move them around, resize them, and undock them into new egui windows which
@@ -14,7 +14,7 @@
 //! You show the tabs using [`DockArea`] and specify how they are shown by implementing [`TabViewer`].
 //!
 //! ```rust
-//! use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer};
+//! use egui_stack::{DockArea, DockState, NodeIndex, Style, TabViewer};
 //! use egui::{Id, Ui, WidgetText};
 //!
 //! // First, let's pick a type that we'll use to attach some data to each tab.
@@ -80,7 +80,7 @@
 //!
 //! ## Look and feel customization
 //!
-//! `egui_dock` exposes the [`Style`] struct that lets you change how tabs and the [`DockArea`]
+//! `egui_stack` exposes the [`Style`] struct that lets you change how tabs and the [`DockArea`]
 //! should look and feel. [`Style`] is divided into several, more specialized structs that handle
 //! individual elements of the UI.
 //!
@@ -90,7 +90,7 @@
 //! Example:
 //!
 //! ```rust
-//! # use egui_dock::{DockArea, DockState, OverlayType, Style, TabAddAlign, TabViewer};
+//! # use egui_stack::{DockArea, DockState, OverlayType, Style, TabAddAlign, TabViewer};
 //! # use egui::{Id, Ui, WidgetText};
 //! # struct MyTabViewer;
 //! # impl TabViewer for MyTabViewer {
@@ -137,7 +137,7 @@
 //! Example:
 //!
 //! ```rust
-//! # use egui_dock::DockState;
+//! # use egui_stack::DockState;
 //! # use egui::{Pos2, Vec2};
 //! # let mut dock_state = DockState::new(vec![]);
 //! // Create a new window `Surface` with one tab inside it.
@@ -161,7 +161,7 @@
 //! Example:
 //!
 //! ```rust
-//! # use egui_dock::{DockState, NodeIndex};
+//! # use egui_stack::{DockState, NodeIndex};
 //! // Create a `DockState` with an initial tab "tab1" in the main `Surface`'s root node.
 //! let mut dock_state = DockState::new(vec!["tab1".to_string()]);
 //!
@@ -199,7 +199,7 @@
 //! Example usage:
 //!
 //! ```rust
-//! # use egui_dock::{DockState, TabContextMenuTranslations, Translations, LeafTranslations};
+//! # use egui_stack::{DockState, TabContextMenuTranslations, Translations, LeafTranslations};
 //! # type Tab = ();
 //! let translations_pl = Translations {
 //!     tab_context_menu: TabContextMenuTranslations {

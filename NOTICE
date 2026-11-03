@@ -1,0 +1,12 @@
+egui_stack continues egui_dock (https://github.com/anhosh/egui_dock, formerly
+https://github.com/Adanos020/egui_dock), a docking system for egui released
+under the MIT licence.
+
+egui_dock was originally created by lain-dono and developed by Adam Gąsior
+(Adanos020), later maintained by anhosh, with contributions from many people
+whose names are kept in this repository's Git history.
+
+egui_stack was forked from egui_dock's main branch after its 0.21.1 release
+(tag egui_dock-0.21.1 in this repository). The move to egui 0.37 started from
+an upstream pull request by crumblingstatue (egui_dock #354), its commits kept
+with their author.

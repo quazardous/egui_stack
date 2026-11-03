@@ -1,4 +1,15 @@
-# egui_dock changelog
+# egui_stack changelog
+
+## egui_stack 0.22.0 - unreleased
+
+Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui_dock's history.
+
+### Breaking changes
+
+- The crate is renamed `egui_stack`.
+- egui 0.37 (from egui_dock pull request #354 by crumblingstatue: version bump and deprecations fixed).
+
+# egui_dock changelog (before the fork)
 
 ## egui_dock 0.21.1 - 2026/08/06
 

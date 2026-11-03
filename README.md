@@ -1,21 +1,23 @@
-# `egui_dock`: docking system for [egui](https://github.com/emilk/egui)
+# `egui_stack`: docking for [egui](https://github.com/emilk/egui)
 
-[![github](https://img.shields.io/badge/github-Adanos020/egui_dock-8da0cb?logo=github)](https://github.com/Adanos020/egui_dock)
-[![crates.io](https://img.shields.io/crates/v/egui_dock)](https://crates.io/crates/egui_dock)
-[![docs.rs](https://img.shields.io/docsrs/egui_dock)](https://docs.rs/egui_dock/)
-[![egui_version](https://img.shields.io/badge/egui-0.36-blue)](https://github.com/emilk/egui)
+[![github](https://img.shields.io/badge/github-quazardous/egui__stack-8da0cb?logo=github)](https://github.com/quazardous/egui_stack)
+[![egui_version](https://img.shields.io/badge/egui-0.37-blue)](https://github.com/emilk/egui)
 
-Originally created by [@lain-dono](https://github.com/lain-dono), this library provides a docking system for `egui`.
+`egui_stack` continues [`egui_dock`](https://github.com/anhosh/egui_dock): a docking system for `egui`, originally
+created by [@lain-dono](https://github.com/lain-dono) and developed for years by
+[Adam Gąsior (@Adanos020)](https://github.com/Adanos020), later maintained by [@anhosh](https://github.com/anhosh), with
+many contributors. Its full history is kept here, so every commit keeps its author. Thanks to all of them.
 
-## Contributing
+It is a divergent fork: the API starts as `egui_dock` 0.21.1's, moved to egui 0.37, and will grow to hold more of an
+application's panel management (stackable sections, toolbars). See [NOTICE](NOTICE) and the
+[changelog](CHANGELOG.md).
 
-Before contributing, please read the [contribution guide](CONTRIBUTING.md) _and_ the [AI usage policy](AI_POLICY.md).
+What differs from `egui_dock`:
 
-This library is a collaborative project developed with direct involvement of its users.
-
-Please feel free to open new issues and pull requests, and participate in discussions!
-A lot of our discussions take place on [`egui`'s official Discord server](https://discord.gg/JFcEma9bJq), in the
-`#egui_dock` channel.
+- The crate is `egui_stack`; `use egui_dock::` becomes `use egui_stack::`.
+- egui 0.37.
+- No particular policy on AI-assisted contributions: they are reviewed like any other, under the same rules (see
+  [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## Features
 
@@ -28,17 +30,16 @@ A lot of our discussions take place on [`egui`'s official Discord server](https:
 
 ## Quick start
 
-Add `egui` and `egui_dock` to your project's dependencies.
+Add `egui` and `egui_stack` to your project's dependencies. It is not on crates.io yet; until then, use Git:
 
 ```toml
 [dependencies]
-egui = "0.36"
-egui_dock = "0.21"
+egui = "0.37"
+egui_stack = { git = "https://github.com/quazardous/egui_stack" }
 ```
 
 Then proceed by setting up `egui`, following its [quick start guide](https://github.com/emilk/egui#quick-start). Once
-that's done, you can start using `egui_dock` – more details on that can be found in the
-[documentation](https://docs.rs/egui_dock/latest/egui_dock/).
+that's done, you can start using `egui_stack`; its documentation builds with `cargo doc --open`.
 
 ## Examples
 
@@ -57,8 +58,6 @@ You can run them with Cargo from the crate's root directory, for example: `cargo
 
 It's a library aiming to achieve similar goals in addition to being more flexible and customizable.
 
-One feature it supports that `egui_dock` does not at the moment is the ability to divide nodes into more than two
+One feature it supports that `egui_stack` does not at the moment is the ability to divide nodes into more than two
 children, enabling horizontal, vertical, and grid layouts.
 
-> [!NOTE]
-> `egui_tiles` is much earlier in development than `egui_dock` and doesn't yet support a lot of features.

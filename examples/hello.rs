@@ -8,7 +8,7 @@ use egui::{
     color_picker::{Alpha, color_edit_button_srgba},
     vec2,
 };
-use egui_dock::{
+use egui_stack::{
     AllowedSplits, DockArea, DockState, NodeIndex, NodePath, OverlayType, Style, SurfaceIndex,
     TabInteractionStyle, TabViewer, tab_viewer::OnCloseResponse,
 };
@@ -272,7 +272,10 @@ impl MyContext {
             ComboBox::new("add_button_align", "Add button align")
                 .selected_text(format!("{:?}", style.buttons.add_tab_align))
                 .show_ui(ui, |ui| {
-                    for align in [egui_dock::TabAddAlign::Left, egui_dock::TabAddAlign::Right] {
+                    for align in [
+                        egui_stack::TabAddAlign::Left,
+                        egui_stack::TabAddAlign::Right,
+                    ] {
                         ui.selectable_value(
                             &mut style.buttons.add_tab_align,
                             align,
@@ -578,7 +581,7 @@ impl Default for MyApp {
 
 impl eframe::App for MyApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        Panel::top("egui_dock::MenuBar").show(ui, |ui| {
+        Panel::top("egui_stack::MenuBar").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("View", |ui| {
                     // allow certain tabs to be toggled
