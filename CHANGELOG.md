@@ -21,6 +21,9 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 - `TabViewer::drop_allowed(tab, destination)` returns a `DropVerdict` (`Allow` by default, or `Refuse` with an optional
   reason): a refused destination is drawn as refused on the drop overlay, with its reason next to the pointer, and
   releasing the tab there leaves the layout unchanged. ([#4](https://github.com/quazardous/egui_stack/issues/4))
+- `DockArea::dragged_tab(ctx, id)` returns the tab being dragged (its `TabPath`) and the pointer's position, as a
+  `DraggedTab`, so callers need not rebuild the tab buttons' private ids; `DockArea::default_id()` is the id of a
+  `DockArea` whose id was not set. ([#5](https://github.com/quazardous/egui_stack/issues/5))
 
 ### Fixed
 

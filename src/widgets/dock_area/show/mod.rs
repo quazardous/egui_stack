@@ -31,6 +31,8 @@ impl<Tab> DockArea<'_, Tab> {
         self.window_bounds.get_or_insert(ui.ctx().content_rect());
 
         let mut state = State::load(ui.ctx(), self.id);
+        // Set again below while a tab is still dragged.
+        state.dragged = None;
 
         // Delay hover position one frame. On touch screens hover_pos() is None when any_released()
         if !ui.input(|i| i.pointer.any_released()) {
