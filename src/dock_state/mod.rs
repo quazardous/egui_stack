@@ -1,6 +1,8 @@
 use std::ops;
 
-use egui::Rect;
+use egui::{Pos2, Rect, Vec2};
+
+use crate::{TabViewer, tab_viewer::OnCloseResponse};
 
 mod error;
 pub use error::{Error, Result};
@@ -337,6 +339,67 @@ impl<Tab> DockState<Tab> {
         if self[src.surface].is_empty() && !src.surface.is_main() {
             self.remove_surface(src.surface);
         }
+    }
+
+    /// Closes the tab at `path` as the dock's close buttons do: asks
+    /// [`TabViewer::on_close`], then removes the tab on [`OnCloseResponse::Close`], makes it the
+    /// active tab of the focused leaf on [`OnCloseResponse::Focus`], and leaves it on
+    /// [`OnCloseResponse::Ignore`]. A tab that is not [closeable](TabViewer::is_closeable) is left
+    /// alone, and `Ignore` returned.
+    ///
+    /// Returns the viewer's answer. Use [`remove_tab`](Self::remove_tab) to remove a tab without
+    /// asking.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if there is no tab at `path`.
+    pub fn close_tab(
+        &mut self,
+        path: TabPath,
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
+    ) -> Result<OnCloseResponse> {
+        let leaf = self.leaf_mut(path.node_path())?;
+        let tab = leaf.tabs.get_mut(path.tab.0).ok_or(Error::InvalidTab)?;
+        if !tab_viewer.is_closeable(tab) {
+            return Ok(OnCloseResponse::Ignore);
+        }
+        let response = tab_viewer.on_close(tab);
+        match response {
+            OnCloseResponse::Close => {
+                self.remove_tab(path);
+            }
+            OnCloseResponse::Focus => self.focus_tab(path)?,
+            OnCloseResponse::Ignore => (),
+        }
+        Ok(response)
+    }
+
+    /// Makes the tab at `path` the active tab of its leaf, and that leaf the focused one, as
+    /// clicking the tab does.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if there is no tab at `path`.
+    pub fn focus_tab(&mut self, path: TabPath) -> Result {
+        self.set_active_tab(path)?;
+        self.set_focused_node_and_surface(path.node_path());
+        Ok(())
+    }
+
+    /// Puts the tab at `path` in a new window whose corner is at `position`, as the tab menu's
+    /// Eject does: the window takes the size of the tab's leaf, or 100 by 150 points if the leaf
+    /// has not been shown yet. See [`detach_tab`](Self::detach_tab) to choose the window's rect.
+    ///
+    /// Returns the surface index of the new window.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no tab at `path`, as [`detach_tab`](Self::detach_tab) does.
+    pub fn eject_tab(&mut self, path: TabPath, position: Pos2) -> SurfaceIndex {
+        let size = self[path.node_path()]
+            .rect()
+            .map_or(Vec2::new(100., 150.), |rect| rect.size());
+        self.detach_tab(path, Rect::from_min_size(position, size))
     }
 
     /// Takes a tab out of its current surface and puts it in a new window.

@@ -1,6 +1,6 @@
 use egui::{Id, Ui, WidgetText};
 
-use crate::{NodePath, TabDestination, TabStyle};
+use crate::{NodePath, TabDestination, TabPath, TabStyle};
 
 /// Defines how a tab should behave and be rendered inside a [`Tree`](crate::Tree).
 pub trait TabViewer {
@@ -22,9 +22,11 @@ pub trait TabViewer {
 
     /// Content inside the context menu shown when the tab is right-clicked.
     ///
-    /// `_path` specifies which [`Surface`](crate::Surface) and [`Node`](crate::Node)
-    /// that this particular context menu belongs to.
-    fn context_menu(&mut self, _ui: &mut Ui, _tab: &mut Self::Tab, _path: NodePath) {}
+    /// `_path` is where the tab is: its [`Surface`](crate::Surface), [`Node`](crate::Node) and
+    /// index, so a menu item can name it to the tab actions of [`DockState`](crate::DockState):
+    /// [`close_tab`](crate::DockState::close_tab), [`eject_tab`](crate::DockState::eject_tab),
+    /// [`focus_tab`](crate::DockState::focus_tab) and [`move_tab`](crate::DockState::move_tab).
+    fn context_menu(&mut self, _ui: &mut Ui, _tab: &mut Self::Tab, _path: TabPath) {}
 
     /// Called after each tab button is shown, so you can add a tooltip, check for clicks, etc.
     fn on_tab_button(&mut self, _tab: &mut Self::Tab, _response: &egui::Response) {}

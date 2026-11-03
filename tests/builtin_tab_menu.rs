@@ -2,7 +2,7 @@
 
 use egui::{Id, Ui, WidgetText, accesskit::Role};
 use egui_kittest::{Harness, kittest::Queryable as _};
-use egui_stack::{DockArea, DockState, NodePath, TabViewer};
+use egui_stack::{DockArea, DockState, TabPath, TabViewer};
 
 struct Viewer;
 
@@ -21,7 +21,7 @@ impl TabViewer for Viewer {
         ui.label(format!("Body of {tab}"));
     }
 
-    fn context_menu(&mut self, ui: &mut Ui, _tab: &mut String, _path: NodePath) {
+    fn context_menu(&mut self, ui: &mut Ui, _tab: &mut String, _path: TabPath) {
         let _ = ui.button("Rename");
     }
 }

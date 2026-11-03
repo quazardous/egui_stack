@@ -158,15 +158,8 @@ impl<Tab> DockArea<'_, Tab> {
 
         for path in self.to_detach.drain(..).rev() {
             let mouse_pos = state.last_hover_pos;
-            self.dock_state.detach_tab(
-                path,
-                Rect::from_min_size(
-                    mouse_pos.unwrap_or(Pos2::ZERO),
-                    self.dock_state[path.node_path()]
-                        .rect()
-                        .map_or(Vec2::new(100., 150.), |rect| rect.size()),
-                ),
-            );
+            self.dock_state
+                .eject_tab(path, mouse_pos.unwrap_or(Pos2::ZERO));
         }
 
         if let Some(focused) = self.new_focused {

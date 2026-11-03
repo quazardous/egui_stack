@@ -8,6 +8,9 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 
 - The crate is renamed `egui_stack`.
 - egui 0.37 (from egui_dock pull request #354 by crumblingstatue: version bump and deprecations fixed).
+- `TabViewer::context_menu` gets the tab's `TabPath` instead of its leaf's `NodePath`, so a menu item can name the tab.
+  Migration: change the last parameter's type to `TabPath`; `path.node_path()` gives the former `NodePath`.
+  ([#9](https://github.com/quazardous/egui_stack/issues/9))
 
 ### Added
 
@@ -32,6 +35,9 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
   the default, keeps every tab a Tab stop. ([#10](https://github.com/quazardous/egui_stack/issues/10))
 - `DockArea::show_builtin_tab_menu(false)` hides the built-in items of the tab context menus (Eject, Close, Hide or Show
   tab bar), so the viewer's own items stand alone. ([#8](https://github.com/quazardous/egui_stack/issues/8))
+- `DockState::close_tab(path, tab_viewer)`, `DockState::focus_tab(path)` and `DockState::eject_tab(path, position)` do
+  what the dock's close buttons, tab clicks and Eject menu item do, so an application can offer them, with the existing
+  `DockState::move_tab`, from its own menus and commands. ([#9](https://github.com/quazardous/egui_stack/issues/9))
 
 ### Fixed
 

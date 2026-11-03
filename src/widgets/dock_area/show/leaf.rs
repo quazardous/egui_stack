@@ -515,7 +515,7 @@ impl<Tab> DockArea<'_, Tab> {
                             .expect("This node must be a leaf");
                         let tab = &mut leaf.tabs[tab_index.0];
 
-                        tab_viewer.context_menu(ui, tab, path);
+                        tab_viewer.context_menu(ui, tab, (path, tab_index).into());
                         if !self.show_builtin_tab_menu {
                             return;
                         }
