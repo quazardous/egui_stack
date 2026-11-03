@@ -9,8 +9,8 @@ use egui::{
     vec2,
 };
 use egui_stack::{
-    AllowedSplits, DockArea, DockState, NodeIndex, NodePath, OverlayType, Style, SurfaceIndex,
-    TabInteractionStyle, TabViewer, tab_viewer::OnCloseResponse,
+    AllowedSplits, DockArea, DockState, NodeIndex, OverlayType, Style, SurfaceIndex,
+    TabInteractionStyle, TabPath, TabViewer, tab_viewer::OnCloseResponse,
 };
 
 /// Adds a widget with a label next to it, can be given an extra parameter in order to show a hover text
@@ -108,7 +108,7 @@ impl TabViewer for MyContext {
         }
     }
 
-    fn context_menu(&mut self, ui: &mut Ui, tab: &mut Self::Tab, _path: NodePath) {
+    fn context_menu(&mut self, ui: &mut Ui, tab: &mut Self::Tab, _path: TabPath) {
         match tab.as_str() {
             "Simple Demo" => self.simple_demo_menu(ui),
             _ => {
