@@ -30,6 +30,8 @@ Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui
 - `DockArea::tab_focus(TabFocus::Roving)`: one Tab stop per tab bar, its active tab; Left and Right select and focus
   the previous and next tab, Home and End the first and last, and close buttons leave the Tab order. `TabFocus::Each`,
   the default, keeps every tab a Tab stop. ([#10](https://github.com/quazardous/egui_stack/issues/10))
+- `DockArea::show_builtin_tab_menu(false)` hides the built-in items of the tab context menus (Eject, Close, Hide or Show
+  tab bar), so the viewer's own items stand alone. ([#8](https://github.com/quazardous/egui_stack/issues/8))
 
 ### Fixed
 
