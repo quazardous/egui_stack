@@ -49,6 +49,8 @@
 //! ```
 //! use egui_stack::sections::{Section, Sections, laid_out};
 //!
+//! # fn main() {
+//! # if cfg!(miri) { return; } // A whole UI: too slow under Miri.
 //! let ctx = egui::Context::default();
 //! let mut out = ctx.run_ui(Default::default(), |ui| {
 //!     Sections::new("sessions").show(ui, |stack| {
@@ -64,6 +66,7 @@
 //! out.textures_delta.clear();
 //! let live = &laid_out(&ctx, "sessions")[0];
 //! assert!(live.open && live.body.is_some());
+//! # }
 //! ```
 
 use std::collections::BTreeMap;
@@ -494,6 +497,8 @@ impl<'a> Stack<'a> {
     /// ```
     /// use egui_stack::sections::{Section, Sections, laid_out, row_height};
     ///
+    /// # fn main() {
+    /// # if cfg!(miri) { return; } // A whole UI: too slow under Miri.
     /// let ctx = egui::Context::default();
     /// let mut out = ctx.run_ui(Default::default(), |ui| {
     ///     let height = row_height(ui);
@@ -509,6 +514,7 @@ impl<'a> Stack<'a> {
     /// out.textures_delta.clear();
     /// let window = laid_out(&ctx, "log")[0].window.clone().unwrap();
     /// assert!(window.len() < 1_000, "{window:?}");
+    /// # }
     /// ```
     pub fn rows(
         &mut self,
