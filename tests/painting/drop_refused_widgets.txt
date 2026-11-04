@@ -1,0 +1,188 @@
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[8.0 8.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[8.0 8.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[8.0 8.0] - [400.0 392.0]]
+  Rect(RectShape { rect: [[8.0 8.0] - [400.0 32.0]], corner_radius: CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, fill: #0A_0A_0A_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[32.0 8.0] - [352.0 32.0]]
+  Rect(RectShape { rect: [[97.3 8.0] - [179.7 32.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #12_12_12_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[32.0 8.0] - [352.0 32.0]]
+  Rect(RectShape { rect: [[98.3 9.0] - [178.7 31.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #23_23_23_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[32.0 8.0] - [352.0 32.0]]
+  LineSegment { points: [[99.8 31.0], [177.2 31.0]], stroke: Stroke { width: 2.0, color: #12_12_12_FF } }
+clip [[32.0 8.0] - [352.0 32.0]]
+  Text "Second" at [105.3 12.5] size [42.4 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
+clip [[32.0 8.0] - [352.0 32.0]]
+  LineSegment { points: [[163.2 15.5], [172.2 24.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[32.0 8.0] - [352.0 32.0]]
+  LineSegment { points: [[172.2 15.5], [163.2 24.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[32.0 8.0] - [352.0 32.0]]
+  LineSegment { points: [[97.3 31.0], [179.7 31.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[32.0 8.0] - [352.0 32.0]]
+  Rect(RectShape { rect: [[179.7 8.0] - [258.7 32.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #12_12_12_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[32.0 8.0] - [352.0 32.0]]
+  Rect(RectShape { rect: [[180.7 9.0] - [257.7 31.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #23_23_23_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[32.0 8.0] - [352.0 32.0]]
+  LineSegment { points: [[182.2 31.0], [256.2 31.0]], stroke: Stroke { width: 2.0, color: #12_12_12_FF } }
+clip [[32.0 8.0] - [352.0 32.0]]
+  Text "Fourth" at [187.7 12.5] size [39.0 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
+clip [[32.0 8.0] - [352.0 32.0]]
+  LineSegment { points: [[242.2 15.5], [251.2 24.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[32.0 8.0] - [352.0 32.0]]
+  LineSegment { points: [[251.2 15.5], [242.2 24.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[32.0 8.0] - [352.0 32.0]]
+  LineSegment { points: [[179.7 31.0], [258.7 31.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  LineSegment { points: [[258.7 31.0], [400.0 31.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  LineSegment { points: [[364.0 13.0], [364.0 25.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  LineSegment { points: [[370.0 19.0], [358.0 19.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  LineSegment { points: [[352.0 8.0], [352.0 30.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  LineSegment { points: [[383.0 14.0], [393.0 24.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  LineSegment { points: [[393.0 14.0], [383.0 24.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  LineSegment { points: [[376.0 8.0], [376.0 30.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  Path(PathShape { points: [[15.0 15.0], [25.0 15.0], [20.0 25.0]], closed: true, fill: #8C_8C_8C_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
+clip [[8.0 8.0] - [400.0 392.0]]
+  LineSegment { points: [[32.0 8.0], [32.0 32.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+clip [[8.0 8.0] - [400.0 392.0]]
+  Rect(RectShape { rect: [[8.0 32.0] - [400.0 392.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[8.0 32.0] - [400.0 392.0]]
+  Rect(RectShape { rect: [[9.0 31.0] - [399.0 391.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[8.0 32.0] - [400.0 392.0]]
+  Rect(RectShape { rect: [[8.0 32.0] - [400.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[8.0 32.0] - [400.0 392.0]]
+  Rect(RectShape { rect: [[8.0 32.0] - [400.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[8.0 32.0] - [400.0 392.0]]
+  Text "Body of First" at [14.0 38.0] size [73.2 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
+clip [[401.0 8.0] - [792.0 392.0]]
+  Rect(RectShape { rect: [[401.0 8.0] - [792.0 32.0]], corner_radius: CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, fill: #0A_0A_0A_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[425.0 8.0] - [744.0 32.0]]
+  Rect(RectShape { rect: [[425.0 8.0] - [495.0 32.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[425.0 8.0] - [744.0 32.0]]
+  Rect(RectShape { rect: [[426.0 9.0] - [494.0 31.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[425.0 8.0] - [744.0 32.0]]
+  LineSegment { points: [[427.5 31.0], [492.5 31.0]], stroke: Stroke { width: 2.0, color: #1B_1B_1B_FF } }
+clip [[425.0 8.0] - [744.0 32.0]]
+  Text "Third" at [433.0 12.5] size [30.0 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
+clip [[425.0 8.0] - [744.0 32.0]]
+  LineSegment { points: [[478.5 15.5], [487.5 24.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[425.0 8.0] - [744.0 32.0]]
+  LineSegment { points: [[487.5 15.5], [478.5 24.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  LineSegment { points: [[495.0 31.0], [792.0 31.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  LineSegment { points: [[756.0 13.0], [756.0 25.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  LineSegment { points: [[762.0 19.0], [750.0 19.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  LineSegment { points: [[744.0 8.0], [744.0 30.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  LineSegment { points: [[775.0 14.0], [785.0 24.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  LineSegment { points: [[785.0 14.0], [775.0 24.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  LineSegment { points: [[768.0 8.0], [768.0 30.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  Path(PathShape { points: [[408.0 15.0], [418.0 15.0], [413.0 25.0]], closed: true, fill: #8C_8C_8C_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
+clip [[401.0 8.0] - [792.0 392.0]]
+  LineSegment { points: [[425.0 8.0], [425.0 32.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+clip [[401.0 8.0] - [792.0 392.0]]
+  Rect(RectShape { rect: [[401.0 32.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[401.0 32.0] - [792.0 392.0]]
+  Rect(RectShape { rect: [[402.0 31.0] - [791.0 391.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[401.0 32.0] - [792.0 392.0]]
+  Rect(RectShape { rect: [[401.0 32.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[401.0 32.0] - [792.0 392.0]]
+  Rect(RectShape { rect: [[401.0 32.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[401.0 32.0] - [792.0 392.0]]
+  Text "Body of Third" at [407.0 38.0] size [77.9 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[400.0 8.0] - [401.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #3C_3C_3C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[401.0 8.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[546.5 150.0] - [646.5 250.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[556.5 160.0] - [636.5 240.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[556.5 160.0] - [636.5 168.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #8C_8C_8C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[556.5 160.0] - [636.5 240.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_2E_40_80, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[546.5 254.0] - [646.5 354.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[556.5 264.0] - [636.5 344.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[556.5 264.0] - [636.5 272.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #8C_8C_8C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[561.5 304.0], [571.5 304.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[581.5 304.0], [591.5 304.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[601.5 304.0], [611.5 304.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[621.5 304.0], [631.5 304.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[650.5 150.0] - [750.5 250.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[660.5 160.0] - [740.5 240.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[660.5 160.0] - [740.5 168.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #8C_8C_8C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[700.5 165.0], [700.5 175.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[700.5 185.0], [700.5 195.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[700.5 205.0], [700.5 215.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[700.5 225.0], [700.5 235.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[546.5 46.0] - [646.5 146.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[556.5 56.0] - [636.5 136.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[556.5 56.0] - [636.5 64.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #8C_8C_8C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[561.5 96.0], [571.5 96.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[581.5 96.0], [591.5 96.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[601.5 96.0], [611.5 96.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[621.5 96.0], [631.5 96.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[442.5 150.0] - [542.5 250.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[452.5 160.0] - [532.5 240.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[452.5 160.0] - [532.5 168.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #8C_8C_8C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[492.5 165.0], [492.5 175.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[492.5 185.0], [492.5 195.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[492.5 205.0], [492.5 215.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  LineSegment { points: [[492.5 225.0], [492.5 235.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[401.0 8.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #40_00_00_40, stroke: Stroke { width: 1.0, color: #FF_00_00_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Rect(RectShape { rect: [[612.5 246.0] - [675.8 269.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 1.0, color: #FF_00_00_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [800.0 400.0]]
+  Text "Not here" at [618.5 250.0] size [51.3 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
+clip [[563.8 208.0] - [883.8 232.0]]
+  Rect(RectShape { rect: [[563.8 208.0] - [629.2 232.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[563.8 208.0] - [883.8 232.0]]
+  Rect(RectShape { rect: [[564.8 209.0] - [628.2 231.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[563.8 208.0] - [883.8 232.0]]
+  Text "First" at [571.8 212.5] size [25.3 15.0] fallback #FF_FF_FF_FF override None opacity 1.0
+clip [[563.8 208.0] - [883.8 232.0]]
+  LineSegment { points: [[612.7 215.5], [621.7 224.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[563.8 208.0] - [883.8 232.0]]
+  LineSegment { points: [[621.7 215.5], [612.7 224.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
