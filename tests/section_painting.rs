@@ -4,7 +4,7 @@
 //! `UPDATE_SNAPSHOTS=1` to write the files again after an intended change.
 
 use std::fmt::Write as _;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use egui::accesskit::Role;
 use egui::epaint::ClippedShape;
@@ -138,11 +138,13 @@ impl DockPainter for Recorder {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_painter_of_its_own_paints_every_band_and_boundary() {
-    let recorder: &'static Recorder = Box::leak(Box::default());
+    let recorder = Arc::new(Recorder::default());
+    let painter = Arc::clone(&recorder);
     let mut h = Harness::builder()
         .with_size([300.0, 300.0])
-        .build_ui(move |ui| stack(ui, Some(recorder)));
+        .build_ui(move |ui| stack(ui, Some(&*painter)));
     h.run();
     recorder.bands.lock().unwrap().clear();
     recorder.boundaries.lock().unwrap().clear();

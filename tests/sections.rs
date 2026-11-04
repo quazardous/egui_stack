@@ -73,6 +73,7 @@ fn close(a: &[f32], b: &[f32]) -> bool {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn sections_sized_by_the_list_share_the_room_and_the_last_takes_the_rest() {
     let mut h = harness(600.0);
     h.run();
@@ -94,6 +95,7 @@ fn sections_sized_by_the_list_share_the_room_and_the_last_takes_the_rest() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_short_panel_takes_from_the_list_then_the_heights_set_by_hand() {
     let band = |h: &Harness<'_>| laid_out(&h.ctx, NAME)[0].band.height();
     let mut h = harness(600.0);
@@ -134,6 +136,7 @@ fn a_short_panel_takes_from_the_list_then_the_heights_set_by_hand() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn only_a_real_overflow_makes_the_stack_taller_than_its_panel() {
     let mut h = harness(600.0);
     h.run();
@@ -174,6 +177,7 @@ fn only_a_real_overflow_makes_the_stack_taller_than_its_panel() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_drag_keeps_a_section_it_does_not_touch_in_the_list_and_a_double_click_drops_the_rest() {
     let mut h = harness(600.0);
     h.run();
@@ -205,6 +209,7 @@ fn a_drag_keeps_a_section_it_does_not_touch_in_the_list_and_a_double_click_drops
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_band_is_clicked_right_up_to_its_boundary_and_the_boundary_wins_at_the_line() {
     let mut h = harness(600.0);
     h.run();
@@ -234,6 +239,7 @@ fn a_band_is_clicked_right_up_to_its_boundary_and_the_boundary_wins_at_the_line(
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_boundary_under_a_folded_section_resizes_the_first_open_one_above() {
     // A open, B and C folded, D open.
     let mut h = Harness::builder()
@@ -287,6 +293,7 @@ fn a_boundary_under_a_folded_section_resizes_the_first_open_one_above() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn with_nothing_open_above_a_line_is_no_boundary() {
     // A folded, B open: the line above B moves nothing; it folds nothing.
     let mut h = Harness::builder()
@@ -318,6 +325,7 @@ fn with_nothing_open_above_a_line_is_no_boundary() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 #[cfg(feature = "serde")]
 fn laid_out_says_each_height_and_whether_it_is_set_by_hand() {
     let mut h = harness(600.0);
@@ -410,6 +418,7 @@ fn assert_covers(h: &Harness<'_>) {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_section_of_thousands_of_rows_only_draws_those_in_view() {
     let windows = Rc::new(RefCell::new(Vec::new()));
     let count = Rc::new(Cell::new(100_000));
@@ -444,6 +453,7 @@ fn a_section_of_thousands_of_rows_only_draws_those_in_view() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn the_window_follows_the_sections_size_so_no_row_is_left_blank() {
     let windows = Rc::new(RefCell::new(Vec::new()));
     let count = Rc::new(Cell::new(5_000));
@@ -484,6 +494,7 @@ fn the_window_follows_the_sections_size_so_no_row_is_left_blank() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_folded_windowed_section_draws_no_row() {
     let windows = Rc::new(RefCell::new(Vec::new()));
     let mut h = Harness::builder()
@@ -501,6 +512,7 @@ fn a_folded_windowed_section_draws_no_row() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_windowed_section_keeps_two_rows_or_all_of_them_when_fewer() {
     let mut h = Harness::builder()
         .with_size(egui::vec2(300.0, 100.0))
@@ -532,6 +544,7 @@ fn a_windowed_section_keeps_two_rows_or_all_of_them_when_fewer() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_row_height_defaults_to_the_theme() {
     let mut seen = 0.0;
     let mut h = Harness::builder()
@@ -602,6 +615,7 @@ fn nested(parent: Rc<Cell<f32>>) -> impl FnMut(&mut egui::Ui) {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_wheel_past_the_end_of_a_bodys_scroll_stops_there() {
     let parent = Rc::new(Cell::new(0.0));
     let mut h = Harness::builder()
@@ -636,6 +650,7 @@ fn a_wheel_past_the_end_of_a_bodys_scroll_stops_there() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_wheel_over_windowed_rows_stops_at_their_end_too() {
     let parent = Rc::new(Cell::new(0.0));
     let mut h = Harness::builder()
@@ -662,6 +677,7 @@ fn a_wheel_over_windowed_rows_stops_at_their_end_too() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_wheel_over_a_band_or_a_body_with_nothing_to_scroll_scrolls_the_stack() {
     let parent = Rc::new(Cell::new(0.0));
     let mut h = Harness::builder()
@@ -693,6 +709,7 @@ fn a_wheel_over_a_band_or_a_body_with_nothing_to_scroll_scrolls_the_stack() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_bare_body_has_no_scroll_of_ours_and_keeps_the_wheel() {
     let parent = Rc::new(Cell::new(0.0));
     let mut h = Harness::builder()
@@ -711,6 +728,7 @@ fn a_bare_body_has_no_scroll_of_ours_and_keeps_the_wheel() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_bare_body_is_given_the_whole_body_for_its_own_scroll() {
     let seen = Rc::new(Cell::new((egui::Rect::NOTHING, 0.0_f32)));
     let inner = seen.clone();
@@ -830,6 +848,7 @@ fn boundary(h: &Harness<'_>, name: &str) -> egui::Pos2 {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn without_the_option_a_fold_moves_the_title_and_those_above() {
     let mut h = options(600.0, false, false);
     h.run();
@@ -853,6 +872,7 @@ fn without_the_option_a_fold_moves_the_title_and_those_above() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_title_that_drags_moves_under_the_pointer_and_a_press_that_does_not_folds() {
     let mut h = options(600.0, true, false);
     h.run();
@@ -894,6 +914,7 @@ fn a_title_that_drags_moves_under_the_pointer_and_a_press_that_does_not_folds() 
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_title_at_the_top_or_with_nothing_open_above_folds_and_does_not_move() {
     let mut h = options(600.0, true, false);
     h.run();
@@ -917,6 +938,7 @@ fn a_title_at_the_top_or_with_nothing_open_above_folds_and_does_not_move() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_title_under_a_folded_section_and_the_folded_one_resize_the_same_section() {
     // A open, B folded, C and D open.
     let mut h = Harness::builder()
@@ -986,6 +1008,7 @@ fn under_a_title(clicks: Rc<Cell<u32>>, keep: bool) -> Harness<'static> {
 /// lands on the title, wherever the fold took it, the fold state ends as it
 /// was, and nothing else is clicked.
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_double_click_on_a_title_shows_its_fold_then_gets_the_shares_back() {
     let clicks = Rc::new(Cell::new(0));
     let mut h = under_a_title(clicks.clone(), false);
@@ -1013,6 +1036,7 @@ fn a_double_click_on_a_title_shows_its_fold_then_gets_the_shares_back() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_double_click_on_a_title_kept_in_place_lands_on_it_and_clears_the_empty_room() {
     let clicks = Rc::new(Cell::new(0));
     let mut h = under_a_title(clicks.clone(), true);
@@ -1035,6 +1059,7 @@ fn a_double_click_on_a_title_kept_in_place_lands_on_it_and_clears_the_empty_room
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn two_clicks_far_apart_in_time_are_two_folds_and_no_reset() {
     let mut h = options(600.0, true, false);
     h.run();
@@ -1056,6 +1081,7 @@ fn two_clicks_far_apart_in_time_are_two_folds_and_no_reset() {
 
 /// Both clicks of a double click in one pass, as a slow frame would give them.
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_double_click_in_one_pass_on_a_title_leaves_the_fold_as_it_was() {
     let mut h = options(600.0, true, false);
     h.run();
@@ -1076,6 +1102,7 @@ fn a_double_click_in_one_pass_on_a_title_leaves_the_fold_as_it_was() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn the_keyboard_folds_a_band_as_ever_with_titles_that_drag() {
     let mut h = options(600.0, true, false);
     h.run();
@@ -1095,6 +1122,7 @@ fn the_keyboard_folds_a_band_as_ever_with_titles_that_drag() {
 const PULL: egui::Modifiers = egui::Modifiers::COMMAND;
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_pull_moves_the_block_below_and_opens_empty_room() {
     use egui_stack::sections::plan::DragMode;
     let mut h = options(600.0, false, false);
@@ -1147,6 +1175,7 @@ fn a_pull_moves_the_block_below_and_opens_empty_room() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_pull_on_a_title_does_the_same_and_a_double_click_clears_the_empty_room() {
     let mut h = options(600.0, true, false);
     h.run();
@@ -1172,6 +1201,7 @@ fn a_pull_on_a_title_does_the_same_and_a_double_click_clears_the_empty_room() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_double_click_on_a_boundary_clears_the_empty_room_too() {
     let mut h = options(600.0, false, false);
     h.run();
@@ -1190,6 +1220,7 @@ fn a_double_click_on_a_boundary_clears_the_empty_room_too() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn pressing_or_releasing_the_key_in_a_drag_changes_the_mode_with_no_jump() {
     use egui_stack::sections::plan::DragMode;
     for grab in [false, true] {
@@ -1264,6 +1295,7 @@ fn pulled_by(pull: fn(Sections<'static>) -> Sections<'static>) -> Harness<'stati
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn the_pull_modifiers_can_be_changed_or_turned_off() {
     let empties = |h: &mut Harness<'_>, keys| {
         hold(h, keys);
@@ -1298,6 +1330,7 @@ fn the_pull_modifiers_can_be_changed_or_turned_off() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn the_arrows_on_a_boundary_pull_with_the_pull_modifiers() {
     let mut h = options(600.0, false, false);
     h.run();
@@ -1322,6 +1355,7 @@ fn the_arrows_on_a_boundary_pull_with_the_pull_modifiers() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn folding_and_opening_keep_the_title_where_it_is() {
     let mut h = options(600.0, false, true);
     h.run();
@@ -1374,6 +1408,7 @@ fn folding_and_opening_keep_the_title_where_it_is() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_kept_title_holds_from_the_keyboard_and_a_boundary_stays_to_clear_the_room() {
     let mut h = options(600.0, false, true);
     h.run();
@@ -1404,6 +1439,7 @@ fn a_kept_title_holds_from_the_keyboard_and_a_boundary_stays_to_clear_the_room()
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn an_empty_room_is_given_up_to_a_panel_too_short_and_comes_back() {
     let mut h = options(600.0, false, false);
     h.run();
@@ -1428,6 +1464,7 @@ fn an_empty_room_is_given_up_to_a_panel_too_short_and_comes_back() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 #[cfg(feature = "serde")]
 fn the_empty_room_survives_a_round_trip_and_an_old_layout_has_none() {
     let mut layout = Layout::default();
@@ -1445,6 +1482,7 @@ fn the_empty_room_survives_a_round_trip_and_an_old_layout_has_none() {
 const BAR: f32 = 13.0;
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_stack_too_tall_for_its_panel_shows_its_bar_in_its_own_style() {
     let mut h = Harness::builder()
         .with_size(egui::vec2(300.0, 60.0))
@@ -1476,6 +1514,7 @@ fn a_stack_too_tall_for_its_panel_shows_its_bar_in_its_own_style() {
 /// drag shrank stays shrunk: the room goes to the section just below the
 /// boundary, as a fresh drag up would put it, and the last does not bounce.
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_drag_back_up_leaves_what_it_shrank_and_the_next_section_takes_the_room() {
     for grab in [false, true] {
         let mut h = options(600.0, grab, true);
@@ -1519,6 +1558,7 @@ fn a_drag_back_up_leaves_what_it_shrank_and_the_next_section_takes_the_room() {
 /// as shown, the boundary under the pointer. Going down again, the section
 /// just below gives first, then the last, from what they have now.
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_drag_down_up_and_down_again_gives_way_from_the_stack_as_shown() {
     let mut h = options(600.0, false, false);
     h.run();
@@ -1721,6 +1761,7 @@ fn play(grab: bool, empty_first: bool, pull: bool, acts: &[Act]) {
 /// Seeded sequences of moves and of the pull's keys pressed and released in
 /// a drag: no band jumps, and the boundary stays under the pointer.
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn keys_pressed_and_released_in_a_drag_never_make_a_band_jump() {
     let mut failed = Vec::new();
     for seed in 1..=24u64 {
@@ -1760,6 +1801,7 @@ fn keys_pressed_and_released_in_a_drag_never_make_a_band_jump() {
 /// boundary, so the next move down took the boundary down with it, away
 /// from a pointer still above it.
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn keys_released_past_the_top_stop_leave_the_boundary_until_the_pointer_is_back() {
     for grab in [false, true] {
         let acts = [Act::Move(-20.0), Act::Move(-400.0), Act::Keys(false)];
@@ -1775,6 +1817,7 @@ fn keys_released_past_the_top_stop_leave_the_boundary_until_the_pointer_is_back(
 /// The same past the bottom stop: the keys pressed there, a move up that
 /// leaves the pointer under the boundary does not move it.
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn keys_pressed_past_the_bottom_stop_leave_the_boundary_until_the_pointer_is_back() {
     for empty_first in [false, true] {
         let acts = [
@@ -1793,6 +1836,7 @@ fn keys_pressed_past_the_bottom_stop_leave_the_boundary_until_the_pointer_is_bac
 /// boundary jumped to the pointer in one pass; it now catches up no faster
 /// than the pointer moves.
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn keys_released_short_of_the_pointer_let_the_boundary_catch_up_no_faster_than_it() {
     for grab in [false, true] {
         let acts = [
