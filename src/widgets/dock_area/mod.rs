@@ -11,17 +11,21 @@ mod state;
 mod tab_removal;
 
 pub use allowed_splits::AllowedSplits;
+use std::panic::AssertUnwindSafe;
+
 use egui::{Context, Id, Modifiers, emath::*};
 pub use labels::Labels;
 use tab_removal::TabRemoval;
 
-use crate::{NodePath, Style, TabIndex, TabPath, dock_state::DockState};
+use crate::{DockPainter, NodePath, Style, StylePainter, TabIndex, TabPath, dock_state::DockState};
 
 /// Displays a [`DockState`] in `egui`.
 pub struct DockArea<'tree, Tab> {
     id: Id,
     dock_state: &'tree mut DockState<Tab>,
     style: Option<Style>,
+    // Asserted unwind safe so that `DockArea` keeps its auto traits: the painter only paints.
+    painter: AssertUnwindSafe<&'tree (dyn DockPainter + Sync)>,
     labels: Labels,
     show_add_popup: bool,
     show_add_buttons: bool,
@@ -98,6 +102,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             id: DockArea::default_id(),
             dock_state: tree,
             style: None,
+            painter: AssertUnwindSafe(&StylePainter),
             labels: Labels::ENGLISH,
             show_add_popup: false,
             show_add_buttons: false,
@@ -136,6 +141,44 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     #[inline(always)]
     pub fn style(mut self, style: Style) -> Self {
         self.style = Some(style);
+        self
+    }
+
+    /// Sets what paints the tabs, tab bars, separators and drop overlay. By default it's
+    /// [`StylePainter`], which paints them from the [`Style`].
+    ///
+    /// The painter is `Sync`, as the rest of a [`DockArea`] can be: one that records what it
+    /// paints keeps it behind a `Mutex`.
+    ///
+    /// ```
+    /// # use egui_stack::{DockArea, DockPainter, DockState, SeparatorPaint};
+    /// /// Separators as thin lines, everything else as the style says.
+    /// struct ThinSeparators;
+    ///
+    /// impl DockPainter for ThinSeparators {
+    ///     fn separator(&self, painter: &egui::Painter, separator: &SeparatorPaint<'_>) {
+    ///         let color = separator.style.separator.color_idle;
+    ///         painter.rect_filled(separator.rect.shrink(1.0), 0.0, color);
+    ///     }
+    /// }
+    ///
+    /// # egui::__run_test_ui(|ui| {
+    /// # struct Viewer;
+    /// # impl egui_stack::TabViewer for Viewer {
+    /// #     type Tab = String;
+    /// #     fn id(&mut self, tab: &mut String) -> egui::Id { egui::Id::new(tab.as_str()) }
+    /// #     fn title(&mut self, tab: &mut String) -> egui::WidgetText { tab.as_str().into() }
+    /// #     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut String) { ui.label(tab.as_str()); }
+    /// # }
+    /// let mut dock_state = DockState::new(vec!["Tab".to_owned()]);
+    /// DockArea::new(&mut dock_state)
+    ///     .painter(&ThinSeparators)
+    ///     .show_inside(ui, &mut Viewer);
+    /// # });
+    /// ```
+    #[inline(always)]
+    pub fn painter(mut self, painter: &'tree (dyn DockPainter + Sync)) -> Self {
+        self.painter = AssertUnwindSafe(painter);
         self
     }
 

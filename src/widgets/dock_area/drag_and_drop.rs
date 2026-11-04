@@ -1,15 +1,15 @@
 use std::ops::BitOrAssign;
 
 use egui::{
-    Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, Stroke, StrokeKind, TextStyle,
-    TextWrapMode, Ui, Vec2, WidgetText,
+    Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, TextStyle, TextWrapMode, Ui, Vec2,
+    WidgetText,
     emath::{GuiRounding, inverse_lerp},
     vec2,
 };
 
 use crate::{
-    AllowedSplits, NodeIndex, NodePath, Split, Style, SurfaceIndex, TabDestination, TabInsert,
-    TabPath,
+    AllowedSplits, DockPainter, DropButtonPaint, DropPaint, DropRefusal, DropTargetPaint,
+    NodeIndex, NodePath, Split, Style, SurfaceIndex, TabDestination, TabInsert, TabPath,
 };
 
 #[derive(Debug, Clone)]
@@ -76,15 +76,8 @@ fn make_overlay_painter(ui: &Ui) -> Painter {
     ui.ctx().layer_painter(layer_id)
 }
 
-fn draw_highlight_rect(rect: Rect, ui: &Ui, style: &Style) {
-    let painter = make_overlay_painter(ui);
-    painter.rect(
-        rect.expand(style.overlay.hovered_leaf_highlight.expansion),
-        style.overlay.hovered_leaf_highlight.corner_radius,
-        style.overlay.hovered_leaf_highlight.color,
-        style.overlay.hovered_leaf_highlight.stroke,
-        StrokeKind::Inside,
-    );
+fn draw_highlight_rect(rect: Rect, ui: &Ui, style: &Style, painter: &dyn DockPainter) {
+    painter.drop_target(&make_overlay_painter(ui), &DropTargetPaint { rect, style });
 }
 
 // Draws one of the Tab drop destination icons inside `rect`, which one you get is specified by `is_top_bottom`.
@@ -95,57 +88,24 @@ fn button_ui(
     mouse_pos: Pos2,
     style: &Style,
     split: Option<Split>,
+    painter: &dyn DockPainter,
 ) -> bool {
-    let visuals = &style.overlay;
-    let button_stroke = Stroke::new(1.0_f32, visuals.button_color);
-    let painter = make_overlay_painter(ui);
-    painter.rect_stroke(rect, 0.0, visuals.button_border_stroke, StrokeKind::Inside);
-    let rect = rect.shrink(rect.width() * 0.1);
-    painter.rect_stroke(rect, 0.0, button_stroke, StrokeKind::Inside);
-    let rim = { Rect::from_two_pos(rect.min, rect.lerp_inside(vec2(1.0, 0.1))) };
-    painter.rect(
-        rim,
-        0.0,
-        visuals.button_color,
-        Stroke::NONE,
-        StrokeKind::Inside,
-    );
-
-    if let Some(split) = split {
-        for line in DASHED_LINE_ALPHAS.chunks(2) {
-            let start = rect.lerp_inside(lerp_vec(split, line[0]));
-            let end = rect.lerp_inside(lerp_vec(split, line[1]));
-            painter.line_segment([start, end], button_stroke);
-        }
-    }
-    let is_mouse_over = rect
+    let inner = rect.shrink(rect.width() * 0.1);
+    let is_mouse_over = inner
         .expand(style.overlay.feel.interact_expansion)
         .contains(mouse_pos);
-    if is_mouse_over && !*lock {
-        let vertical_alphas = vec2(1.0, 0.5);
-        let horizontal_alphas = vec2(0.5, 1.0);
-        let rect = match split {
-            Some(Split::Above) => Rect::from_min_size(rect.min, rect.size() * vertical_alphas),
-            Some(Split::Left) => Rect::from_min_size(rect.min, rect.size() * horizontal_alphas),
-            Some(Split::Below) => {
-                let min = rect.lerp_inside(lerp_vec(Split::Below, 0.0));
-                Rect::from_min_size(min, rect.size() * vertical_alphas)
-            }
-            Some(Split::Right) => {
-                let min = rect.lerp_inside(lerp_vec(Split::Right, 0.0));
-                Rect::from_min_size(min, rect.size() * horizontal_alphas)
-            }
-            _ => rect,
-        };
-        painter.rect_filled(rect, 0.0, style.overlay.selection_color);
-    }
+    painter.drop_button(
+        &make_overlay_painter(ui),
+        &DropButtonPaint {
+            rect,
+            split,
+            hovered: is_mouse_over && !*lock,
+            style,
+        },
+    );
     lock.bitor_assign(is_mouse_over);
     is_mouse_over
 }
-
-const DASHED_LINE_ALPHAS: [f32; 8] = [
-    0.0625, 0.1875, 0.3125, 0.4375, 0.5625, 0.6875, 0.8125, 0.9375,
-];
 
 #[derive(PartialEq, Eq)]
 enum LockState {
@@ -174,17 +134,19 @@ impl DragDropState {
         self.hover.tab.is_some()
     }
 
+    /// Resolves the destination on the overlay's buttons, painting the hovered node and the
+    /// buttons; the preview is left to the caller.
     pub(super) fn resolve_icon_based(
         &mut self,
         ui: &Ui,
         style: &Style,
+        painter: &dyn DockPainter,
         allowed_splits: AllowedSplits,
         windows_allowed: bool,
-        window_bounds: Rect,
     ) -> Option<TabDestination> {
         assert!(!self.is_on_title_bar());
 
-        draw_highlight_rect(self.hover.rect, ui, style);
+        draw_highlight_rect(self.hover.rect, ui, style, painter);
         let mut hovering_buttons = false;
         let total_button_spacing = style.overlay.button_spacing * 2.0;
         let (rect, pointer) = (self.hover.rect, self.pointer);
@@ -199,7 +161,15 @@ impl DragDropState {
         let center = rect.center();
         let rect = Rect::from_center_size(center, Vec2::splat(shortest_side));
 
-        if button_ui(rect, ui, &mut hovering_buttons, pointer, style, None) {
+        if button_ui(
+            rect,
+            ui,
+            &mut hovering_buttons,
+            pointer,
+            style,
+            None,
+            painter,
+        ) {
             match self.hover.dst {
                 TreeComponent::Node(path) => {
                     destination = Some(TabDestination::Node(path, TabInsert::Append))
@@ -231,6 +201,7 @@ impl DragDropState {
                         pointer,
                         style,
                         Some(split),
+                        painter,
                     ) && let TreeComponent::Node(path) = self.hover.dst
                     {
                         destination = Some(TabDestination::Node(path, TabInsert::Split(split)))
@@ -245,31 +216,27 @@ impl DragDropState {
             (true, _) => LockState::SoftLock,
         };
         self.update_lock(target_lock_state, style, ui.ctx());
-        if let Some(TabDestination::Window(rect)) = destination {
-            let rect = self.window_preview_rect(rect);
-            let rect_bounded = constrain_rect_to_area(ui, rect, window_bounds);
-            draw_window_rect(rect_bounded, ui, style);
-        }
         destination
     }
 
+    /// Resolves the destination from where the pointer is in the hovered node, painting the
+    /// node; the preview is left to the caller.
     pub(super) fn resolve_traditional(
         &mut self,
         ui: &Ui,
         style: &Style,
+        painter: &dyn DockPainter,
         allowed_splits: AllowedSplits,
         windows_allowed: bool,
-        window_bounds: Rect,
     ) -> Option<TabDestination> {
         // If windows are not allowed, any hover over a window is immediately disallowed.
         if !windows_allowed && self.hover.dst.surface_address() != SurfaceIndex::main() {
             return None;
         }
-        draw_highlight_rect(self.hover.rect, ui, style);
+        draw_highlight_rect(self.hover.rect, ui, style, painter);
 
         // Deals with hovers over tab bar and tab titles.
         if let Some(rect) = self.hover.tab {
-            draw_drop_rect(rect, ui, style);
             let target_lock_state = if rect.contains(self.pointer) {
                 LockState::SoftLock
             } else {
@@ -281,9 +248,8 @@ impl DragDropState {
 
         // Main cases, splits, window creations, etc.
         let (hover_rect, pointer) = (self.hover.rect, self.pointer);
-        let center = hover_rect.center();
 
-        let (tab_insertion, overlay_rect) = {
+        let tab_insertion = {
             // A reverse lerp of the pointers position relative to the hovered leaf rect.
             // Range is (-0.5, -0.5) to (0.5, 0.5)
             let a_pos = (Pos2::new(
@@ -303,11 +269,11 @@ impl DragDropState {
 
             // Find out what kind of tab insertion (if any) should be used to move this widget.
             if center_drop_rect.contains(a_pos) {
-                (Some(TabInsert::Append), Rect::EVERYTHING)
+                Some(TabInsert::Append)
             } else if window_drop_rect.contains(a_pos) {
                 match windows_allowed {
-                    true => (None, Rect::NOTHING),
-                    false => (Some(TabInsert::Append), Rect::EVERYTHING),
+                    true => None,
+                    false => Some(TabInsert::Append),
                 }
             } else {
                 // Assessing if were above/below the two linear functions x-y=0 and -x-y=0 determines
@@ -320,27 +286,15 @@ impl DragDropState {
                 };
                 if a_pos == Pos2::ZERO {
                     match windows_allowed {
-                        true => (None, Rect::NOTHING),
-                        false => (Some(TabInsert::Append), Rect::EVERYTHING),
+                        true => None,
+                        false => Some(TabInsert::Append),
                     }
                 } else {
                     match (a_pos.x - a_pos.y > 0., -a_pos.x - a_pos.y > 0.) {
-                        (true, true) => (
-                            Some(TabInsert::Split(Split::Above)),
-                            Rect::everything_above(center.y),
-                        ),
-                        (false, true) => (
-                            Some(TabInsert::Split(Split::Left)),
-                            Rect::everything_left_of(center.x),
-                        ),
-                        (true, false) => (
-                            Some(TabInsert::Split(Split::Right)),
-                            Rect::everything_right_of(center.x),
-                        ),
-                        (false, false) => (
-                            Some(TabInsert::Split(Split::Below)),
-                            Rect::everything_below(center.y),
-                        ),
+                        (true, true) => Some(TabInsert::Split(Split::Above)),
+                        (false, true) => Some(TabInsert::Split(Split::Left)),
+                        (true, false) => Some(TabInsert::Split(Split::Right)),
+                        (false, false) => Some(TabInsert::Split(Split::Below)),
                     }
                 }
             }
@@ -355,20 +309,6 @@ impl DragDropState {
         });
 
         self.update_lock(LockState::SoftLock, style, ui.ctx());
-
-        // Draw the overlay
-        match final_result {
-            Some(TabDestination::Window(rect)) => {
-                let rect = self.window_preview_rect(rect);
-                let rect_bounded = constrain_rect_to_area(ui, rect, window_bounds);
-                draw_window_rect(rect_bounded, ui, style);
-            }
-            Some(_) => {
-                draw_drop_rect(hover_rect.intersect(overlay_rect), ui, style);
-            }
-            None => (),
-        }
-
         final_result
     }
 
@@ -407,18 +347,17 @@ impl DragDropState {
         }
     }
 
-    /// Draws a refused destination over its preview, with the reason next to the pointer.
-    pub(super) fn draw_refusal(
+    /// Where a tab dropped at `destination` would go: the hovered tab or tab bar, the hovered
+    /// node or the half of it a split gives, or the new window.
+    pub(super) fn destination_rect(
         &self,
         ui: &Ui,
-        style: &Style,
         destination: &TabDestination,
-        reason: Option<WidgetText>,
         window_bounds: Rect,
-    ) {
+    ) -> Rect {
         let hover = self.hover.rect;
         let center = hover.center();
-        let rect = match *destination {
+        match *destination {
             TabDestination::Window(rect) => {
                 constrain_rect_to_area(ui, self.window_preview_rect(rect), window_bounds)
             }
@@ -430,38 +369,43 @@ impl DragDropState {
             }),
             TabDestination::Node(..) => self.hover.tab.unwrap_or(hover),
             TabDestination::EmptySurface(_) => hover,
-        };
-
-        let visuals = ui.visuals();
-        let color = visuals.error_fg_color;
-        let painter = make_overlay_painter(ui);
-        painter.rect(
-            rect,
-            0.0,
-            color.gamma_multiply(0.25),
-            Stroke::new(style.overlay.selection_stroke_width.max(1.0), color),
-            StrokeKind::Inside,
-        );
-
-        if let Some(reason) = reason {
-            let galley = reason.into_galley(
-                ui,
-                Some(TextWrapMode::Extend),
-                f32::INFINITY,
-                TextStyle::Body,
-            );
-            let margin = vec2(6.0, 4.0);
-            let min = self.pointer + vec2(16.0, 16.0);
-            let frame = Rect::from_min_size(min, galley.size() + 2.0 * margin);
-            painter.rect(
-                frame,
-                visuals.menu_corner_radius,
-                visuals.window_fill(),
-                Stroke::new(1.0, color),
-                StrokeKind::Inside,
-            );
-            painter.galley(min + margin, galley, visuals.text_color());
         }
+    }
+
+    /// Paints where the tab would go, or why it may not.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn paint_preview(
+        &self,
+        ui: &Ui,
+        style: &Style,
+        painter: &dyn DockPainter,
+        destination: &TabDestination,
+        from_buttons: bool,
+        reason: Option<Option<WidgetText>>,
+        window_bounds: Rect,
+    ) {
+        let refusal = reason.map(|reason| DropRefusal {
+            reason: reason.map(|reason| {
+                reason.into_galley(
+                    ui,
+                    Some(TextWrapMode::Extend),
+                    f32::INFINITY,
+                    TextStyle::Body,
+                )
+            }),
+            pointer: self.pointer,
+        });
+        painter.drop_preview(
+            &make_overlay_painter(ui),
+            &DropPaint {
+                rect: self.destination_rect(ui, destination, window_bounds),
+                destination,
+                from_buttons,
+                refusal: refusal.as_ref(),
+                style,
+                visuals: ui.visuals(),
+            },
+        );
     }
 
     fn window_preview_rect(&self, rect: Rect) -> Rect {
@@ -471,37 +415,6 @@ impl DragDropState {
             rect
         }
     }
-}
-
-#[inline(always)]
-const fn lerp_vec(split: Split, alpha: f32) -> Vec2 {
-    if split.is_top_bottom() {
-        vec2(alpha, 0.5)
-    } else {
-        vec2(0.5, alpha)
-    }
-}
-
-// Draws a filled rect describing where a tab will be dropped.
-#[inline(always)]
-fn draw_drop_rect(rect: Rect, ui: &Ui, style: &Style) {
-    let painter = make_overlay_painter(ui);
-    painter.rect_filled(rect, 0.0, style.overlay.selection_color);
-}
-
-// Draws a stroked rect describing where a tab will be dropped.
-#[inline(always)]
-fn draw_window_rect(rect: Rect, ui: &Ui, style: &Style) {
-    let painter = make_overlay_painter(ui);
-    painter.rect_stroke(
-        rect,
-        0.0,
-        Stroke::new(
-            style.overlay.selection_stroke_width,
-            style.overlay.selection_color,
-        ),
-        StrokeKind::Inside,
-    );
 }
 
 /// An adapted version of the [`egui::Area`]s code for restricting an area rect to a bound.

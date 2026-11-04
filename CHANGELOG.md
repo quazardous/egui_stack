@@ -1,5 +1,18 @@
 # egui_stack changelog
 
+## Unreleased
+
+### Added
+
+- A `DockPainter` trait paints the dock's parts, set with `DockArea::painter`: `tab_width` measures a tab (padding and
+  close button included, so a tab can be narrower than its title plus 16 points), `tab_bar` and `tab_bar_tail` paint
+  a tab bar under and after its tabs, `tab` a tab with its close button, `separator` a separator, and `drop_target`,
+  `drop_button` and `drop_preview` the drop overlay, a refused drop included. Each part gets its rect, its state as
+  `PartState` flags (selected, hovered, pressed, focused, dragged, leaf focused) and the style. Every method defaults
+  to the painting from `Style`, the `StylePainter`, so the look is unchanged and a painter overrides only the parts it
+  paints. The tab bar buttons, the hidden tab bar's handle, the scroll bar and the tab bodies are still painted from
+  `Style`.
+
 ## egui_stack 0.22.0 - 2026-11-03
 
 Forked from egui_dock 0.21.1 (see NOTICE). Everything below this release is egui_dock's history.
