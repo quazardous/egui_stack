@@ -1,6 +1,6 @@
 # egui_stack changelog
 
-## Unreleased
+## egui_stack 0.22.1 - 2026-11-04
 
 ### Added
 
