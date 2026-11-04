@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
-/// Accessible names of the [`DockArea`](crate::DockArea)'s buttons and separators, and of the
-/// boundaries of a [`Sections`](crate::sections::Sections) stack.
+/// Accessible names of the [`DockArea`](crate::DockArea)'s buttons and separators, of the
+/// boundaries of a [`Sections`](crate::sections::Sections) stack, and of the More button of a
+/// [`ToolRow`](crate::toolbar::ToolRow).
 ///
 /// Screen readers and test harnesses (through AccessKit) find these controls by their names. The
 /// defaults are English; set your own with [`DockArea::labels`](crate::DockArea::labels) to
@@ -44,6 +45,12 @@ pub struct Labels {
     /// A boundary between two sections of a [`Sections`](crate::sections::Sections) stack,
     /// which resizes the section above it: `{section}` is replaced by that section's title.
     pub resize_section: Cow<'static, str>,
+    /// The More button of a [`ToolRow`](crate::toolbar::ToolRow), which opens the tools that
+    /// do not fit, when the row has no title.
+    pub more_tools: Cow<'static, str>,
+    /// The same button in a row with a title ([`ToolRow::title`](crate::toolbar::ToolRow::title)):
+    /// `{toolbar}` is replaced by it, so two rows never have two controls of one name.
+    pub more_tools_in: Cow<'static, str>,
 }
 
 impl Labels {
@@ -59,6 +66,8 @@ impl Labels {
         show_tab_bar: Cow::Borrowed("Show tab bar"),
         separator: Cow::Borrowed("Resize"),
         resize_section: Cow::Borrowed("Resize {section}"),
+        more_tools: Cow::Borrowed("More tools"),
+        more_tools_in: Cow::Borrowed("More tools: {toolbar}"),
     };
 }
 

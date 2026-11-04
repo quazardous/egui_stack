@@ -260,6 +260,8 @@ pub mod sections;
 /// Look and feel.
 pub mod style;
 
+pub mod toolbar;
+
 /// Widgets provided by the library.
 pub mod widgets;
 

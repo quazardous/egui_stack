@@ -11,6 +11,7 @@ pub use dock_area::{AllowedSplits, DockArea, DraggedTab, Labels, TabFocus};
 pub use painter::{
     DockPainter, DropButtonPaint, DropPaint, DropRefusal, DropTargetPaint, PartState,
     SectionBandPaint, SectionBoundaryPaint, SeparatorAxis, SeparatorPaint, StylePainter,
-    TabBarPaint, TabBarTailPaint, TabClose, TabMeasure, TabPaint,
+    TabBarPaint, TabBarTailPaint, TabClose, TabMeasure, TabPaint, ToolItemPaint, ToolMorePaint,
+    ToolSeparatorPaint,
 };
 pub use tab_viewer::TabViewer;

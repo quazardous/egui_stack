@@ -13,8 +13,9 @@ use crate::{
 /// Paints the parts of a [`DockArea`](crate::DockArea): its tabs, tab bars, separators and drop
 /// overlay. Set one with [`DockArea::painter`](crate::DockArea::painter). It paints the bands and
 /// boundaries of a [`Sections`](crate::sections::Sections) stack too
-/// ([`Sections::painter`](crate::sections::Sections::painter)), so that one painter gives a dock
-/// and its section stacks one look.
+/// ([`Sections::painter`](crate::sections::Sections::painter)) and the tools of a
+/// [`ToolRow`](crate::toolbar::ToolRow) ([`ToolRow::painter`](crate::toolbar::ToolRow::painter)),
+/// so that one painter gives a dock, its section stacks and its toolbars one look.
 ///
 /// Every method has a default, the painting of [`StylePainter`] from the [`Style`] the part
 /// receives, so an implementation overrides only the parts it paints itself. A method overridden
@@ -391,6 +392,177 @@ pub trait DockPainter {
             );
         }
     }
+
+    /// A tool of a [`ToolRow`](crate::toolbar::ToolRow) (a button, a toggle, a menu), or a row
+    /// of its More menu ([`ToolItemPaint::in_menu`]): its background, icon (or a spinner while
+    /// busy), label and mark. The row lays it out: the painter paints at the places it is given.
+    /// Painted from the row's [`egui::Style`].
+    fn tool_item(&self, painter: &Painter, item: &ToolItemPaint<'_>) {
+        let visuals = &item.style.visuals;
+        let state = item.state;
+        let enabled = !state.contains(PartState::DISABLED);
+        let on = state.contains(PartState::SELECTED);
+        let radius = visuals.widgets.inactive.corner_radius;
+        let look = if state.contains(PartState::PRESSED) {
+            &visuals.widgets.active
+        } else {
+            &visuals.widgets.hovered
+        };
+        let lit =
+            enabled && (state.contains(PartState::HOVERED) || state.contains(PartState::PRESSED));
+        // A toggle on is framed in the row; in a menu its tick says it.
+        let framed = on && !item.in_menu;
+        if framed {
+            painter.rect(
+                item.rect,
+                radius,
+                visuals.selection.bg_fill,
+                Stroke::new(1.0, visuals.selection.stroke.color),
+                StrokeKind::Inside,
+            );
+        } else if lit {
+            painter.rect_filled(item.rect, radius, look.weak_bg_fill);
+        }
+        let color = if !enabled {
+            visuals.weak_text_color()
+        } else if framed {
+            visuals.selection.stroke.color
+        } else if lit {
+            look.fg_stroke.color
+        } else {
+            visuals.widgets.inactive.fg_stroke.color
+        };
+        if item.busy {
+            paint_spinner(painter, item.icon_rect, color);
+        } else if let Some(icon) = item.icon {
+            icon.paint(painter, item.icon_rect, color, enabled);
+        }
+        if let Some(label) = item.label {
+            painter.galley(item.label_pos, Arc::clone(label), color);
+        }
+        if let Some(shortcut) = item.shortcut {
+            let weak = if enabled {
+                visuals.weak_text_color()
+            } else {
+                color
+            };
+            painter.galley(item.shortcut_pos, Arc::clone(shortcut), weak);
+        }
+        if let Some(mark) = item.mark {
+            let stroke = Stroke::new(1.5, color);
+            if item.kind == crate::toolbar::ToolKind::Menu {
+                // A drop-down mark in the row, a submenu's arrow in a menu.
+                let points = if item.in_menu {
+                    vec![mark.left_top(), mark.right_center(), mark.left_bottom()]
+                } else {
+                    let m = mark.shrink2(vec2(0.0, mark.height() / 4.0));
+                    vec![m.left_top(), m.right_top(), m.center_bottom()]
+                };
+                painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+            } else if on {
+                // A tick.
+                let m = mark.shrink(mark.width() / 8.0);
+                painter.line(
+                    vec![
+                        m.lerp_inside(vec2(0.0, 0.55)),
+                        m.lerp_inside(vec2(0.4, 0.9)),
+                        m.lerp_inside(vec2(1.0, 0.1)),
+                    ],
+                    stroke,
+                );
+            }
+        }
+        if state.contains(PartState::FOCUSED) {
+            painter.rect_stroke(
+                item.rect.shrink(1.0),
+                radius,
+                visuals.selection.stroke,
+                StrokeKind::Inside,
+            );
+        }
+    }
+
+    /// The More button at the end of a [`ToolRow`](crate::toolbar::ToolRow), shown when some
+    /// tools do not fit: it opens them as a menu. The default paints three dots, along the row.
+    fn tool_more(&self, painter: &Painter, more: &ToolMorePaint<'_>) {
+        let visuals = &more.style.visuals;
+        let state = more.state;
+        let radius = visuals.widgets.inactive.corner_radius;
+        let open = state.contains(PartState::SELECTED);
+        let look = if state.contains(PartState::PRESSED) || open {
+            &visuals.widgets.active
+        } else {
+            &visuals.widgets.hovered
+        };
+        let lit = open || state.contains(PartState::HOVERED) || state.contains(PartState::PRESSED);
+        if lit {
+            painter.rect_filled(more.rect, radius, look.weak_bg_fill);
+        }
+        let color = if lit {
+            look.fg_stroke.color
+        } else {
+            visuals.widgets.inactive.fg_stroke.color
+        };
+        let r = (more.rect.height().min(more.rect.width()) / 14.0).max(1.0);
+        let step = if more.vertical {
+            vec2(0.0, 3.0 * r)
+        } else {
+            vec2(3.0 * r, 0.0)
+        };
+        let c = more.rect.center();
+        for at in [c - step, c, c + step] {
+            painter.circle_filled(at, r, color);
+        }
+        if state.contains(PartState::FOCUSED) {
+            painter.rect_stroke(
+                more.rect.shrink(1.0),
+                radius,
+                visuals.selection.stroke,
+                StrokeKind::Inside,
+            );
+        }
+    }
+
+    /// The line between two groups of a [`ToolRow`](crate::toolbar::ToolRow): across the row,
+    /// in the middle of its room.
+    fn tool_separator(&self, painter: &Painter, separator: &ToolSeparatorPaint<'_>) {
+        let rect = separator.rect;
+        let stroke = separator.style.visuals.widgets.noninteractive.bg_stroke;
+        if separator.vertical {
+            let inset = rect.width() / 8.0;
+            painter.hline(
+                rect.left() + inset..=rect.right() - inset,
+                rect.center().y,
+                stroke,
+            );
+        } else {
+            let inset = rect.height() / 8.0;
+            painter.vline(
+                rect.center().x,
+                rect.top() + inset..=rect.bottom() - inset,
+                stroke,
+            );
+        }
+    }
+}
+
+/// A busy tool's spinner in `rect`, as egui's: an arc turning with time.
+fn paint_spinner(painter: &Painter, rect: Rect, color: egui::Color32) {
+    let ctx = painter.ctx();
+    ctx.request_repaint();
+    let time = ctx.input(|i| i.time);
+    let radius = rect.width().min(rect.height()) / 2.0 - 1.0;
+    let start = time * std::f64::consts::TAU;
+    let end = start + 240f64.to_radians() * time.sin();
+    let n = 20;
+    let points: Vec<Pos2> = (0..n)
+        .map(|i| {
+            let angle = start + (end - start) * i as f64 / n as f64;
+            let (sin, cos) = angle.sin_cos();
+            rect.center() + radius * vec2(cos as f32, sin as f32)
+        })
+        .collect();
+    painter.add(egui::Shape::line(points, Stroke::new(2.0, color)));
 }
 
 /// The painter a [`DockArea`](crate::DockArea) uses unless given another: every part painted
@@ -417,7 +589,13 @@ const fn lerp_vec(split: Split, alpha: f32) -> Vec2 {
 /// [`HOVERED`](Self::HOVERED), [`PRESSED`](Self::PRESSED), [`FOCUSED`](Self::FOCUSED) and
 /// [`DRAGGED`](Self::DRAGGED), a tab's close button [`HOVERED`](Self::HOVERED),
 /// [`PRESSED`](Self::PRESSED) and [`FOCUSED`](Self::FOCUSED). A section's band and a boundary
-/// between sections use the same four as a separator.
+/// between sections use the same four as a separator. A tool of a
+/// [`ToolRow`](crate::toolbar::ToolRow) uses [`HOVERED`](Self::HOVERED),
+/// [`PRESSED`](Self::PRESSED), [`FOCUSED`](Self::FOCUSED), [`SELECTED`](Self::SELECTED) (a toggle
+/// on, a menu open) and [`DISABLED`](Self::DISABLED); its More button the first four. A tool of a
+/// [`ToolRow`](crate::toolbar::ToolRow) uses [`HOVERED`](Self::HOVERED),
+/// [`PRESSED`](Self::PRESSED), [`FOCUSED`](Self::FOCUSED), [`SELECTED`](Self::SELECTED) (a toggle
+/// on, a menu open) and [`DISABLED`](Self::DISABLED); the More button the first four.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct PartState(u8);
 
@@ -437,6 +615,8 @@ impl PartState {
     /// The tab's leaf is the dock's focused one, the last one interacted with
     /// ([`DockState::focused_leaf`](crate::DockState::focused_leaf)).
     pub const LEAF_FOCUSED: Self = Self(1 << 5);
+    /// The part takes no input: a disabled tool of a [`ToolRow`](crate::toolbar::ToolRow).
+    pub const DISABLED: Self = Self(1 << 6);
 
     /// Whether every flag of `other` is set.
     #[inline]
@@ -671,5 +851,75 @@ pub struct SectionBoundaryPaint<'a> {
     /// [`PartState::DRAGGED`].
     pub state: PartState,
     /// The style of the [`Ui`](egui::Ui) the stack is in.
+    pub style: &'a egui::Style,
+}
+
+/// A tool of a [`ToolRow`](crate::toolbar::ToolRow), or a row of its More menu, for
+/// [`DockPainter::tool_item`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct ToolItemPaint<'a> {
+    /// The whole tool.
+    pub rect: Rect,
+    /// The tool's widget id: what its response, its focus and its animations go by.
+    pub id: Id,
+    /// What the tool is: a button, a toggle, a radio choice or a menu.
+    pub kind: crate::toolbar::ToolKind,
+    /// Its icon, if it shows one.
+    pub icon: Option<&'a crate::toolbar::ToolIcon<'a>>,
+    /// Where its icon goes, or its spinner while busy: a square, also given when no icon shows.
+    pub icon_rect: Rect,
+    /// Its label laid out, if it shows it, in [`Color32::PLACEHOLDER`](egui::Color32::PLACEHOLDER)
+    /// so that the painter gives it its colour.
+    pub label: Option<&'a Arc<Galley>>,
+    /// Where the label's top left goes.
+    pub label_pos: Pos2,
+    /// Its key binding laid out, in [`Color32::PLACEHOLDER`](egui::Color32::PLACEHOLDER): given
+    /// in the More menu only ([`Tool::shortcut`](crate::toolbar::Tool::shortcut)).
+    pub shortcut: Option<&'a Arc<Galley>>,
+    /// Where the key binding's top left goes.
+    pub shortcut_pos: Pos2,
+    /// Where its mark goes, if it has one: a menu's drop-down mark (or a submenu's arrow, in a
+    /// menu), or, in a menu, a toggle's tick.
+    pub mark: Option<Rect>,
+    /// The tool is waiting for the result of what it started: the default paints a spinner in
+    /// its icon's place.
+    pub busy: bool,
+    /// It is a row of the More menu, as wide as the menu, rather than a tool of the row.
+    pub in_menu: bool,
+    /// Its state: [`PartState::HOVERED`], [`PartState::PRESSED`], [`PartState::FOCUSED`],
+    /// [`PartState::SELECTED`] (a toggle on, a menu open) and [`PartState::DISABLED`].
+    pub state: PartState,
+    /// The style of the [`Ui`](egui::Ui) the row is in.
+    pub style: &'a egui::Style,
+}
+
+/// The More button of a [`ToolRow`](crate::toolbar::ToolRow), for [`DockPainter::tool_more`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct ToolMorePaint<'a> {
+    /// The button, at the row's end.
+    pub rect: Rect,
+    /// Its widget id.
+    pub id: Id,
+    /// Whether the row runs down, a column, rather than across.
+    pub vertical: bool,
+    /// Its state: [`PartState::HOVERED`], [`PartState::PRESSED`], [`PartState::FOCUSED`] and
+    /// [`PartState::SELECTED`] while its menu is open.
+    pub state: PartState,
+    /// The style of the [`Ui`](egui::Ui) the row is in.
+    pub style: &'a egui::Style,
+}
+
+/// A separator between two groups of a [`ToolRow`](crate::toolbar::ToolRow), for
+/// [`DockPainter::tool_separator`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct ToolSeparatorPaint<'a> {
+    /// Its room in the row: as tall as the row in a row, as wide as the column in a column.
+    pub rect: Rect,
+    /// Whether the row runs down, a column, so the line runs across it.
+    pub vertical: bool,
+    /// The style of the [`Ui`](egui::Ui) the row is in.
     pub style: &'a egui::Style,
 }

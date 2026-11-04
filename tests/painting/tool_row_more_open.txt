@@ -1,0 +1,50 @@
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[8.0 8.0] - [263.0 32.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[15.0 15.0] - [25.0 25.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #D7_D7_D7_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Text "Cut" at [32.0 12.5] size [20.2 15.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[63.0 12.0] - [79.0 28.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #66_66_66_66, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: Some(Brush { fill_texture_id: Managed(0), uv: [[0.0 0.0] - [1.0 1.0]] }), angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Text "Copy" at [83.0 12.5] size [29.2 15.0] fallback #54_54_54_99 override None opacity 1.0
+clip [[0.0 0.0] - [300.0 120.0]]
+  LineSegment { points: [[123.0 11.0], [123.0 29.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[129.0 8.0] - [184.0 32.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_5C_80_FF, stroke: Stroke { width: 1.0, color: #C0_DE_FF_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[136.0 15.0] - [146.0 25.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #C0_DE_FF_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Text "Bold" at [153.0 12.5] size [26.7 15.0] fallback #C0_DE_FF_FF override None opacity 1.0
+clip [[0.0 0.0] - [300.0 120.0]]
+  Text "View" at [190.0 12.5] size [28.4 15.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[0.0 0.0] - [300.0 120.0]]
+  Path(PathShape { points: [[223.0 17.5], [233.0 17.5], [228.0 22.5]], closed: true, fill: #D7_D7_D7_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[239.0 8.0] - [263.0 32.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #28_28_28_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Circle(CircleShape { center: [245.9 20.0], radius: 1.7142857, fill: #FF_FF_FF_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Circle(CircleShape { center: [251.0 20.0], radius: 1.7142857, fill: #FF_FF_FF_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Circle(CircleShape { center: [256.1 20.0], radius: 1.7142857, fill: #FF_FF_FF_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[240.0 9.0] - [262.0 31.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #C0_DE_FF_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Vec
+    Rect(RectShape { rect: [[119.0 18.0] - [244.9 110.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_00_00_60, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 8.0, brush: None, angle: 0.0 })
+    Rect(RectShape { rect: [[113.0 8.0] - [238.9 100.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[127.0 22.0] - [137.0 32.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #D7_D7_D7_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Text "Save" at [144.0 19.5] size [26.7 15.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[0.0 0.0] - [300.0 120.0]]
+  Text "Ctrl+S" at [178.7 19.5] size [35.2 15.0] fallback #54_54_54_99 override None opacity 1.0
+clip [[0.0 0.0] - [300.0 120.0]]
+  Rect(RectShape { rect: [[127.0 49.0] - [137.0 59.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #D7_D7_D7_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [300.0 120.0]]
+  Text "Print" at [144.0 46.5] size [28.1 15.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[0.0 0.0] - [300.0 120.0]]
+  Text "Wrap" at [144.0 73.5] size [30.9 15.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[0.0 0.0] - [300.0 120.0]]
+  Path(PathShape { points: [[219.1 81.4], [222.1 84.0], [226.6 78.0]], closed: false, fill: #00_00_00_00, stroke: PathStroke { width: 1.5, color: Solid(#D7_D7_D7_FF), kind: Middle } })
