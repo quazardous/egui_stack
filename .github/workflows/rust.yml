@@ -16,9 +16,15 @@ env:
 jobs:
   tests:
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
     runs-on: ${{ matrix.os }}
+    # GitHub's macOS arm64 runners are often short: a job waiting for one
+    # is cancelled after a while and must not block a merge. Linux and
+    # Windows still do; macOS reports, and is not a required check.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 30 || 60 }}
     steps:
       - uses: actions/checkout@v3
 
