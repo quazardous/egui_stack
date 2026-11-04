@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
-/// Accessible names of the [`DockArea`](crate::DockArea)'s buttons and separators.
+/// Accessible names of the [`DockArea`](crate::DockArea)'s buttons and separators, and of the
+/// boundaries of a [`Sections`](crate::sections::Sections) stack.
 ///
 /// Screen readers and test harnesses (through AccessKit) find these controls by their names. The
 /// defaults are English; set your own with [`DockArea::labels`](crate::DockArea::labels) to
@@ -40,6 +41,9 @@ pub struct Labels {
     pub show_tab_bar: Cow<'static, str>,
     /// A separator between two nodes, which resizes them.
     pub separator: Cow<'static, str>,
+    /// A boundary between two sections of a [`Sections`](crate::sections::Sections) stack,
+    /// which resizes the section above it: `{section}` is replaced by that section's title.
+    pub resize_section: Cow<'static, str>,
 }
 
 impl Labels {
@@ -54,6 +58,7 @@ impl Labels {
         restore_window: Cow::Borrowed("Restore window"),
         show_tab_bar: Cow::Borrowed("Show tab bar"),
         separator: Cow::Borrowed("Resize"),
+        resize_section: Cow::Borrowed("Resize {section}"),
     };
 }
 

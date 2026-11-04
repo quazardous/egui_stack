@@ -10,3 +10,7 @@ egui_stack was forked from egui_dock's main branch after its 0.21.1 release
 (tag egui_dock-0.21.1 in this repository). The move to egui 0.37 started from
 an upstream pull request by crumblingstatue (egui_dock #354), its commits kept
 with their author.
+
+The sections module (src/sections) comes from egui-pop
+(https://github.com/quazardous/egui-pop), released under MIT OR Apache-2.0
+by the same maintainers and taken here under MIT.
