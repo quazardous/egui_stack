@@ -4,7 +4,7 @@ Mandatory requirements (see [CONTRIBUTING.md](../../CONTRIBUTING.md)):
 - [ ] I ran `cargo clippy` and it does not output any errors or warnings
 - [ ] I ran `cargo fmt`
 - [ ] I pushed to a new branch, not to `main`
-- [ ] I updated CHANGELOG.md
+- [ ] I added a changeset in `.changeset/` (see `.changeset/README`), or the change is `internal`
 - [ ] I documented all new public API
 - [ ] I provided an example of how to use the feature
 
