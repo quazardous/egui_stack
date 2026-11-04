@@ -81,7 +81,10 @@ impl DockArea<'_, ()> {
     }
 }
 
-/// How the keyboard focus reaches the tabs of a tab bar, set with [`DockArea::tab_focus`].
+/// How the keyboard focus reaches the tabs of a tab bar, set with [`DockArea::tab_focus`], or
+/// the tools of a [`ToolRow`](crate::toolbar::ToolRow), set with
+/// [`ToolRow::tab_focus`](crate::toolbar::ToolRow::tab_focus) (where [`Roving`](Self::Roving)
+/// is the default).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TabFocus {
     /// Every tab, and every tab's close button, is a Tab stop.
