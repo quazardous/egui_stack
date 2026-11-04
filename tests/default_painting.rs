@@ -173,7 +173,8 @@ fn check(scene: &str, harness: &Harness<'_, App>) {
     }
     let expected = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("{path}: {e}; run with UPDATE_SNAPSHOTS=1 to write it"));
-    if actual != expected {
+    // Line by line: a checkout may have turned the files' line ends into CRLF.
+    if !actual.lines().eq(expected.lines()) {
         let new = format!("{path}.new");
         std::fs::write(&new, &actual).unwrap();
         let first = actual
