@@ -1,8 +1,8 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
 use egui::{
-    Align2, CornerRadius, Galley, NumExt, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2, Visuals,
-    epaint::TextShape, vec2,
+    Align2, CornerRadius, Galley, Id, NumExt, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2,
+    Visuals, epaint::TextShape, vec2,
 };
 
 use crate::{
@@ -11,7 +11,10 @@ use crate::{
 };
 
 /// Paints the parts of a [`DockArea`](crate::DockArea): its tabs, tab bars, separators and drop
-/// overlay. Set one with [`DockArea::painter`](crate::DockArea::painter).
+/// overlay. Set one with [`DockArea::painter`](crate::DockArea::painter). It paints the bands and
+/// boundaries of a [`Sections`](crate::sections::Sections) stack too
+/// ([`Sections::painter`](crate::sections::Sections::painter)), so that one painter gives a dock
+/// and its section stacks one look.
 ///
 /// Every method has a default, the painting of [`StylePainter`] from the [`Style`] the part
 /// receives, so an implementation overrides only the parts it paints itself. A method overridden
@@ -277,6 +280,117 @@ pub trait DockPainter {
             painter.galley(min + margin, Arc::clone(reason), visuals.text_color());
         }
     }
+
+    /// The title band of a section in a [`Sections`](crate::sections::Sections) stack: its
+    /// background, its disclosure mark, its title and its count. Painted from the band's
+    /// [`egui::Style`], as a section stack has no dock [`Style`].
+    fn section_band(&self, painter: &Painter, band: &SectionBandPaint<'_>) {
+        let visuals = &band.style.visuals;
+        let state = band.state;
+        let rect = band.rect;
+        let look = if state.contains(PartState::PRESSED) {
+            &visuals.widgets.active
+        } else if state.contains(PartState::HOVERED) {
+            &visuals.widgets.hovered
+        } else {
+            &visuals.widgets.inactive
+        };
+        let fill = if state.contains(PartState::HOVERED) || state.contains(PartState::PRESSED) {
+            look.weak_bg_fill
+        } else {
+            visuals.faint_bg_color
+        };
+        painter.rect_filled(rect, CornerRadius::ZERO, fill);
+        // The line over the band, which parts it from the body above.
+        let px = painter.pixels_per_point().recip();
+        painter.hline(
+            rect.x_range(),
+            rect.top() + px / 2.0,
+            (px, visuals.widgets.noninteractive.bg_stroke.color),
+        );
+
+        let padding = band.style.spacing.item_spacing.x.max(4.0);
+        let text_color = look.fg_stroke.color;
+
+        // The disclosure mark: a triangle pointing right when folded, down when open.
+        let side = (rect.height() * 0.4).clamp(4.0, 10.0);
+        let mark = Rect::from_center_size(
+            Pos2::new(rect.left() + padding + side / 2.0, rect.center().y),
+            Vec2::splat(side),
+        );
+        let points = if band.open {
+            vec![mark.left_top(), mark.right_top(), mark.center_bottom()]
+        } else {
+            vec![mark.left_top(), mark.right_center(), mark.left_bottom()]
+        };
+        painter.add(egui::Shape::convex_polygon(
+            points,
+            text_color,
+            Stroke::NONE,
+        ));
+
+        // The count at the end, in a pill.
+        let mut end = rect.right() - padding;
+        if let Some(count) = band.count_text() {
+            let font = egui::TextStyle::Small.resolve(band.style);
+            let galley = painter.layout_no_wrap(count, font, text_color);
+            let pill_size = galley.size() + vec2(8.0, 2.0);
+            let pill = Rect::from_min_size(
+                Pos2::new(end - pill_size.x, rect.center().y - pill_size.y / 2.0),
+                pill_size,
+            );
+            painter.rect_filled(pill, pill.height() / 2.0, visuals.widgets.inactive.bg_fill);
+            painter.galley(pill.center() - galley.size() / 2.0, galley, text_color);
+            end = pill.left() - padding;
+        }
+
+        // The title between them, clipped to its room.
+        let start = mark.right() + padding;
+        let font = egui::TextStyle::Button.resolve(band.style);
+        let galley = painter.layout_no_wrap(band.title.to_owned(), font, text_color);
+        let room = Rect::from_x_y_ranges(start..=end.max(start), rect.y_range());
+        painter
+            .with_clip_rect(room.intersect(painter.clip_rect()))
+            .galley(
+                Pos2::new(start, rect.center().y - galley.size().y / 2.0),
+                galley,
+                text_color,
+            );
+
+        if state.contains(PartState::FOCUSED) {
+            painter.rect_stroke(
+                rect.shrink(1.0),
+                CornerRadius::ZERO,
+                visuals.selection.stroke,
+                StrokeKind::Inside,
+            );
+        }
+    }
+
+    /// A boundary between two sections of a [`Sections`](crate::sections::Sections) stack, which
+    /// resizes the open section above it. Painted after the bands, so that a focus ring shows
+    /// over them. The default paints nothing at rest: the bands' own lines part the sections.
+    fn section_boundary(&self, painter: &Painter, boundary: &SectionBoundaryPaint<'_>) {
+        let visuals = &boundary.style.visuals;
+        let state = boundary.state;
+        if state.contains(PartState::FOCUSED) {
+            painter.rect_stroke(
+                boundary.rect,
+                CornerRadius::ZERO,
+                visuals.selection.stroke,
+                StrokeKind::Inside,
+            );
+        } else if state.contains(PartState::DRAGGED)
+            || state.contains(PartState::PRESSED)
+            || state.contains(PartState::HOVERED)
+        {
+            painter.hline(
+                boundary.rect.x_range(),
+                boundary.line,
+                visuals.widgets.hovered.bg_stroke,
+            );
+        }
+    }
 }
 
 /// The painter a [`DockArea`](crate::DockArea) uses unless given another: every part painted
@@ -302,7 +416,8 @@ const fn lerp_vec(split: Split, alpha: f32) -> Vec2 {
 /// The state of a painted part, as flags: a tab uses all of them, a separator
 /// [`HOVERED`](Self::HOVERED), [`PRESSED`](Self::PRESSED), [`FOCUSED`](Self::FOCUSED) and
 /// [`DRAGGED`](Self::DRAGGED), a tab's close button [`HOVERED`](Self::HOVERED),
-/// [`PRESSED`](Self::PRESSED) and [`FOCUSED`](Self::FOCUSED).
+/// [`PRESSED`](Self::PRESSED) and [`FOCUSED`](Self::FOCUSED). A section's band and a boundary
+/// between sections use the same four as a separator.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct PartState(u8);
 
@@ -503,4 +618,58 @@ pub struct DropRefusal {
     pub reason: Option<Arc<Galley>>,
     /// The pointer's position.
     pub pointer: Pos2,
+}
+
+/// A section's title band, for [`DockPainter::section_band`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct SectionBandPaint<'a> {
+    /// The whole band, as wide as the stack.
+    pub rect: Rect,
+    /// The band's widget id: what its response, its focus and its animations go by.
+    pub id: Id,
+    /// The title as shown, in capitals unless the stack keeps its case
+    /// ([`Sections::capitals`](crate::sections::Sections::capitals)).
+    pub title: &'a str,
+    /// The count to show on the band, if any.
+    pub count: Option<u64>,
+    /// Whether the section is open.
+    pub open: bool,
+    /// Its state: [`PartState::HOVERED`], [`PartState::PRESSED`], [`PartState::FOCUSED`] and,
+    /// for a title that drags ([`Sections::grab_titles`](crate::sections::Sections::grab_titles)),
+    /// [`PartState::DRAGGED`].
+    pub state: PartState,
+    /// The style of the [`Ui`](egui::Ui) the stack is in.
+    pub style: &'a egui::Style,
+}
+
+impl SectionBandPaint<'_> {
+    /// The count as shown: `99+` past 99.
+    pub fn count_text(&self) -> Option<String> {
+        self.count.map(|count| {
+            if count > 99 {
+                "99+".to_owned()
+            } else {
+                count.to_string()
+            }
+        })
+    }
+}
+
+/// A boundary between two sections, for [`DockPainter::section_boundary`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct SectionBoundaryPaint<'a> {
+    /// Where the boundary takes the pointer: a few points on either side of the line, or above
+    /// it alone when the titles drag.
+    pub rect: Rect,
+    /// The line between the body above and the band below, as a `y`.
+    pub line: f32,
+    /// The boundary's widget id.
+    pub id: Id,
+    /// Its state: [`PartState::HOVERED`], [`PartState::PRESSED`], [`PartState::FOCUSED`] and
+    /// [`PartState::DRAGGED`].
+    pub state: PartState,
+    /// The style of the [`Ui`](egui::Ui) the stack is in.
+    pub style: &'a egui::Style,
 }

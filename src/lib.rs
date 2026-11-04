@@ -255,6 +255,8 @@ pub use widgets::*;
 /// The main structure of the library.
 pub mod dock_state;
 
+pub mod sections;
+
 /// Look and feel.
 pub mod style;
 

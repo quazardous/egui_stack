@@ -1,0 +1,44 @@
+clip [[0.0 0.0] - [300.0 300.0]]
+  Rect(RectShape { rect: [[8.0 8.0] - [292.0 292.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 8.0] - [300.0 292.0]]
+  Rect(RectShape { rect: [[8.0 8.0] - [292.0 292.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 8.0] - [300.0 292.0]]
+  Rect(RectShape { rect: [[8.0 8.0] - [292.0 32.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #05_05_05_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 8.0] - [300.0 292.0]]
+  LineSegment { points: [[8.0 8.5], [292.0 8.5]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[0.0 8.0] - [300.0 292.0]]
+  Path(PathShape { points: [[16.0 15.2], [25.6 15.2], [20.8 24.8]], closed: true, fill: #D7_D7_D7_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
+clip [[0.0 8.0] - [300.0 292.0]]
+  Rect(RectShape { rect: [[270.9 14.0] - [284.0 26.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #3C_3C_3C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 8.0] - [300.0 292.0]]
+  Text "3" at [274.9 15.0] size [5.1 10.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[33.6 8.0] - [262.9 32.0]]
+  Text "LIVE" at [33.6 12.5] size [25.1 15.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[8.0 32.0] - [292.0 138.0]]
+  Rect(RectShape { rect: [[8.0 32.0] - [36.9 47.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[8.0 32.0] - [292.0 138.0]]
+  Text "build" at [8.0 32.0] size [28.9 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
+clip [[0.0 8.0] - [300.0 292.0]]
+  Rect(RectShape { rect: [[8.0 138.0] - [292.0 162.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #05_05_05_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 8.0] - [300.0 292.0]]
+  LineSegment { points: [[8.0 138.5], [292.0 138.5]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[0.0 8.0] - [300.0 292.0]]
+  Path(PathShape { points: [[16.0 145.2], [25.6 145.2], [20.8 154.8]], closed: true, fill: #D7_D7_D7_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
+clip [[0.0 8.0] - [300.0 292.0]]
+  Rect(RectShape { rect: [[260.8 144.0] - [284.0 156.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #3C_3C_3C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 8.0] - [300.0 292.0]]
+  Text "99+" at [264.8 145.0] size [15.2 10.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[33.6 138.0] - [252.8 162.0]]
+  Text "MANY" at [33.6 142.5] size [36.2 15.0] fallback #D7_D7_D7_FF override None opacity 1.0
+clip [[8.0 162.0] - [292.0 268.0]]
+  Rect(RectShape { rect: [[8.0 162.0] - [40.1 177.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[8.0 162.0] - [292.0 268.0]]
+  Text "a row" at [8.0 162.0] size [32.1 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
+clip [[0.0 8.0] - [300.0 292.0]]
+  Rect(RectShape { rect: [[8.0 268.0] - [292.0 292.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #05_05_05_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 8.0] - [300.0 292.0]]
+  LineSegment { points: [[8.0 268.5], [292.0 268.5]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[0.0 8.0] - [300.0 292.0]]
+  Path(PathShape { points: [[16.0 275.2], [25.6 280.0], [16.0 284.8]], closed: true, fill: #D7_D7_D7_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
+clip [[33.6 268.0] - [284.0 292.0]]
+  Text "SHUT" at [33.6 272.5] size [31.7 15.0] fallback #D7_D7_D7_FF override None opacity 1.0

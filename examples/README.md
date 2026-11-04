@@ -20,3 +20,4 @@ Replace `<example_name>` with the name of the example file without the `.rs` ext
 - [`save_load_dock_state`](save_load_dock_state.rs): Shows how to persist the dock layout to a JSON file and load it back.
 - [`text_editor`](text_editor.rs): A practical example of a text editor with multiple open buffers as tabs.
 - [`reject_windows`](reject_windows.rs): Demonstrates the ability of tabs to either allow or reject being moved into separate windows.
+- [`sections`](sections.rs): A stack of collapsible, resizable sections in a side panel.

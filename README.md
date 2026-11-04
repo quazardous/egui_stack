@@ -28,6 +28,8 @@ What differs from `egui_dock`:
   overlay itself.
 - High degree of control over behaviour of the whole dock area and of individual tabs.
 - Manipulating tabs and dock layout from code.
+- Collapsible sections stacked in a panel (`sections::Sections`): fold, resize, pull as a block, remembered by name,
+  painted by the same `DockPainter`.
 
 ## Quick start
 
