@@ -1,7 +1,6 @@
 use duplicate::duplicate;
 use egui::{
-    Context, CornerRadius, CursorIcon, EventFilter, Key, Pos2, Rect, Sense, StrokeKind, Ui, Vec2,
-    WidgetInfo,
+    Context, CursorIcon, EventFilter, Key, Pos2, Rect, Sense, StrokeKind, Ui, Vec2, WidgetInfo,
     accesskit::{Action, ActionData, Orientation, Role},
 };
 use paste::paste;
@@ -11,8 +10,8 @@ use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
 use crate::tab_viewer::{DropVerdict, OnCloseResponse};
 use crate::{
-    AllowedSplits, DockArea, Node, NodeIndex, OverlayType, Style, SurfaceIndex, TabDestination,
-    TabViewer,
+    AllowedSplits, DockArea, DockPainter, Node, NodeIndex, OverlayType, PartState, SeparatorAxis,
+    SeparatorPaint, Style, SurfaceIndex, TabDestination, TabViewer,
     utils::{expand_to_pixel, fade_dock_style, map_to_pixel},
 };
 
@@ -237,22 +236,32 @@ impl<Tab> DockArea<'_, Tab> {
         }
 
         let window_bounds = self.window_bounds.unwrap();
-        let destination = match (style.overlay.overlay_type, drag_state.is_on_title_bar()) {
-            (OverlayType::HighlightedAreas, _) | (_, true) => drag_state.resolve_traditional(
-                ui,
-                style,
-                allowed_splits,
-                allowed_in_window,
-                window_bounds,
-            ),
-            (OverlayType::Widgets, false) => drag_state.resolve_icon_based(
-                ui,
-                style,
-                allowed_splits,
-                allowed_in_window,
-                window_bounds,
-            ),
-        }?;
+        let painter: &dyn DockPainter = self.painter.0;
+        let (destination, from_buttons) =
+            match (style.overlay.overlay_type, drag_state.is_on_title_bar()) {
+                (OverlayType::HighlightedAreas, _) | (_, true) => (
+                    drag_state.resolve_traditional(
+                        ui,
+                        style,
+                        painter,
+                        allowed_splits,
+                        allowed_in_window,
+                    ),
+                    false,
+                ),
+                (OverlayType::Widgets, false) => (
+                    drag_state.resolve_icon_based(
+                        ui,
+                        style,
+                        painter,
+                        allowed_splits,
+                        allowed_in_window,
+                    ),
+                    true,
+                ),
+            };
+        let destination = destination?;
+        let from_buttons = from_buttons && !matches!(destination, TabDestination::Window(_));
 
         // Last, the viewer's veto for this tab at this destination.
         let TreeComponent::Tab(path) = drag_state.drag.src else {
@@ -261,13 +270,20 @@ impl<Tab> DockArea<'_, Tab> {
         let tab = &self.dock_state[path.node_path()]
             .tabs()
             .expect("tab drags can only come from leaf nodes")[path.tab.0];
-        match tab_viewer.drop_allowed(tab, &destination) {
-            DropVerdict::Allow => Some(destination),
-            DropVerdict::Refuse(reason) => {
-                drag_state.draw_refusal(ui, style, &destination, reason, window_bounds);
-                None
-            }
-        }
+        let (allowed, refusal) = match tab_viewer.drop_allowed(tab, &destination) {
+            DropVerdict::Allow => (true, None),
+            DropVerdict::Refuse(reason) => (false, Some(reason)),
+        };
+        drag_state.paint_preview(
+            ui,
+            style,
+            painter,
+            &destination,
+            from_buttons,
+            refusal,
+            window_bounds,
+        );
+        allowed.then_some(destination)
     }
 
     /// Show a single surface of a [`DockState`].
@@ -540,15 +556,19 @@ impl<Tab> DockArea<'_, Tab> {
                     f32::round,
                 );
 
-                let color = if response.dragged() {
-                    style.separator.color_dragged
-                } else if response.hovered() || response.has_focus() {
-                    style.separator.color_hovered
-                } else {
-                    style.separator.color_idle
-                };
-
-                ui.painter().rect_filled(separator, CornerRadius::ZERO, color);
+                self.painter.separator(
+                    ui.painter(),
+                    &SeparatorPaint {
+                        rect: separator,
+                        axis: SeparatorAxis::separator_orientation,
+                        state: PartState::NONE
+                            .with(PartState::HOVERED, response.hovered())
+                            .with(PartState::PRESSED, response.is_pointer_button_down_on())
+                            .with(PartState::FOCUSED, response.has_focus())
+                            .with(PartState::DRAGGED, response.dragged()),
+                        style,
+                    },
+                );
 
                 // Update 'fraction' interaction after drawing separator,
                 // otherwise it may overlap on other separator / bodies when

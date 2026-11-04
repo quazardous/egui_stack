@@ -1,10 +1,8 @@
-use std::ops::RangeInclusive;
-
 use egui::{
-    Align, Align2, Button, Color32, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId,
-    Layout, NumExt, Order, Popup, PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape,
-    Stroke, StrokeKind, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role,
-    emath::TSTransform, epaint::TextShape, lerp, pos2, vec2,
+    Align, Button, Color32, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId, Layout,
+    NumExt, Order, Popup, PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape, Stroke,
+    StrokeKind, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role,
+    emath::TSTransform, lerp, pos2, vec2,
 };
 
 use crate::NodePath;
@@ -12,8 +10,9 @@ use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
-    DockArea, DraggedTab, Node, NodeIndex, Style, SurfaceIndex, TabAddAlign, TabFocus, TabIndex,
-    TabStyle, TabViewer,
+    DockArea, DraggedTab, Node, NodeIndex, PartState, Style, SurfaceIndex, TabAddAlign,
+    TabBarPaint, TabBarTailPaint, TabClose, TabFocus, TabIndex, TabMeasure, TabPaint, TabStyle,
+    TabViewer,
     dock_area::{
         drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
         state::State,
@@ -229,10 +228,14 @@ impl<Tab> DockArea<'_, Tab> {
             vec2(ui.available_width(), style.tab_bar.height),
             Sense::hover(),
         );
-        ui.painter().rect_filled(
-            tabbar_outer_rect,
-            style.tab_bar.corner_radius,
-            style.tab_bar.bg_fill,
+        let scrolled = 0.0 - self.dock_state.leaf(path).map_or(0.0, |leaf| leaf.scroll);
+        self.painter.tab_bar(
+            ui.painter(),
+            &TabBarPaint {
+                rect: tabbar_outer_rect,
+                scrolled,
+                style,
+            },
         );
 
         let tabbar_outer_rect = tabbar_outer_rect - style.tab_bar.inner_margin;
@@ -308,14 +311,22 @@ impl<Tab> DockArea<'_, Tab> {
                 fade_style,
             );
 
-            // Draw hline from tab end to edge of tab bar.
-            let px = ui.ctx().pixels_per_point().recip();
+            // The rest of the bar, right of the tabs.
             let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
-
-            ui.painter().hline(
-                tabs_ui.min_rect().right().min(clip_rect.right())..=tabbar_outer_rect.right(),
-                tabbar_outer_rect.bottom() - px,
-                (px, style.tab_bar.hline_color),
+            let tail = Rect::from_min_max(
+                pos2(
+                    tabs_ui.min_rect().right().min(clip_rect.right()),
+                    tabbar_outer_rect.top(),
+                ),
+                tabbar_outer_rect.right_bottom(),
+            );
+            self.painter.tab_bar_tail(
+                ui.painter(),
+                &TabBarTailPaint {
+                    rect: tail,
+                    bar: tabbar_outer_rect,
+                    style,
+                },
             );
 
             // Add button at the ends of the tab bar.
@@ -420,14 +431,14 @@ impl<Tab> DockArea<'_, Tab> {
                 tabs_ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
             }
 
-            let (is_active, label, tab_style, closeable) = {
+            let (selected, label, tab_style, closeable) = {
                 let leaf = self.dock_state[path]
                     .get_leaf_mut()
                     .expect("This node must be a leaf");
                 let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
                 let tab_style = tab_viewer.tab_style_override(&leaf.tabs[tab_index.0], &style.tab);
                 (
-                    leaf.active == tab_index || is_being_dragged,
+                    leaf.active == tab_index,
                     tab_viewer.title(&mut leaf.tabs[tab_index.0]),
                     tab_style.unwrap_or(style.tab.clone()),
                     tab_viewer.is_closeable(&leaf.tabs[tab_index.0]),
@@ -435,6 +446,10 @@ impl<Tab> DockArea<'_, Tab> {
             };
 
             let show_close_button = self.show_close_buttons && closeable;
+            let flags = PartState::NONE
+                .with(PartState::SELECTED, selected)
+                .with(PartState::DRAGGED, is_being_dragged)
+                .with(PartState::LEAF_FOCUSED, Some(path) == focused);
 
             let (response, title_id) = if is_being_dragged {
                 let layer_id = LayerId::new(Order::Tooltip, id);
@@ -445,9 +460,8 @@ impl<Tab> DockArea<'_, Tab> {
                             &tab_style,
                             id,
                             label,
-                            is_active && Some(path) == focused,
-                            is_active,
-                            is_being_dragged,
+                            flags,
+                            tabbar_outer_rect,
                             preferred_width,
                             show_close_button,
                             fade,
@@ -475,9 +489,8 @@ impl<Tab> DockArea<'_, Tab> {
                     &tab_style,
                     id,
                     label,
-                    is_active && Some(path) == focused,
-                    is_active,
-                    is_being_dragged,
+                    flags,
+                    tabbar_outer_rect,
                     preferred_width,
                     show_close_button,
                     fade,
@@ -570,21 +583,8 @@ impl<Tab> DockArea<'_, Tab> {
                 tab_hovered = true;
             }
 
-            // Paint hline below each tab unless its active (or option says otherwise).
             let leaf = self.dock_state.leaf_mut(path).unwrap();
             let tab = &mut leaf.tabs[tab_index.0];
-            let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
-            let tab_style = tab_viewer.tab_style_override(tab, &style.tab);
-            let tab_style = tab_style.as_ref().unwrap_or(&style.tab);
-
-            if !is_active || tab_style.hline_below_active_tab_name {
-                let px = tabs_ui.ctx().pixels_per_point().recip();
-                tabs_ui.painter().hline(
-                    response.rect.x_range(),
-                    tabbar_outer_rect.bottom() - px,
-                    (px, style.tab_bar.hline_color),
-                );
-            }
 
             if response.clicked()
                 || (tabs_ui.memory(|m| m.has_focus(title_id))
@@ -1152,8 +1152,8 @@ impl<Tab> DockArea<'_, Tab> {
         }
     }
 
-    /// * `active` means "the tab that is opened in the parent panel".
-    /// * `focused` means "the tab that was last interacted with".
+    /// Lays out, interacts with and paints one tab. `state` holds the flags known before
+    /// layout: selected, dragged, and whether its leaf is focused.
     ///
     /// Returns the main button response plus the response of the close button, if any.
     #[allow(clippy::too_many_arguments)]
@@ -1163,29 +1163,29 @@ impl<Tab> DockArea<'_, Tab> {
         tab_style: &TabStyle,
         id: Id,
         label: WidgetText,
-        focused: bool,
-        active: bool,
-        is_being_dragged: bool,
+        state: PartState,
+        bar: Rect,
         preferred_width: Option<f32>,
         show_close_button: bool,
         fade: Option<&Style>,
     ) -> (Response, Option<Response>) {
         let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
         let galley = label.into_galley(ui, None, f32::INFINITY, TextStyle::Button);
-        let x_spacing = tab_style.padding.at_least(0.0);
-        let text_width = galley.size().x + 2.0 * x_spacing;
         let close_button_size = if show_close_button {
             Style::TAB_CLOSE_BUTTON_SIZE.min(style.tab_bar.height)
         } else {
             0.0
         };
+        let active = state.contains(PartState::SELECTED) || state.contains(PartState::DRAGGED);
 
-        // Compute total width of the tab bar.
-        let minimum_width = tab_style
-            .minimum_width
-            .unwrap_or(0.0)
-            .at_least(text_width + close_button_size);
-        let tab_width = preferred_width.unwrap_or(0.0).at_least(minimum_width);
+        let measured = self.painter.tab_width(&TabMeasure {
+            title: &galley,
+            state,
+            close_width: close_button_size,
+            style,
+            tab_style,
+        });
+        let tab_width = preferred_width.unwrap_or(0.0).at_least(measured);
 
         let (_, tab_rect) = ui.allocate_space(vec2(tab_width, ui.available_height()));
         // With roving focus, only the active tab is a Tab stop.
@@ -1209,60 +1209,9 @@ impl<Tab> DockArea<'_, Tab> {
             response = response.on_hover_cursor(CursorIcon::Grab);
         }
 
-        let tab_style = if focused || is_being_dragged {
-            if response.has_focus() {
-                &tab_style.focused_with_kb_focus
-            } else {
-                &tab_style.focused
-            }
-        } else if active {
-            if response.has_focus() {
-                &tab_style.active_with_kb_focus
-            } else {
-                &tab_style.active
-            }
-        } else if response.hovered() {
-            &tab_style.hovered
-        } else if response.has_focus() {
-            &tab_style.inactive_with_kb_focus
-        } else {
-            &tab_style.inactive
-        };
-
-        // Draw the full tab first and then the stroke on top to avoid the stroke
-        // mixing with the background color.
-        ui.painter()
-            .rect_filled(tab_rect, tab_style.corner_radius, tab_style.bg_fill);
-        let stroke_rect = rect_stroke_box(tab_rect, 1.0);
-        ui.painter().rect_stroke(
-            stroke_rect,
-            tab_style.corner_radius,
-            Stroke::new(1.0_f32, tab_style.outline_color),
-            StrokeKind::Inside,
-        );
-        if !is_being_dragged {
-            // Make the tab name area connect with the tab ui area.
-            ui.painter().hline(
-                RangeInclusive::new(
-                    stroke_rect.min.x + f32::max(tab_style.corner_radius.sw.into(), 1.5),
-                    stroke_rect.max.x - f32::max(tab_style.corner_radius.se.into(), 1.5),
-                ),
-                stroke_rect.bottom(),
-                Stroke::new(2.0_f32, tab_style.bg_fill),
-            );
-        }
-
-        let mut text_rect = tab_rect;
-        text_rect.set_width(text_rect.width() - close_button_size);
-        let text_pos = {
-            let pos = Align2::CENTER_CENTER.pos_in_rect(&text_rect.shrink2(vec2(x_spacing, 0.0)));
-            pos - galley.size() / 2.0
-        };
-
-        ui.painter()
-            .add(TextShape::new(text_pos, galley, tab_style.text_color));
-
         let close_response = show_close_button.then(|| {
+            let mut text_rect = tab_rect;
+            text_rect.set_width(text_rect.width() - close_button_size);
             let mut close_button_rect = tab_rect;
             close_button_rect.set_left(text_rect.right());
             close_button_rect =
@@ -1278,38 +1227,32 @@ impl<Tab> DockArea<'_, Tab> {
             let enabled = ui.is_enabled();
             close_response
                 .widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.close_tab));
-
-            let color = if close_response.hovered() || close_response.has_focus() {
-                style.buttons.close_tab_active_color
-            } else {
-                style.buttons.close_tab_color
-            };
-
-            if close_response.hovered() || close_response.has_focus() {
-                let mut corner_radius = tab_style.corner_radius;
-                corner_radius.nw = 0;
-                corner_radius.sw = 0;
-
-                ui.painter().rect_filled(
-                    close_button_rect,
-                    corner_radius,
-                    style.buttons.close_tab_bg_fill,
-                );
-            }
-
-            let mut x_rect = close_button_rect;
-            rect_set_size_centered(&mut x_rect, Vec2::splat(Style::TAB_CLOSE_X_SIZE));
-            ui.painter().line_segment(
-                [x_rect.left_top(), x_rect.right_bottom()],
-                Stroke::new(1.0_f32, color),
-            );
-            ui.painter().line_segment(
-                [x_rect.right_top(), x_rect.left_bottom()],
-                Stroke::new(1.0_f32, color),
-            );
-
             close_response
         });
+
+        let state = state
+            .with(PartState::HOVERED, response.hovered())
+            .with(PartState::PRESSED, response.is_pointer_button_down_on())
+            .with(PartState::FOCUSED, response.has_focus());
+        let close = close_response.as_ref().map(|close| TabClose {
+            rect: close.rect,
+            state: PartState::NONE
+                .with(PartState::HOVERED, close.hovered())
+                .with(PartState::PRESSED, close.is_pointer_button_down_on())
+                .with(PartState::FOCUSED, close.has_focus()),
+        });
+        self.painter.tab(
+            ui.painter(),
+            &TabPaint {
+                rect: tab_rect,
+                bar,
+                title: &galley,
+                state,
+                close,
+                style,
+                tab_style,
+            },
+        );
 
         (response, close_response)
     }

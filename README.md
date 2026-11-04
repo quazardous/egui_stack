@@ -24,7 +24,8 @@ What differs from `egui_dock`:
 - Opening and closing tabs.
 - Moving tabs between nodes and resizing.
 - Dragging tabs out into new `egui` windows.
-- Highly customizable look and feel.
+- Highly customizable look and feel: a `Style`, or a `DockPainter` that paints the tabs, tab bars, separators and drop
+  overlay itself.
 - High degree of control over behaviour of the whole dock area and of individual tabs.
 - Manipulating tabs and dock layout from code.
 
