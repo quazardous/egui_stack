@@ -1,0 +1,75 @@
+# Versions and releases with knope (https://knope.tech), from the
+# changesets in `.changeset/` (RELEASING.md).
+#
+# Before 1.0, knope applies a `major` change to the middle number (0.22.x
+# to 0.23.0) and `minor` and `patch` to the last one.
+
+[changes]
+# Changes come from changesets only. Commit subjects are not read: a
+# change described by both a changeset and a `feat:` commit would be
+# counted twice.
+ignore_conventional_commits = true
+
+# `Cargo.lock` is not tracked (a library), so the manifest is the one
+# versioned file.
+#
+# knope writes the release into `target/release-notes.md`, not into
+# CHANGELOG.md: it inserts a release before the first heading it reads
+# as a version, and CHANGELOG.md's headings (`## egui_stack 0.22.1 -
+# 2026-11-04`) are not in its format, so it would land under the newest
+# egui_dock release. `scripts/release-notes.sh` moves it to the top of
+# CHANGELOG.md with the usual heading.
+[packages.egui_stack]
+versioned_files = ["Cargo.toml"]
+changelog = "target/release-notes.md"
+extra_changelog_sections = [
+    { name = "Breaking changes", types = ["major"] },
+    { name = "Added", types = ["minor"] },
+    { name = "Fixed", types = ["patch"] },
+]
+
+[release_notes]
+# A changeset is one paragraph: its first line and the rest make one
+# bullet, as in the hand-written entries.
+change_templates = ["- $summary\n  $details", "- $summary"]
+
+# `knope document-change`: writes a changeset, asking for the bump and
+# the text.
+[[workflows]]
+name = "document-change"
+
+[[workflows.steps]]
+type = "CreateChangeFile"
+
+# `knope release`: raises the version from the changesets, deletes them,
+# and writes the release at the top of CHANGELOG.md. Nothing is
+# committed, tagged or published (RELEASING.md).
+[[workflows]]
+name = "release"
+
+[[workflows.steps]]
+type = "Command"
+command = "mkdir -p target && rm -f target/release-notes.md"
+shell = true
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+[[workflows.steps]]
+type = "Command"
+command = "sh scripts/release-notes.sh"
+
+# `knope pending-versions`: the version the pending changesets lead to,
+# written in place and not committed. CI's semver job runs it so that a
+# break declared `major` is checked against the version it will ship.
+[[workflows]]
+name = "pending-versions"
+
+[[workflows.steps]]
+type = "Command"
+command = "mkdir -p target && rm -f target/release-notes.md"
+shell = true
+
+[[workflows.steps]]
+type = "PrepareRelease"
+allow_empty = true

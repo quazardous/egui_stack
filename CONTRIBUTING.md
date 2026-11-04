@@ -18,7 +18,9 @@ Before it is merged:
 - `cargo fmt` (checked by CI);
 - it compiles and passes `cargo clippy --all-targets --all-features -- -D warnings` and `cargo test --all-features`
   (checked by CI);
-- the changelog is up to date (Added, Changed, Fixed, Deprecated, Breaking changes);
+- a change users notice adds a changeset in `.changeset/` (see [.changeset/README](.changeset/README)); one users do
+  not notice is labelled `internal`. CHANGELOG.md is written from the changesets at release time
+  ([RELEASING.md](RELEASING.md)), not by hand;
 - public API has documentation comments; a major feature has an example in `examples/`.
 
 ## Issues
