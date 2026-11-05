@@ -2,8 +2,11 @@ use egui::Rect;
 
 use crate::TabIndex;
 
+mod grid;
 mod leaf;
 mod linear;
+pub(crate) mod shares;
+pub use grid::{GridLayout, GridNode};
 pub use leaf::LeafNode;
 pub use linear::{LinearDir, LinearNode};
 
@@ -19,6 +22,10 @@ pub enum Node<Tab> {
 
     /// Parent node: two or more children in a row or a column, each with a share of the space.
     Linear(LinearNode),
+
+    /// Parent node: two or more children in rows and columns, each column and each row with a
+    /// share of the space.
+    Grid(GridNode),
 }
 
 impl<Tab> Node<Tab> {
@@ -59,6 +66,7 @@ impl<Tab> Node<Tab> {
             Self::Empty => (),
             Self::Leaf(leaf) => leaf.set_rect(new_rect),
             Self::Linear(linear) => linear.set_rect(new_rect),
+            Self::Grid(grid) => grid.set_rect(new_rect),
         }
     }
 
@@ -71,6 +79,7 @@ impl<Tab> Node<Tab> {
             Self::Empty => None,
             Self::Leaf(leaf) => Some(leaf.rect()),
             Self::Linear(linear) => Some(linear.rect()),
+            Self::Grid(grid) => Some(grid.rect()),
         }
     }
 
@@ -115,7 +124,29 @@ impl<Tab> Node<Tab> {
     /// Returns `true` if the node has children, otherwise `false`.
     #[inline(always)]
     pub const fn is_parent(&self) -> bool {
-        matches!(self, Self::Linear(_))
+        matches!(self, Self::Linear(_) | Self::Grid(_))
+    }
+
+    /// Returns `true` if the node is a [`Grid`](Node::Grid).
+    #[inline(always)]
+    pub const fn is_grid(&self) -> bool {
+        matches!(self, Self::Grid(_))
+    }
+
+    /// Get immutable access to the grid data of this node, if it is a [`Grid`](Node::Grid).
+    pub fn get_grid(&self) -> Option<&GridNode> {
+        match self {
+            Node::Grid(grid) => Some(grid),
+            _ => None,
+        }
+    }
+
+    /// Get mutable access to the grid data of this node, if it is a [`Grid`](Node::Grid).
+    pub fn get_grid_mut(&mut self) -> Option<&mut GridNode> {
+        match self {
+            Node::Grid(grid) => Some(grid),
+            _ => None,
+        }
     }
 
     /// Get immutable access to the linear data of this node, if it is a [`Linear`](Node::Linear).
@@ -134,11 +165,22 @@ impl<Tab> Node<Tab> {
         }
     }
 
-    /// The children of this node: none unless it is a [`Linear`](Node::Linear).
+    /// The children of this node: none unless it is a [`Linear`](Node::Linear) or a
+    /// [`Grid`](Node::Grid).
     pub fn children(&self) -> &[crate::NodeIndex] {
         match self {
             Node::Linear(linear) => linear.children(),
+            Node::Grid(grid) => grid.children(),
             _ => &[],
+        }
+    }
+
+    /// The children of a container, to replace one in place.
+    pub(crate) fn children_mut(&mut self) -> Option<&mut Vec<crate::NodeIndex>> {
+        match self {
+            Node::Linear(linear) => Some(&mut linear.children),
+            Node::Grid(grid) => Some(&mut grid.children),
+            _ => None,
         }
     }
 
@@ -148,6 +190,7 @@ impl<Tab> Node<Tab> {
         match self {
             Node::Leaf(leaf) => leaf.collapsed,
             Node::Linear(linear) => linear.fully_collapsed,
+            Node::Grid(grid) => grid.fully_collapsed,
             Node::Empty => false,
         }
     }
@@ -156,6 +199,7 @@ impl<Tab> Node<Tab> {
     pub fn collapsed_leaf_count(&self) -> i32 {
         match self {
             Node::Linear(linear) => linear.collapsed_leaf_count,
+            Node::Grid(grid) => grid.collapsed_leaf_count,
             Node::Leaf(leaf) => {
                 if leaf.collapsed {
                     1
@@ -289,6 +333,7 @@ impl<Tab> Node<Tab> {
         match self {
             Node::Leaf(leaf) => leaf.collapsed = collapsed,
             Node::Linear(linear) => linear.fully_collapsed = collapsed,
+            Node::Grid(grid) => grid.fully_collapsed = collapsed,
             Node::Empty => panic!("node was empty"),
         }
     }
@@ -319,12 +364,13 @@ impl<Tab> Node<Tab> {
     ///
     /// # Panics
     ///
-    /// Panics if `self` is not a [`Linear`](Node::Linear) node.
+    /// Panics if `self` is not a [`Linear`](Node::Linear) or a [`Grid`](Node::Grid) node.
     #[inline]
     pub fn set_collapsed_leaf_count(&mut self, count: i32) {
         match self {
             Node::Linear(linear) => linear.collapsed_leaf_count = count,
-            _ => panic!("node was not a linear node"),
+            Node::Grid(grid) => grid.collapsed_leaf_count = count,
+            _ => panic!("node was not a container"),
         }
     }
 
@@ -399,6 +445,7 @@ impl<Tab> Node<Tab> {
             }
             Node::Empty => Node::Empty,
             Node::Linear(linear) => Node::Linear(linear.clone()),
+            Node::Grid(grid) => Node::Grid(grid.clone()),
         }
     }
 

@@ -9,7 +9,7 @@
 
 use egui::Rect;
 
-use super::{LeafNode, LinearDir, LinearNode, Node, NodeIndex, Tree};
+use super::{GridNode, LeafNode, LinearDir, LinearNode, Node, NodeIndex, Tree};
 
 /// A node as saved by this version or an earlier one.
 #[derive(serde::Deserialize)]
@@ -17,6 +17,7 @@ pub(super) enum NodeRepr<Tab> {
     Empty,
     Leaf(LeafNode<Tab>),
     Linear(LinearNode),
+    Grid(GridNode),
     Vertical(SplitRepr),
     Horizontal(SplitRepr),
 }
@@ -73,6 +74,7 @@ impl<Tab> From<TreeRepr<Tab>> for Tree<Tab> {
                 NodeRepr::Empty => Node::Empty,
                 NodeRepr::Leaf(leaf) => Node::Leaf(leaf),
                 NodeRepr::Linear(linear) => Node::Linear(linear),
+                NodeRepr::Grid(grid) => Node::Grid(grid),
                 NodeRepr::Horizontal(split) => split.into_linear(LinearDir::Horizontal, index),
                 NodeRepr::Vertical(split) => split.into_linear(LinearDir::Vertical, index),
             })
@@ -206,5 +208,53 @@ mod tests {
         assert!(json.contains("Linear"), "{json}");
         let loaded: Tree<String> = serde_json::from_str(&json).unwrap();
         assert_eq!(serde_json::to_string(&loaded).unwrap(), json);
+    }
+
+    #[test]
+    fn a_grid_round_trips() {
+        let mut tree = Tree::new(vec!["a".to_owned()]);
+        let [_, b] = tree.split_right(NodeIndex::root(), 0.5, vec!["b".to_owned()]);
+        tree.split_right(b, 0.5, vec!["c".to_owned()]);
+        assert!(tree.arrange_as_grid(NodeIndex::root(), crate::GridLayout::Columns(2)));
+        tree[NodeIndex::root()]
+            .get_grid_mut()
+            .unwrap()
+            .set_shares(vec![1.0, 2.0], vec![3.0, 1.0]);
+        for node in tree.iter_mut() {
+            node.set_rect(Rect::ZERO);
+            if let Some(leaf) = node.get_leaf_mut() {
+                leaf.viewport = Rect::ZERO;
+            }
+        }
+        let json = serde_json::to_string(&tree).unwrap();
+        assert!(json.contains("Grid"), "{json}");
+        let loaded: Tree<String> = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&loaded).unwrap(), json);
+        let grid = loaded[NodeIndex::root()].get_grid().unwrap();
+        assert_eq!(grid.layout, crate::GridLayout::Columns(2));
+        assert_eq!(grid.col_shares(), &[1.0, 2.0]);
+    }
+
+    #[test]
+    fn a_saved_grid_is_checked() {
+        // A grid of one live child and one missing gives way; shares of the wrong length fit.
+        let json = format!(
+            r#"{{"nodes":[{{"Grid":{{"children":[1,2,7],"col_shares":[1.0]}}}},{},{}]}}"#,
+            leaf("a"),
+            leaf("b")
+        );
+        let tree: Tree<String> = serde_json::from_str(&json).unwrap();
+        let grid = tree[NodeIndex::root()].get_grid().unwrap();
+        assert_eq!(grid.children(), &[NodeIndex(1), NodeIndex(2)]);
+        assert_eq!(grid.col_shares(), &[1.0, 1.0]);
+        assert_eq!(grid.row_shares(), &[1.0]);
+
+        let json = format!(
+            r#"{{"nodes":[{{"Grid":{{"children":[1,5]}}}},{}]}}"#,
+            leaf("a")
+        );
+        let tree: Tree<String> = serde_json::from_str(&json).unwrap();
+        assert_eq!(tree.len(), 1);
+        assert!(tree[NodeIndex::root()].is_leaf());
     }
 }
