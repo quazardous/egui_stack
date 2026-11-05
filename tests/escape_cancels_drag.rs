@@ -53,9 +53,7 @@ fn drag_first_over_third(harness: &mut Harness<'_, DockState<String>>) -> Pos2 {
         .rect()
         .center();
     let third = harness.get_by_role_and_label(Role::Tab, "Third").rect();
-    let leaf = harness.state().main_surface()[NodeIndex::root().right()]
-        .rect()
-        .unwrap();
+    let leaf = harness.state().main_surface()[NodeIndex(2)].rect().unwrap();
     let target = Pos2::new(leaf.center().x, third.bottom() + 150.0);
 
     harness.hover_at(start);

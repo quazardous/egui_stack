@@ -99,7 +99,7 @@ fn tab_rect(harness: &Harness<'_, App>, title: &str) -> Rect {
 
 /// The middle of the body of the leaf holding `Third`.
 fn third_body(harness: &Harness<'_, App>) -> Pos2 {
-    let leaf = harness.state().dock_state.main_surface()[NodeIndex::root().right()]
+    let leaf = harness.state().dock_state.main_surface()[NodeIndex(2)]
         .rect()
         .unwrap();
     pos2(leaf.center().x, leaf.center().y + 30.0)
@@ -208,7 +208,7 @@ fn tabs_at_rest_and_hovered() {
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn separator_hovered() {
     let mut harness = scene(false, OverlayType::Widgets);
-    let left = harness.state().dock_state.main_surface()[NodeIndex::root().left()]
+    let left = harness.state().dock_state.main_surface()[NodeIndex(1)]
         .rect()
         .unwrap();
     harness.hover_at(pos2(left.right() + 0.5, left.center().y));
@@ -239,7 +239,7 @@ fn drop_overlays() {
     check("drop_tab_bar", &harness);
     let mut harness = scene(false, OverlayType::HighlightedAreas);
     drag_first_to(&mut harness, |h| {
-        let leaf = h.state().dock_state.main_surface()[NodeIndex::root().right()]
+        let leaf = h.state().dock_state.main_surface()[NodeIndex(2)]
             .rect()
             .unwrap();
         pos2(leaf.right() - 20.0, leaf.center().y)
@@ -247,7 +247,7 @@ fn drop_overlays() {
     check("drop_split", &harness);
     let mut harness = scene(false, OverlayType::Zones);
     drag_first_to(&mut harness, |h| {
-        let leaf = h.state().dock_state.main_surface()[NodeIndex::root().right()]
+        let leaf = h.state().dock_state.main_surface()[NodeIndex(2)]
             .rect()
             .unwrap();
         pos2(leaf.right() - 20.0, leaf.center().y)

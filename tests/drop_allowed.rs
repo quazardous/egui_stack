@@ -90,7 +90,7 @@ fn drag_first_onto_third(harness: &mut Harness<'_, App>) {
     let third = rect_of(harness, "Third");
     // The middle of Third's leaf body, below its tab bar.
     let target = egui::pos2(
-        harness.state().dock_state.main_surface()[NodeIndex::root().right()]
+        harness.state().dock_state.main_surface()[NodeIndex(2)]
             .rect()
             .unwrap()
             .center()

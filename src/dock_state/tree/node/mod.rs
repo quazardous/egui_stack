@@ -1,11 +1,11 @@
 use egui::Rect;
 
-use crate::{Split, TabIndex};
+use crate::TabIndex;
 
 mod leaf;
-mod split;
+mod linear;
 pub use leaf::LeafNode;
-pub use split::SplitNode;
+pub use linear::{LinearDir, LinearNode};
 
 /// Represents an abstract node of a [`Tree`](crate::Tree).
 #[derive(Clone, Debug)]
@@ -17,11 +17,8 @@ pub enum Node<Tab> {
     /// Contains the actual tabs.
     Leaf(LeafNode<Tab>),
 
-    /// Parent node in the vertical orientation.
-    Vertical(SplitNode),
-
-    /// Parent node in the horizontal orientation.
-    Horizontal(SplitNode),
+    /// Parent node: two or more children in a row or a column, each with a share of the space.
+    Linear(LinearNode),
 }
 
 impl<Tab> Node<Tab> {
@@ -61,7 +58,7 @@ impl<Tab> Node<Tab> {
         match self {
             Self::Empty => (),
             Self::Leaf(leaf) => leaf.set_rect(new_rect),
-            Self::Vertical(split) | Self::Horizontal(split) => split.set_rect(new_rect),
+            Self::Linear(linear) => linear.set_rect(new_rect),
         }
     }
 
@@ -73,7 +70,7 @@ impl<Tab> Node<Tab> {
         match self {
             Self::Empty => None,
             Self::Leaf(leaf) => Some(leaf.rect()),
-            Self::Vertical(split) | Self::Horizontal(split) => Some(split.rect()),
+            Self::Linear(linear) => Some(linear.rect()),
         }
     }
 
@@ -89,23 +86,60 @@ impl<Tab> Node<Tab> {
         matches!(self, Self::Leaf { .. })
     }
 
-    /// Returns `true` if the node is a [`Horizontal`](Node::Horizontal), otherwise `false`.
+    /// Returns `true` if the node is a [`Linear`](Node::Linear) laying out its children
+    /// side by side, otherwise `false`.
     #[inline(always)]
     pub const fn is_horizontal(&self) -> bool {
-        matches!(self, Self::Horizontal { .. })
+        matches!(
+            self,
+            Self::Linear(LinearNode {
+                dir: LinearDir::Horizontal,
+                ..
+            })
+        )
     }
 
-    /// Returns `true` if the node is a [`Vertical`](Node::Vertical), otherwise `false`.
+    /// Returns `true` if the node is a [`Linear`](Node::Linear) laying out its children one
+    /// above the other, otherwise `false`.
     #[inline(always)]
     pub const fn is_vertical(&self) -> bool {
-        matches!(self, Self::Vertical { .. })
+        matches!(
+            self,
+            Self::Linear(LinearNode {
+                dir: LinearDir::Vertical,
+                ..
+            })
+        )
     }
 
-    /// Returns `true` if the node is either [`Horizontal`](Node::Horizontal) or [`Vertical`](Node::Vertical),
-    /// otherwise `false`.
+    /// Returns `true` if the node has children, otherwise `false`.
     #[inline(always)]
     pub const fn is_parent(&self) -> bool {
-        self.is_horizontal() || self.is_vertical()
+        matches!(self, Self::Linear(_))
+    }
+
+    /// Get immutable access to the linear data of this node, if it is a [`Linear`](Node::Linear).
+    pub fn get_linear(&self) -> Option<&LinearNode> {
+        match self {
+            Node::Linear(linear) => Some(linear),
+            _ => None,
+        }
+    }
+
+    /// Get mutable access to the linear data of this node, if it is a [`Linear`](Node::Linear).
+    pub fn get_linear_mut(&mut self) -> Option<&mut LinearNode> {
+        match self {
+            Node::Linear(linear) => Some(linear),
+            _ => None,
+        }
+    }
+
+    /// The children of this node: none unless it is a [`Linear`](Node::Linear).
+    pub fn children(&self) -> &[crate::NodeIndex] {
+        match self {
+            Node::Linear(linear) => linear.children(),
+            _ => &[],
+        }
     }
 
     /// Returns `true` if the node is collapsed, otherwise `false`.
@@ -113,7 +147,7 @@ impl<Tab> Node<Tab> {
     pub fn is_collapsed(&self) -> bool {
         match self {
             Node::Leaf(leaf) => leaf.collapsed,
-            Node::Horizontal(split) | Node::Vertical(split) => split.fully_collapsed,
+            Node::Linear(linear) => linear.fully_collapsed,
             Node::Empty => false,
         }
     }
@@ -121,7 +155,7 @@ impl<Tab> Node<Tab> {
     /// Returns the number of layers of collapsed leaf subnodes.
     pub fn collapsed_leaf_count(&self) -> i32 {
         match self {
-            Node::Horizontal(split) | Node::Vertical(split) => split.collapsed_leaf_count,
+            Node::Linear(linear) => linear.collapsed_leaf_count,
             Node::Leaf(leaf) => {
                 if leaf.collapsed {
                     1
@@ -131,33 +165,6 @@ impl<Tab> Node<Tab> {
             }
             Node::Empty => 0,
         }
-    }
-
-    /// Replaces the node with [`Horizontal`](Node::Horizontal) or [`Vertical`](Node::Vertical) (depending on `split`)
-    /// and assigns an empty rect to it.
-    ///
-    /// # Panics
-    ///
-    /// If `fraction` isn't in range 0..=1.
-    #[inline]
-    pub fn split(&mut self, split: Split, fraction: f32) -> Self {
-        assert!((0.0..=1.0).contains(&fraction));
-        let rect = Rect::NOTHING;
-        let src = match split {
-            Split::Left | Split::Right => Node::Horizontal(SplitNode::new(
-                rect,
-                fraction,
-                self.is_collapsed(),
-                self.collapsed_leaf_count(),
-            )),
-            Split::Above | Split::Below => Node::Vertical(SplitNode::new(
-                rect,
-                fraction,
-                self.is_collapsed(),
-                self.collapsed_leaf_count(),
-            )),
-        };
-        std::mem::replace(self, src)
     }
 
     /// Provides an immutable slice of the tabs inside this node.
@@ -281,7 +288,7 @@ impl<Tab> Node<Tab> {
     pub fn set_collapsed(&mut self, collapsed: bool) {
         match self {
             Node::Leaf(leaf) => leaf.collapsed = collapsed,
-            Node::Vertical(split) | Node::Horizontal(split) => split.fully_collapsed = collapsed,
+            Node::Linear(linear) => linear.fully_collapsed = collapsed,
             Node::Empty => panic!("node was empty"),
         }
     }
@@ -312,12 +319,12 @@ impl<Tab> Node<Tab> {
     ///
     /// # Panics
     ///
-    /// Panics if `self` is neither a [`Vertical`](Node::Vertical) nor a [`Horizontal`](Node::Horizontal) node.
+    /// Panics if `self` is not a [`Linear`](Node::Linear) node.
     #[inline]
     pub fn set_collapsed_leaf_count(&mut self, count: i32) {
         match self {
-            Node::Horizontal(split) | Node::Vertical(split) => split.collapsed_leaf_count = count,
-            _ => panic!("node was neither vertical nor horizontal"),
+            Node::Linear(linear) => linear.collapsed_leaf_count = count,
+            _ => panic!("node was not a linear node"),
         }
     }
 
@@ -391,8 +398,7 @@ impl<Tab> Node<Tab> {
                 }
             }
             Node::Empty => Node::Empty,
-            Node::Vertical(split) => Node::Vertical(split.clone()),
-            Node::Horizontal(split) => Node::Horizontal(split.clone()),
+            Node::Linear(linear) => Node::Linear(linear.clone()),
         }
     }
 

@@ -67,7 +67,7 @@ fn harness() -> Harness<'static, App> {
 }
 
 fn third_leaf(harness: &Harness<'_, App>) -> Rect {
-    harness.state().dock_state.main_surface()[NodeIndex::root().right()]
+    harness.state().dock_state.main_surface()[NodeIndex(2)]
         .rect()
         .unwrap()
 }

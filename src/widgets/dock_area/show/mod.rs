@@ -1,9 +1,7 @@
-use duplicate::duplicate;
 use egui::{
     Context, CursorIcon, EventFilter, Key, Pos2, Rect, Sense, StrokeKind, Ui, Vec2, WidgetInfo,
     accesskit::{Action, ActionData, Orientation, Role},
 };
-use paste::paste;
 
 use super::{
     drag_and_drop::{DragData, HoverData, TreeComponent},
@@ -14,8 +12,8 @@ use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
 use crate::tab_viewer::{DropVerdict, OnCloseResponse};
 use crate::{
-    AllowedSplits, DockArea, DockPainter, Node, NodeIndex, OverlayType, PartState, SeparatorAxis,
-    SeparatorPaint, Style, SurfaceIndex, TabDestination, TabViewer,
+    AllowedSplits, DockArea, DockPainter, LinearDir, Node, NodeIndex, OverlayType, PartState,
+    SeparatorAxis, SeparatorPaint, Style, SurfaceIndex, TabDestination, TabViewer,
     utils::{expand_to_pixel, fade_dock_style, map_to_pixel},
 };
 
@@ -349,7 +347,7 @@ impl<Tab> DockArea<'_, Tab> {
         surf_index: SurfaceIndex,
         fade_style: Option<(&Style, f32)>,
     ) {
-        // First compute all rect sizes in the node graph.
+        // First compute all rect sizes in the node graph, parents before their children.
         let max_rect = self.allocate_area_for_root_node(ui, surf_index);
         for node_index in self.dock_state[surf_index].breadth_first_index_iter() {
             let path = NodePath {
@@ -380,8 +378,9 @@ impl<Tab> DockArea<'_, Tab> {
                 surface: surf_index,
                 node: node_index,
             };
-            if self.dock_state[surf_index][node_index].is_parent() {
-                self.show_separator(ui, path, fade_style);
+            let separators = self.dock_state[path].children().len().saturating_sub(1);
+            for index in 0..separators {
+                self.show_separator(ui, path, index, fade_style);
             }
         }
     }
@@ -414,261 +413,334 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     fn compute_rect_sizes(&mut self, ui: &Ui, path: NodePath, max_rect: Rect) {
-        assert!(self.dock_state[path].is_parent());
-
         let style = self.style.as_ref().unwrap();
         let pixels_per_point = ui.ctx().pixels_per_point();
+        let tree = &self.dock_state[path.surface];
+        let Node::Linear(linear) = &tree[path.node] else {
+            unreachable!("only linear nodes have children")
+        };
+        let rect = linear.rect;
+        debug_assert!(!rect.any_nan() && rect.is_finite());
+        let rect = expand_to_pixel(rect, pixels_per_point);
 
-        let left_collapsed_count = self.dock_state[path.left_node()].collapsed_leaf_count();
-        let right_collapsed_count = self.dock_state[path.right_node()].collapsed_leaf_count();
-        let left_collapsed = self.dock_state[path.left_node()].is_collapsed();
-        let right_collapsed = self.dock_state[path.right_node()].is_collapsed();
+        // Collapsed children of a column keep the height of their tab bars.
+        let collapsed: Vec<Option<i32>> = linear
+            .children()
+            .iter()
+            .map(|&child| {
+                (linear.dir == LinearDir::Vertical && tree[child].is_collapsed())
+                    .then(|| tree[child].collapsed_leaf_count())
+            })
+            .collect();
+        let axis = linear.dir;
+        let (start, size) = match axis {
+            LinearDir::Horizontal => (rect.min.x, rect.width()),
+            LinearDir::Vertical => (rect.min.y, rect.height()),
+        };
+        let boundaries = boundaries(linear, &collapsed, size, style.tab_bar.height);
+        let children = linear.children().to_vec();
 
-        if (left_collapsed || right_collapsed)
-            && let Node::Vertical(split) = &mut self.dock_state[path.surface][path.node]
-        {
-            let rect = split.rect();
-            debug_assert!(!rect.any_nan() && rect.is_finite());
-            let rect = expand_to_pixel(rect, pixels_per_point);
-
-            if left_collapsed {
-                // EITHER only left collapsed OR left and right both collapsed
-                let border_y = rect.min.y + (left_collapsed_count as f32) * style.tab_bar.height;
-                let left_separator_border = map_to_pixel(
-                    border_y - style.separator.width * 0.5,
+        let half = style.separator.width * 0.5;
+        let last = children.len() - 1;
+        for (index, child) in children.into_iter().enumerate() {
+            let mut child_rect = rect;
+            let (min, max) = match axis {
+                LinearDir::Horizontal => (&mut child_rect.min.x, &mut child_rect.max.x),
+                LinearDir::Vertical => (&mut child_rect.min.y, &mut child_rect.max.y),
+            };
+            if index > 0 {
+                *min = map_to_pixel(
+                    start + boundaries[index - 1] + half,
                     pixels_per_point,
                     f32::round,
                 );
-                let right_separator_border = map_to_pixel(
-                    border_y + style.separator.width * 0.5,
-                    pixels_per_point,
-                    f32::round,
-                );
-                let left = rect
-                    .intersect(Rect::everything_above(left_separator_border))
-                    .intersect(max_rect);
-                let right = rect
-                    .intersect(Rect::everything_below(right_separator_border))
-                    .intersect(max_rect);
-                self.dock_state[path.left_node()].set_rect(left);
-                self.dock_state[path.right_node()].set_rect(right);
-            } else {
-                // Only right collapsed
-                let border_y = rect.max.y - (right_collapsed_count as f32) * style.tab_bar.height;
-                let left_separator_border = map_to_pixel(
-                    border_y - style.separator.width * 0.5,
-                    pixels_per_point,
-                    f32::round,
-                );
-                let right_separator_border = map_to_pixel(
-                    border_y + style.separator.width * 0.5,
-                    pixels_per_point,
-                    f32::round,
-                );
-                let left = rect
-                    .intersect(Rect::everything_above(left_separator_border))
-                    .intersect(max_rect);
-                let right = rect
-                    .intersect(Rect::everything_below(right_separator_border))
-                    .intersect(max_rect);
-                self.dock_state[path.left_node()].set_rect(left);
-                self.dock_state[path.right_node()].set_rect(right);
             }
-            return;
-        }
-
-        duplicate! {
-            [
-                orientation   dim_point  dim_size  left_of    right_of;
-                [Horizontal]  [x]        [width]   [left_of]  [right_of];
-                [Vertical]    [y]        [height]  [above]    [below];
-            ]
-            if let Node::orientation(split) = &mut self.dock_state[path.surface][path.node] {
-                let rect = split.rect;
-                debug_assert!(!rect.any_nan() && rect.is_finite());
-                let rect = expand_to_pixel(rect, pixels_per_point);
-
-                let dim_size = rect.dim_size();
-                let midpoint = if dim_size > 0.0 {
-                    rect.min.dim_point + dim_size * split.fraction
-                } else {
-                    rect.min.dim_point
-                };
-
-                let left_separator_border = map_to_pixel(
-                    midpoint - style.separator.width * 0.5,
+            if index < last {
+                *max = map_to_pixel(
+                    start + boundaries[index] - half,
                     pixels_per_point,
-                    f32::round
+                    f32::round,
                 );
-                let right_separator_border = map_to_pixel(
-                    midpoint + style.separator.width * 0.5,
-                    pixels_per_point,
-                    f32::round
-                );
-
-                paste! {
-                    let left = rect.intersect(Rect::[<everything_ left_of>](left_separator_border)).intersect(max_rect);
-                    let right = rect.intersect(Rect::[<everything_ right_of>](right_separator_border)).intersect(max_rect);
-                }
-
-                self.dock_state[path.left_node()].set_rect(left);
-                self.dock_state[path.right_node()].set_rect(right);
             }
+            let child_rect = rect.intersect(child_rect).intersect(max_rect);
+            self.dock_state[path.surface][child].set_rect(child_rect);
         }
     }
 
-    fn show_separator(&mut self, ui: &mut Ui, path: NodePath, fade_style: Option<&Style>) {
-        assert!(self.dock_state[path.surface][path.node].is_parent());
+    /// Shows the separator after the child at `index` of the linear node at `path`.
+    fn show_separator(
+        &mut self,
+        ui: &mut Ui,
+        path: NodePath,
+        index: usize,
+        fade_style: Option<&Style>,
+    ) {
+        let tree = &self.dock_state[path.surface];
+        let Node::Linear(linear) = &tree[path.node] else {
+            unreachable!("only linear nodes have separators")
+        };
 
         // If either of the children is collapsed, we don't want the user to interact with the separator
-        if (self.dock_state[path.left_node()].is_collapsed()
-            || self.dock_state[path.right_node()].is_collapsed())
-            && self.dock_state[path.surface][path.node].is_vertical()
-        {
+        let pair = [linear.children()[index], linear.children()[index + 1]];
+        if linear.dir == LinearDir::Vertical && pair.iter().any(|&c| tree[c].is_collapsed()) {
             return;
         }
 
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
         let pixels_per_point = ui.ctx().pixels_per_point();
+        let painter = self.painter.0;
+        let label = &self.labels.separator;
 
-        duplicate! {
-            [
-                orientation   dim_point  dim_size  separator_orientation  back_key     forward_key   lock_horizontal  lock_vertical;
-                [Horizontal]  [x]        [width]   [Vertical]             [ArrowLeft]  [ArrowRight]  [true]           [false];
-                [Vertical]    [y]        [height]  [Horizontal]           [ArrowUp]    [ArrowDown]   [false]          [true];
-            ]
-            if let Node::orientation(split) = &mut self.dock_state[path.surface][path.node] {
-                let rect = split.rect;
-                let mut separator = rect;
+        let Node::Linear(linear) = &mut self.dock_state[path.surface][path.node] else {
+            unreachable!()
+        };
+        let horizontal = linear.dir == LinearDir::Horizontal;
+        let dim = |v: Vec2| if horizontal { v.x } else { v.y };
+        let along = |r: Rect| {
+            if horizontal {
+                (r.min.x, r.max.x)
+            } else {
+                (r.min.y, r.max.y)
+            }
+        };
+        let set_along = |r: &mut Rect, min: f32, max: f32| {
+            if horizontal {
+                (r.min.x, r.max.x) = (min, max);
+            } else {
+                (r.min.y, r.max.y) = (min, max);
+            }
+        };
 
-                let midpoint = rect.min.dim_point + rect.dim_size() * split.fraction;
-                separator.min.dim_point = midpoint - style.separator.width * 0.5;
-                separator.max.dim_point = midpoint + style.separator.width * 0.5;
+        let rect = linear.rect;
+        let (start, end) = along(rect);
+        let range = end - start;
+        let mut separator = rect;
+        let midpoint = start + range * linear.boundary(index);
+        set_along(
+            &mut separator,
+            midpoint - style.separator.width * 0.5,
+            midpoint + style.separator.width * 0.5,
+        );
 
-                let mut expand = Vec2::ZERO;
-                expand.dim_point += style.separator.extra_interact_width / 2.0;
-                let interact_rect = separator.expand2(expand);
+        let mut expand = Vec2::ZERO;
+        if horizontal {
+            expand.x += style.separator.extra_interact_width / 2.0;
+        } else {
+            expand.y += style.separator.extra_interact_width / 2.0;
+        }
+        let interact_rect = separator.expand2(expand);
 
-                let response = ui.allocate_rect(interact_rect, Sense::click_and_drag())
-                    .on_hover_and_drag_cursor(paste!{ CursorIcon::[<Resize orientation>]});
+        let cursor = if horizontal {
+            CursorIcon::ResizeHorizontal
+        } else {
+            CursorIcon::ResizeVertical
+        };
+        let response = ui
+            .allocate_rect(interact_rect, Sense::click_and_drag())
+            .on_hover_and_drag_cursor(cursor);
 
-                // A focused separator moves with the arrow keys along its axis, by a larger step
-                // with Shift, and Enter resets it. The arrows across its axis still move the focus.
-                if response.has_focus() {
-                    ui.memory_mut(|m| m.set_focus_lock_filter(response.id, EventFilter {
-                        horizontal_arrows: lock_horizontal,
-                        vertical_arrows: lock_vertical,
+        // A focused separator moves with the arrow keys along its axis, by a larger step
+        // with Shift, and Enter resets it. The arrows across its axis still move the focus.
+        if response.has_focus() {
+            ui.memory_mut(|m| {
+                m.set_focus_lock_filter(
+                    response.id,
+                    EventFilter {
+                        horizontal_arrows: horizontal,
+                        vertical_arrows: !horizontal,
                         tab: false,
-                        escape: false
-                    }));
-                }
-
-                let (arrow_key_offset, reset) = if response.has_focus() {
-                    ui.input(|i| {
-                        let step = if i.modifiers.shift {
-                            SEPARATOR_LARGE_KEY_STEP
-                        } else {
-                            SEPARATOR_KEY_STEP
-                        };
-                        let offset = if i.key_pressed(Key::back_key) {
-                            Some(-step)
-                        } else if i.key_pressed(Key::forward_key) {
-                            Some(step)
-                        } else {
-                            None
-                        };
-                        (offset, i.key_pressed(Key::Enter))
-                    })
-                } else {
-                    (None, false)
-                };
-
-                let midpoint = rect.min.dim_point + rect.dim_size() * split.fraction;
-                separator.min.dim_point = map_to_pixel(
-                    midpoint - style.separator.width * 0.5,
-                    pixels_per_point,
-                    f32::round,
-                );
-                separator.max.dim_point = map_to_pixel(
-                    midpoint + style.separator.width * 0.5,
-                    pixels_per_point,
-                    f32::round,
-                );
-
-                self.painter.separator(
-                    ui.painter(),
-                    &SeparatorPaint {
-                        rect: separator,
-                        axis: SeparatorAxis::separator_orientation,
-                        state: PartState::NONE
-                            .with(PartState::HOVERED, response.hovered())
-                            .with(PartState::PRESSED, response.is_pointer_button_down_on())
-                            .with(PartState::FOCUSED, response.has_focus())
-                            .with(PartState::DRAGGED, response.dragged()),
-                        style,
+                        escape: false,
                     },
-                );
+                )
+            });
+        }
 
-                // Update 'fraction' interaction after drawing separator,
-                // otherwise it may overlap on other separator / bodies when
-                // shrunk fast.
-                let range = rect.max.dim_point - rect.min.dim_point;
-                // Assistive technology moves the separator by the arrow keys' step.
-                let accesskit_step = if range > 0.0 { (SEPARATOR_KEY_STEP / range).min(1.0) } else { 0.0 };
-                let (accesskit_steps, accesskit_value) = ui.input(|i| {
-                    let steps = i.num_accesskit_action_requests(response.id, Action::Increment) as f32
-                        - i.num_accesskit_action_requests(response.id, Action::Decrement) as f32;
-                    let value = i
-                        .accesskit_action_requests(response.id, Action::SetValue)
-                        .filter_map(|request| match request.data {
-                            Some(ActionData::NumericValue(value)) => Some(value as f32),
-                            _ => None,
-                        })
-                        .last();
-                    (steps, value)
-                });
-                let (min, max) = if range > 0.0 {
-                    let min = (style.separator.extra / range).min(1.0);
-                    let max = 1.0 - min;
-                    (min.min(max), max.max(min))
+        let (back_key, forward_key) = if horizontal {
+            (Key::ArrowLeft, Key::ArrowRight)
+        } else {
+            (Key::ArrowUp, Key::ArrowDown)
+        };
+        let (arrow_key_offset, reset) = if response.has_focus() {
+            ui.input(|i| {
+                let step = if i.modifiers.shift {
+                    SEPARATOR_LARGE_KEY_STEP
                 } else {
-                    (split.fraction, split.fraction)
+                    SEPARATOR_KEY_STEP
                 };
-                if range > 0.0 {
-                    let delta = arrow_key_offset.unwrap_or(response.drag_delta().dim_point);
-                    let fraction = accesskit_value.unwrap_or(split.fraction);
-                    split.fraction =
-                        (fraction + delta / range + accesskit_steps * accesskit_step).clamp(min, max);
-                }
+                let offset = if i.key_pressed(back_key) {
+                    Some(-step)
+                } else if i.key_pressed(forward_key) {
+                    Some(step)
+                } else {
+                    None
+                };
+                (offset, i.key_pressed(Key::Enter))
+            })
+        } else {
+            (None, false)
+        };
 
-                if response.double_clicked() || reset {
-                    split.fraction = 0.5;
-                }
+        set_along(
+            &mut separator,
+            map_to_pixel(
+                midpoint - style.separator.width * 0.5,
+                pixels_per_point,
+                f32::round,
+            ),
+            map_to_pixel(
+                midpoint + style.separator.width * 0.5,
+                pixels_per_point,
+                f32::round,
+            ),
+        );
 
-                // Expose the separator as a splitter whose value is the split fraction.
-                let fraction = split.fraction;
-                let enabled = ui.is_enabled();
-                response.widget_info(|| {
-                    let mut info = WidgetInfo::labeled(Role::Splitter, enabled, &self.labels.separator);
-                    info.value = Some(f64::from(fraction));
-                    info
-                });
-                ui.ctx().accesskit_node_builder(response.id, |node| {
-                    node.set_orientation(Orientation::separator_orientation);
-                    node.set_min_numeric_value(f64::from(min));
-                    node.set_max_numeric_value(f64::from(max));
-                    node.set_numeric_value_step(f64::from(accesskit_step));
-                    if range > 0.0 {
-                        node.add_action(Action::SetValue);
-                        if fraction < max {
-                            node.add_action(Action::Increment);
-                        }
-                        if min < fraction {
-                            node.add_action(Action::Decrement);
-                        }
-                    }
-                });
+        painter.separator(
+            ui.painter(),
+            &SeparatorPaint {
+                rect: separator,
+                axis: if horizontal {
+                    SeparatorAxis::Vertical
+                } else {
+                    SeparatorAxis::Horizontal
+                },
+                state: PartState::NONE
+                    .with(PartState::HOVERED, response.hovered())
+                    .with(PartState::PRESSED, response.is_pointer_button_down_on())
+                    .with(PartState::FOCUSED, response.has_focus())
+                    .with(PartState::DRAGGED, response.dragged()),
+                style,
+            },
+        );
+
+        // Update the shares after drawing the separator, otherwise it may overlap on other
+        // separators / bodies when shrunk fast.
+        // Assistive technology moves the separator by the arrow keys' step.
+        let accesskit_step = if range > 0.0 {
+            (SEPARATOR_KEY_STEP / range).min(1.0)
+        } else {
+            0.0
+        };
+        let (accesskit_steps, accesskit_value) = ui.input(|i| {
+            let steps = i.num_accesskit_action_requests(response.id, Action::Increment) as f32
+                - i.num_accesskit_action_requests(response.id, Action::Decrement) as f32;
+            let value = i
+                .accesskit_action_requests(response.id, Action::SetValue)
+                .filter_map(|request| match request.data {
+                    Some(ActionData::NumericValue(value)) => Some(value as f32),
+                    _ => None,
+                })
+                .last();
+            (steps, value)
+        });
+        // Each child of the pair keeps at least `separator.extra` points.
+        let min_part = if range > 0.0 {
+            (style.separator.extra / range).min(1.0)
+        } else {
+            0.0
+        };
+        if range > 0.0 {
+            let delta = arrow_key_offset.unwrap_or(dim(response.drag_delta()));
+            let boundary = linear.boundary(index);
+            let target = accesskit_value.unwrap_or(boundary)
+                + delta / range
+                + accesskit_steps * accesskit_step;
+            if target != boundary {
+                linear.move_boundary(index, target - boundary, min_part);
             }
         }
+
+        if response.double_clicked() || reset {
+            linear.even_pair(index);
+        }
+
+        // Expose the separator as a splitter whose value is its position in the node, from 0
+        // to 1: for two children, the split's fraction.
+        let value = linear.boundary(index);
+        let pair_start = if index == 0 {
+            0.0
+        } else {
+            linear.boundary(index - 1)
+        };
+        let pair_end = linear.boundary(index + 1);
+        let (min, max) = if range > 0.0 {
+            let min = pair_start + min_part;
+            let max = pair_end - min_part;
+            (min.min(max), max.max(min))
+        } else {
+            (value, value)
+        };
+        let enabled = ui.is_enabled();
+        response.widget_info(|| {
+            let mut info = WidgetInfo::labeled(Role::Splitter, enabled, label);
+            info.value = Some(f64::from(value));
+            info
+        });
+        ui.ctx().accesskit_node_builder(response.id, |node| {
+            node.set_orientation(if horizontal {
+                Orientation::Vertical
+            } else {
+                Orientation::Horizontal
+            });
+            node.set_min_numeric_value(f64::from(min));
+            node.set_max_numeric_value(f64::from(max));
+            node.set_numeric_value_step(f64::from(accesskit_step));
+            if range > 0.0 {
+                node.add_action(Action::SetValue);
+                if value < max {
+                    node.add_action(Action::Increment);
+                }
+                if min < value {
+                    node.add_action(Action::Decrement);
+                }
+            }
+        });
     }
+}
+
+/// Where the separators of `linear` stand, in points from its start along its axis: one per
+/// pair of neighbours. Collapsed children of a column (`Some(number of collapsed leaves)`)
+/// keep the height of their tab bars; the others share the rest. If all are collapsed, the
+/// last one takes the rest.
+fn boundaries(
+    linear: &crate::LinearNode,
+    collapsed: &[Option<i32>],
+    size: f32,
+    tab_bar_height: f32,
+) -> Vec<f32> {
+    let n = linear.len();
+    let sizes: Vec<f32> = if collapsed.iter().all(Option::is_none) {
+        (0..n).map(|i| size * linear.fraction(i)).collect()
+    } else {
+        let fixed: f32 = collapsed
+            .iter()
+            .flatten()
+            .map(|&count| count as f32 * tab_bar_height)
+            .sum();
+        let open_total: f32 = (0..n)
+            .filter(|&i| collapsed[i].is_none())
+            .map(|i| linear.shares()[i])
+            .sum();
+        let open_count = collapsed.iter().filter(|c| c.is_none()).count() as f32;
+        let rest = (size - fixed).max(0.0);
+        let mut sizes: Vec<f32> = (0..n)
+            .map(|i| match collapsed[i] {
+                Some(count) => count as f32 * tab_bar_height,
+                None if open_total > 0.0 => rest * linear.shares()[i] / open_total,
+                None => rest / open_count,
+            })
+            .collect();
+        if open_count == 0.0 {
+            let others: f32 = sizes[..n - 1].iter().sum();
+            sizes[n - 1] = size - others;
+        }
+        sizes
+    };
+    sizes
+        .iter()
+        .take(n - 1)
+        .scan(0.0, |acc, s| {
+            *acc += s;
+            Some(*acc)
+        })
+        .collect()
 }

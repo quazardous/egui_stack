@@ -62,7 +62,7 @@ fn dock() -> DockState<String> {
 
 /// `First` and `Second` sit in the root's left child, `Third` in its right one.
 fn second() -> TabPath {
-    TabPath::new(SurfaceIndex::main(), NodeIndex::root().left(), TabIndex(1))
+    TabPath::new(SurfaceIndex::main(), NodeIndex(1), TabIndex(1))
 }
 
 fn titles(dock_state: &DockState<String>) -> Vec<&str> {
@@ -108,7 +108,7 @@ fn close_tab_leaves_a_tab_that_is_not_closeable() {
 #[test]
 fn close_tab_refuses_a_missing_tab() {
     let mut dock_state = dock();
-    let missing = TabPath::new(SurfaceIndex::main(), NodeIndex::root().left(), TabIndex(7));
+    let missing = TabPath::new(SurfaceIndex::main(), NodeIndex(1), TabIndex(7));
     assert!(
         dock_state
             .close_tab(missing, &mut Viewer::new(OnCloseResponse::Close))

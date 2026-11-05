@@ -14,3 +14,8 @@ with their author.
 The sections module (src/sections) comes from egui-pop
 (https://github.com/quazardous/egui-pop), released under MIT OR Apache-2.0
 by the same maintainers and taken here under MIT.
+
+The n-ary linear nodes of the tree (src/dock_state/tree), children with
+shares in a row or a column, follow the model of egui_tiles
+(https://github.com/rerun-io/egui_crates, crate egui_tiles), released under
+MIT OR Apache-2.0 by Rerun Technologies AB. No code was copied from it.

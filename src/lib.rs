@@ -153,8 +153,10 @@
 //!
 //! ## Trees
 //!
-//! In each [`Surface`] there is a [`Tree`] which actually stores the tabs. As the name suggests,
-//! tabs and splits are represented with a binary tree.
+//! In each [`Surface`] there is a [`Tree`] which actually stores the tabs. Its leaves hold the
+//! tabs; its [`Linear`](Node::Linear) nodes lay out two or more children in a row or a column,
+//! each with a share of the space. Splitting a node along its parent's direction adds a child to
+//! that row or column, and the separator between two neighbours resizes those two.
 //!
 //! The [`Tree`] API allows you to programatically manipulate the dock layout.
 //!

@@ -172,7 +172,7 @@ fn the_painter_shows_a_refused_drop() {
         .get_by_role_and_label(Role::Tab, "A long first title")
         .rect()
         .center();
-    let target = harness.state().dock_state.main_surface()[NodeIndex::root().right()]
+    let target = harness.state().dock_state.main_surface()[NodeIndex(2)]
         .rect()
         .unwrap()
         .center()
