@@ -8,6 +8,11 @@ created by [@lain-dono](https://github.com/lain-dono) and developed for years by
 [Adam Gąsior (@Adanos020)](https://github.com/Adanos020), later maintained by [@anhosh](https://github.com/anhosh), with
 many contributors. Its full history is kept here, so every commit keeps its author. Thanks to all of them.
 
+**[Try it in your browser](https://quazardous.github.io/egui_stack/)**: the demo ([`demo/`](demo)), built for the web
+from this repository's main branch.
+
+![A tab dragged over the band along a leaf's left edge splits the leaf; the row is then arranged as a grid](images/demo.gif "Demo")
+
 It is a divergent fork: the API starts as `egui_dock` 0.21.1's, moved to egui 0.37, and will grow to hold more of an
 application's panel management (stackable sections, toolbars). See [NOTICE](NOTICE) and the
 [changelog](CHANGELOG.md).
@@ -53,7 +58,9 @@ You can run them with Cargo from the crate's root directory, for example: `cargo
 
 ## Demo
 
-![demo](images/demo.gif "Demo")
+The demo, a separate crate in [`demo/`](demo), runs natively with `cargo run -p egui_stack_demo` and in the browser:
+[`demo/build-web.sh`](demo/build-web.sh) builds it into `demo/dist`. The [online demo](https://quazardous.github.io/egui_stack/)
+is rebuilt on each push to the main branch.
 
 ## Alternatives
 

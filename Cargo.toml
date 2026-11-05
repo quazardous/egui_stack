@@ -12,6 +12,11 @@ categories = ["gui", "game-development"]
 include = ["src/**/*.rs", "Cargo.toml", "LICENSE", "NOTICE"]
 keywords = ["egui", "gui", "dock", "panels", "layout"]
 
+# The demo (`demo/`) is a separate crate, so its dependencies, the web ones
+# included, are not the library's.
+[workspace]
+members = ["demo"]
+
 [features]
 default = []
 
