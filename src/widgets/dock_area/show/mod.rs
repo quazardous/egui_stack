@@ -1,6 +1,7 @@
 use egui::{
     Context, CursorIcon, EventFilter, Key, Pos2, Rect, Sense, StrokeKind, Ui, Vec2, WidgetInfo,
     accesskit::{Action, ActionData, Orientation, Role},
+    pos2,
 };
 
 use super::{
@@ -10,6 +11,7 @@ use super::{
 };
 use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
+use crate::dock_state::tree::node::shares;
 use crate::tab_viewer::{DropVerdict, OnCloseResponse};
 use crate::{
     AllowedSplits, DockArea, DockPainter, LinearDir, Node, NodeIndex, OverlayType, PartState,
@@ -378,9 +380,8 @@ impl<Tab> DockArea<'_, Tab> {
                 surface: surf_index,
                 node: node_index,
             };
-            let separators = self.dock_state[path].children().len().saturating_sub(1);
-            for index in 0..separators {
-                self.show_separator(ui, path, index, fade_style);
+            for separator in separators(&self.dock_state[path]) {
+                self.show_separator(ui, path, separator, fade_style);
             }
         }
     }
@@ -416,8 +417,10 @@ impl<Tab> DockArea<'_, Tab> {
         let style = self.style.as_ref().unwrap();
         let pixels_per_point = ui.ctx().pixels_per_point();
         let tree = &self.dock_state[path.surface];
-        let Node::Linear(linear) = &tree[path.node] else {
-            unreachable!("only linear nodes have children")
+        let linear = match &tree[path.node] {
+            Node::Linear(linear) => linear,
+            Node::Grid(_) => return self.compute_grid_rect_sizes(ui, path, max_rect),
+            _ => unreachable!("only containers have children"),
         };
         let rect = linear.rect;
         debug_assert!(!rect.any_nan() && rect.is_finite());
@@ -467,23 +470,68 @@ impl<Tab> DockArea<'_, Tab> {
         }
     }
 
-    /// Shows the separator after the child at `index` of the linear node at `path`.
+    /// Lays out the children of the grid at `path` in its cells, row by row.
+    fn compute_grid_rect_sizes(&mut self, ui: &Ui, path: NodePath, max_rect: Rect) {
+        let style = self.style.as_ref().unwrap();
+        let pixels_per_point = ui.ctx().pixels_per_point();
+        let half = style.separator.width * 0.5;
+        let Node::Grid(grid) = &mut self.dock_state[path.surface][path.node] else {
+            unreachable!("a grid node")
+        };
+        grid.fit_shares();
+        let grid = grid.clone();
+        debug_assert!(!grid.rect.any_nan() && grid.rect.is_finite());
+        let rect = expand_to_pixel(grid.rect, pixels_per_point);
+
+        // The span of the cell `index` of `count` along one axis, between its lines.
+        let span = |shares: &[f32], index: usize, count: usize, start: f32, size: f32| {
+            let min = if index > 0 {
+                map_to_pixel(
+                    start + size * shares::boundary(shares, index - 1) + half,
+                    pixels_per_point,
+                    f32::round,
+                )
+            } else {
+                start
+            };
+            let max = if index + 1 < count {
+                map_to_pixel(
+                    start + size * shares::boundary(shares, index) - half,
+                    pixels_per_point,
+                    f32::round,
+                )
+            } else {
+                start + size
+            };
+            (min, max)
+        };
+        let (columns, rows) = (grid.columns(), grid.rows());
+        for (index, &child) in grid.children().iter().enumerate() {
+            let (column, row) = grid.cell(index);
+            let (min_x, max_x) = span(grid.col_shares(), column, columns, rect.min.x, rect.width());
+            let (min_y, max_y) = span(grid.row_shares(), row, rows, rect.min.y, rect.height());
+            let child_rect = Rect::from_min_max(pos2(min_x, min_y), pos2(max_x, max_y));
+            let child_rect = rect.intersect(child_rect).intersect(max_rect);
+            self.dock_state[path.surface][child].set_rect(child_rect);
+        }
+    }
+
+    /// Shows a separator of the container at `path`.
     fn show_separator(
         &mut self,
         ui: &mut Ui,
         path: NodePath,
-        index: usize,
+        separator_of: SeparatorOf,
         fade_style: Option<&Style>,
     ) {
         let tree = &self.dock_state[path.surface];
-        let Node::Linear(linear) = &tree[path.node] else {
-            unreachable!("only linear nodes have separators")
-        };
-
         // If either of the children is collapsed, we don't want the user to interact with the separator
-        let pair = [linear.children()[index], linear.children()[index + 1]];
-        if linear.dir == LinearDir::Vertical && pair.iter().any(|&c| tree[c].is_collapsed()) {
-            return;
+        if let (Node::Linear(linear), SeparatorOf::Linear(index)) = (&tree[path.node], separator_of)
+        {
+            let pair = [linear.children()[index], linear.children()[index + 1]];
+            if linear.dir == LinearDir::Vertical && pair.iter().any(|&c| tree[c].is_collapsed()) {
+                return;
+            }
         }
 
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
@@ -491,10 +539,23 @@ impl<Tab> DockArea<'_, Tab> {
         let painter = self.painter.0;
         let label = &self.labels.separator;
 
-        let Node::Linear(linear) = &mut self.dock_state[path.surface][path.node] else {
-            unreachable!()
-        };
-        let horizontal = linear.dir == LinearDir::Horizontal;
+        // The separator stands after the share `index`, moving it and the next one.
+        let (horizontal, rect, shares, index) =
+            match (&mut self.dock_state[path.surface][path.node], separator_of) {
+                (Node::Linear(linear), SeparatorOf::Linear(index)) => (
+                    linear.dir == LinearDir::Horizontal,
+                    linear.rect,
+                    &mut linear.shares,
+                    index,
+                ),
+                (Node::Grid(grid), SeparatorOf::Column(index)) => {
+                    (true, grid.rect, &mut grid.col_shares, index)
+                }
+                (Node::Grid(grid), SeparatorOf::Row(index)) => {
+                    (false, grid.rect, &mut grid.row_shares, index)
+                }
+                _ => unreachable!("a separator of this container"),
+            };
         let dim = |v: Vec2| if horizontal { v.x } else { v.y };
         let along = |r: Rect| {
             if horizontal {
@@ -511,11 +572,10 @@ impl<Tab> DockArea<'_, Tab> {
             }
         };
 
-        let rect = linear.rect;
         let (start, end) = along(rect);
         let range = end - start;
         let mut separator = rect;
-        let midpoint = start + range * linear.boundary(index);
+        let midpoint = start + range * shares::boundary(shares, index);
         set_along(
             &mut separator,
             midpoint - style.separator.width * 0.5,
@@ -640,28 +700,28 @@ impl<Tab> DockArea<'_, Tab> {
         };
         if range > 0.0 {
             let delta = arrow_key_offset.unwrap_or(dim(response.drag_delta()));
-            let boundary = linear.boundary(index);
+            let boundary = shares::boundary(shares, index);
             let target = accesskit_value.unwrap_or(boundary)
                 + delta / range
                 + accesskit_steps * accesskit_step;
             if target != boundary {
-                linear.move_boundary(index, target - boundary, min_part);
+                shares::move_boundary(shares, index, target - boundary, min_part);
             }
         }
 
         if response.double_clicked() || reset {
-            linear.even_pair(index);
+            shares::even_pair(shares, index);
         }
 
         // Expose the separator as a splitter whose value is its position in the node, from 0
         // to 1: for two children, the split's fraction.
-        let value = linear.boundary(index);
+        let value = shares::boundary(shares, index);
         let pair_start = if index == 0 {
             0.0
         } else {
-            linear.boundary(index - 1)
+            shares::boundary(shares, index - 1)
         };
-        let pair_end = linear.boundary(index + 1);
+        let pair_end = shares::boundary(shares, index + 1);
         let (min, max) = if range > 0.0 {
             let min = pair_start + min_part;
             let max = pair_end - min_part;
@@ -694,6 +754,30 @@ impl<Tab> DockArea<'_, Tab> {
                 }
             }
         });
+    }
+}
+
+/// A separator of a container: the one after the child `index` of a linear node, or the line
+/// after the column or the row `index` of a grid.
+#[derive(Clone, Copy, Debug)]
+enum SeparatorOf {
+    Linear(usize),
+    Column(usize),
+    Row(usize),
+}
+
+/// The separators of `node`: one between each pair of neighbours of a linear node, one on each
+/// line between two columns then between two rows of a grid.
+fn separators<Tab>(node: &Node<Tab>) -> Vec<SeparatorOf> {
+    match node {
+        Node::Linear(linear) => (0..linear.len().saturating_sub(1))
+            .map(SeparatorOf::Linear)
+            .collect(),
+        Node::Grid(grid) => (0..grid.columns() - 1)
+            .map(SeparatorOf::Column)
+            .chain((0..grid.rows() - 1).map(SeparatorOf::Row))
+            .collect(),
+        _ => Vec::new(),
     }
 }
 

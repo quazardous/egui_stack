@@ -19,3 +19,7 @@ The n-ary linear nodes of the tree (src/dock_state/tree), children with
 shares in a row or a column, follow the model of egui_tiles
 (https://github.com/rerun-io/egui_crates, crate egui_tiles), released under
 MIT OR Apache-2.0 by Rerun Technologies AB. No code was copied from it.
+
+The grid nodes of the tree (src/dock_state/tree/node/grid.rs) follow the
+automatic grid of egui_tiles too: by default as many columns as the square
+root of the number of children, rounded up. No code was copied from it.

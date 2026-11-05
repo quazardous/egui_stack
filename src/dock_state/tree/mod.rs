@@ -3,7 +3,7 @@
 //! # Implementation details
 //!
 //! The nodes are stored in a [`Vec`] indexed by [`NodeIndex`]. The root is always at index
-//! *0*; a [`Linear`](Node::Linear) node lists its children's indices. Free slots hold
+//! *0*; a [`Linear`](Node::Linear) or [`Grid`](Node::Grid) node lists its children's indices. Free slots hold
 //! [`Empty`](Node::Empty) nodes and are reused.
 
 /// Iterates over all tabs in a [`Tree`].
@@ -31,7 +31,7 @@ use std::{
 use egui::Rect;
 pub use node::LeafNode;
 pub use node::Node;
-pub use node::{LinearDir, LinearNode};
+pub use node::{GridLayout, GridNode, LinearDir, LinearNode};
 pub use node_index::{NodeIndex, NodePath};
 pub use tab_index::{TabIndex, TabPath};
 pub use tab_iter::TabIter;
@@ -124,8 +124,9 @@ impl TabDestination {
 ///
 /// The nodes are stored in a [`Vec`] indexed by [`NodeIndex`]. The root is always at index
 /// *0*. A [`Linear`](Node::Linear) node holds two or more children, side by side or one above
-/// the other, each with a share of the space; [`Leaf`](Node::Leaf) nodes hold the tabs. Free
-/// slots hold [`Empty`](Node::Empty) nodes.
+/// the other, each with a share of the space; a [`Grid`](Node::Grid) node holds two or more
+/// children in rows and columns; [`Leaf`](Node::Leaf) nodes hold the tabs. Free slots hold
+/// [`Empty`](Node::Empty) nodes.
 ///
 /// Splitting a node whose parent already lays out its children in the split's direction adds
 /// the new node to that parent, next to the split one, instead of nesting a new split: a row
@@ -311,6 +312,18 @@ impl<Tab> Tree<Tab> {
         if self.focused_node == Some(from) {
             self.focused_node = Some(to);
         }
+    }
+
+    /// Puts `new` in the place of `old` among the children of `parent`.
+    fn replace_child(&mut self, parent: NodeIndex, old: NodeIndex, new: NodeIndex) {
+        let children = self[parent]
+            .children_mut()
+            .expect("a parent is a container");
+        let at = children
+            .iter()
+            .position(|&c| c == old)
+            .expect("a child of its parent");
+        children[at] = new;
     }
 
     /// Drops the free slots at the end of the collection.
@@ -538,7 +551,9 @@ impl<Tab> Tree<Tab> {
     ///
     /// When the parent of `parent` already lays out its children in that direction, the new node
     /// joins it, next to the old one, and the two share the old node's space: no split is nested.
-    /// Otherwise a new [`Linear`](Node::Linear) node takes the place of `parent` and holds the
+    /// When the parent is a [`Grid`](Node::Grid), the new node joins the grid, right after the
+    /// old one (or right before it for [`Split::Left`] and [`Split::Above`]), and `fraction` is
+    /// not used: the grid lays out its children again. Otherwise a new [`Linear`](Node::Linear) node takes the place of `parent` and holds the
     /// two.
     ///
     /// Returns the indices of the old node and the new node. The old node keeps its index unless
@@ -548,7 +563,7 @@ impl<Tab> Tree<Tab> {
     ///
     /// If `fraction` isn't in range 0..=1.
     ///
-    /// If `new` is an [`Empty`](Node::Empty) or [`Linear`](Node::Linear) node.
+    /// If `new` is not a [`Leaf`](Node::Leaf) node.
     ///
     /// If `new` is a [`Leaf`](Node::Leaf) node without any tabs.
     ///
@@ -592,6 +607,19 @@ impl<Tab> Tree<Tab> {
         let shares = |total: f32| [total * fraction, total * (1.0 - fraction)];
 
         let index = if let Some(grand) = self.parent(parent)
+            && self[grand].is_grid()
+        {
+            // Join the grid, next to the old node.
+            let new_index = self.alloc(new);
+            let Node::Grid(grid) = &mut self[grand] else {
+                unreachable!()
+            };
+            let at = grid.position(parent).expect("a child of its parent");
+            let at = if split.new_first() { at } else { at + 1 };
+            grid.children.insert(at, new_index);
+            grid.fit_shares();
+            [parent, new_index]
+        } else if let Some(grand) = self.parent(parent)
             && let Node::Linear(linear) = &self[grand]
             && linear.dir == dir
         {
@@ -636,11 +664,7 @@ impl<Tab> Tree<Tab> {
                 let grand = self
                     .parent(parent)
                     .expect("a node other than the root has one");
-                let Node::Linear(linear) = &mut self[grand] else {
-                    unreachable!()
-                };
-                let at = linear.position(parent).expect("a child of its parent");
-                linear.children[at] = holder;
+                self.replace_child(grand, parent, holder);
                 (parent, self.alloc(new), holder)
             };
             let mut children = vec![old_index, new_index];
@@ -660,17 +684,19 @@ impl<Tab> Tree<Tab> {
         index
     }
 
-    /// Adds `new` to the [`Linear`](Node::Linear) node `container`, as its child at `index`.
+    /// Adds `new` to the [`Linear`](Node::Linear) or [`Grid`](Node::Grid) node `container`, as
+    /// its child at `index`.
     ///
-    /// The new child gets an even share: `1 / n` of the space, `n` counting it, and the other
-    /// children keep their proportions in the rest.
+    /// In a linear node, the new child gets an even share: `1 / n` of the space, `n` counting
+    /// it, and the other children keep their proportions in the rest. A grid lays out its
+    /// children again; a new column or row gets the mean share of the others.
     ///
     /// Returns the index of the new node.
     ///
     /// # Panics
     ///
-    /// If `container` is not a [`Linear`](Node::Linear) node, or `index` is greater than its
-    /// number of children.
+    /// If `container` is not a [`Linear`](Node::Linear) or [`Grid`](Node::Grid) node, or `index`
+    /// is greater than its number of children.
     ///
     /// If `new` is not a [`Leaf`](Node::Leaf) node with tabs.
     ///
@@ -695,21 +721,27 @@ impl<Tab> Tree<Tab> {
     ) -> NodeIndex {
         assert!(
             self[container].is_parent(),
-            "the container is a linear node"
+            "the container is a linear or a grid node"
         );
         assert!(index <= self[container].children().len());
         assert_ne!(new.tabs_count(), 0);
         let new_index = self.alloc(new);
-        let Node::Linear(linear) = &mut self[container] else {
-            unreachable!()
-        };
-        linear.normalize_shares();
-        let n = linear.len() as f32;
-        for share in &mut linear.shares {
-            *share *= n / (n + 1.0);
+        match &mut self[container] {
+            Node::Linear(linear) => {
+                linear.normalize_shares();
+                let n = linear.len() as f32;
+                for share in &mut linear.shares {
+                    *share *= n / (n + 1.0);
+                }
+                linear.children.insert(index, new_index);
+                linear.shares.insert(index, 1.0 / (n + 1.0));
+            }
+            Node::Grid(grid) => {
+                grid.children.insert(index, new_index);
+                grid.fit_shares();
+            }
+            _ => unreachable!(),
         }
-        linear.children.insert(index, new_index);
-        linear.shares.insert(index, 1.0 / (n + 1.0));
         self.focused_node = Some(new_index);
         self.node_update_collapsed(new_index);
         new_index
@@ -741,11 +773,10 @@ impl<Tab> Tree<Tab> {
     fn first_leaf(&self, top: NodeIndex) -> Option<NodeIndex> {
         match self.nodes.get(top.0)? {
             Node::Leaf(_) => Some(top),
-            Node::Linear(linear) => linear
+            node => node
                 .children()
                 .iter()
                 .find_map(|&child| self.first_leaf(child)),
-            Node::Empty => None,
         }
     }
 
@@ -817,19 +848,26 @@ impl<Tab> Tree<Tab> {
         }
 
         self[node] = Node::Empty;
-        let Node::Linear(linear) = &mut self[parent] else {
-            unreachable!("a parent is a linear node")
-        };
-        let at = linear.position(node).expect("a child of its parent");
-        linear.children.remove(at);
-        linear.shares.remove(at);
-        if linear.len() == 1 {
+        match &mut self[parent] {
+            Node::Linear(linear) => {
+                let at = linear.position(node).expect("a child of its parent");
+                linear.children.remove(at);
+                linear.shares.remove(at);
+            }
+            Node::Grid(grid) => {
+                let at = grid.position(node).expect("a child of its parent");
+                grid.children.remove(at);
+                grid.fit_shares();
+            }
+            _ => unreachable!("a parent is a container"),
+        }
+        if self[parent].children().len() == 1 {
             self.give_way(parent);
         }
         self.trim();
     }
 
-    /// Replaces the linear node `holder`, left with one child, by that child.
+    /// Replaces the container `holder`, left with one child, by that child.
     fn give_way(&mut self, holder: NodeIndex) {
         let child = self[holder].children()[0];
         let grand = self.parent(holder);
@@ -840,11 +878,12 @@ impl<Tab> Tree<Tab> {
             }
             Some(grand) => {
                 self[holder] = Node::Empty;
-                let Node::Linear(linear) = &mut self[grand] else {
-                    unreachable!("a parent is a linear node")
-                };
-                let at = linear.position(holder).expect("a child of its parent");
-                linear.children[at] = child;
+                self.replace_child(grand, holder, child);
+                let at = self[grand]
+                    .children()
+                    .iter()
+                    .position(|&c| c == child)
+                    .expect("a child of its parent");
                 self.join(grand, at);
             }
         }
@@ -876,8 +915,8 @@ impl<Tab> Tree<Tab> {
     }
 
     /// Restores the tree's shape after nodes were emptied or loaded: drops the
-    /// [`Empty`](Node::Empty) children and the references to missing nodes, replaces a linear
-    /// node with one child by that child, joins a linear node into a parent of the same
+    /// [`Empty`](Node::Empty) children and the references to missing nodes, removes an empty
+    /// container, replaces a container with one child by that child, fits a grid's shares, joins a linear node into a parent of the same
     /// direction, frees the slots no longer reached from the root, and drops the focus if it
     /// is no longer on a leaf.
     pub(crate) fn simplify(&mut self) {
@@ -956,6 +995,31 @@ impl<Tab> Tree<Tab> {
                             self.join(index, at);
                             at += 1 + self[index].children().len() - before;
                         }
+                        Some(index)
+                    }
+                }
+            }
+            Node::Grid(grid) => {
+                let old = grid.children.clone();
+                let kept: Vec<_> = old
+                    .into_iter()
+                    .filter_map(|child| self.simplify_node(child, seen))
+                    .collect();
+                match kept.len() {
+                    0 => {
+                        self[index] = Node::Empty;
+                        None
+                    }
+                    1 => {
+                        self[index] = Node::Empty;
+                        Some(kept[0])
+                    }
+                    _ => {
+                        let Node::Grid(grid) = &mut self[index] else {
+                            unreachable!()
+                        };
+                        grid.children = kept;
+                        grid.fit_shares();
                         Some(index)
                     }
                 }
@@ -1104,24 +1168,11 @@ impl<Tab> Tree<Tab> {
         let mut ancestor = self.parent(node_index);
         while let Some(index) = ancestor {
             ancestor = self.parent(index);
-            let counts: Vec<_> = self[index]
-                .children()
-                .iter()
-                .map(|&c| (self[c].is_collapsed(), self[c].collapsed_leaf_count()))
-                .collect();
-            let Node::Linear(linear) = &mut self[index] else {
-                unreachable!("a parent is a linear node")
-            };
-            let all_collapsed = counts.iter().all(|&(collapsed, _)| collapsed);
-            let counts = counts.iter().map(|&(_, count)| count);
-            linear.collapsed_leaf_count = match linear.dir {
-                LinearDir::Horizontal => counts.max().unwrap_or(0),
-                LinearDir::Vertical => counts.sum(),
-            };
+            let all_collapsed = self.update_collapsed_leaf_count(index);
             if !collapsed {
-                linear.fully_collapsed = false;
+                self[index].set_collapsed(false);
             } else if all_collapsed {
-                linear.fully_collapsed = true;
+                self[index].set_collapsed(true);
             }
         }
         let root = self
@@ -1136,6 +1187,130 @@ impl<Tab> Tree<Tab> {
             self.set_collapsed(true);
             self.set_collapsed_leaf_count(count);
         }
+    }
+
+    /// Recounts the collapsed leaves of the container `index` from its children; returns
+    /// whether all its children are collapsed.
+    fn update_collapsed_leaf_count(&mut self, index: NodeIndex) -> bool {
+        let counts: Vec<_> = self[index]
+            .children()
+            .iter()
+            .map(|&c| (self[c].is_collapsed(), self[c].collapsed_leaf_count()))
+            .collect();
+        let all_collapsed = counts.iter().all(|&(collapsed, _)| collapsed);
+        let counts: Vec<i32> = counts.iter().map(|&(_, count)| count).collect();
+        let count = match &self[index] {
+            Node::Linear(LinearNode {
+                dir: LinearDir::Horizontal,
+                ..
+            }) => counts.iter().copied().max().unwrap_or(0),
+            Node::Linear(_) => counts.iter().sum(),
+            // Each row counts as its tallest child.
+            Node::Grid(grid) => counts
+                .chunks(grid.columns())
+                .map(|row| row.iter().copied().max().unwrap_or(0))
+                .sum(),
+            _ => unreachable!("a parent is a container"),
+        };
+        self[index].set_collapsed_leaf_count(count);
+        all_collapsed
+    }
+
+    /// Lays out the children of the container `node` in a [`Grid`](Node::Grid), in their
+    /// order, with even columns and rows: a row or a column becomes a grid, and a grid takes
+    /// the new `layout`. The children keep their indices.
+    ///
+    /// Returns `false`, changing nothing, if `node` is not a [`Linear`](Node::Linear) or a
+    /// [`Grid`](Node::Grid) node.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use egui_stack::{DockState, GridLayout, NodeIndex, Node};
+    /// let mut dock_state = DockState::new(vec!["a"]);
+    /// let tree = dock_state.main_surface_mut();
+    /// let [a, b] = tree.split_right(NodeIndex::root(), 0.5, vec!["b"]);
+    /// let [_, c] = tree.split_right(b, 0.5, vec!["c"]);
+    /// let [_, d] = tree.split_right(c, 0.5, vec!["d"]);
+    ///
+    /// assert!(tree.arrange_as_grid(NodeIndex::root(), GridLayout::Auto));
+    /// let grid = tree.root_node().unwrap().get_grid().unwrap();
+    /// assert_eq!(grid.children(), &[a, b, c, d]);
+    /// assert_eq!((grid.columns(), grid.rows()), (2, 2));
+    /// ```
+    pub fn arrange_as_grid(&mut self, node: NodeIndex, layout: GridLayout) -> bool {
+        let grid = match self.nodes.get(node.0) {
+            Some(Node::Linear(linear)) => {
+                let mut grid = GridNode::new(layout, linear.children.clone());
+                grid.rect = linear.rect;
+                grid.fully_collapsed = linear.fully_collapsed;
+                grid
+            }
+            Some(Node::Grid(grid)) => {
+                let mut grid = GridNode::new(layout, grid.children.clone());
+                grid.rect = self[node].rect().unwrap_or(Rect::NOTHING);
+                grid.fully_collapsed = self[node].is_collapsed();
+                grid
+            }
+            _ => return false,
+        };
+        self[node] = Node::Grid(grid);
+        self.update_collapsed_leaf_count(node);
+        self.node_update_collapsed(node);
+        true
+    }
+
+    /// Lays out the children of the container `node` in a [`Linear`](Node::Linear) node of
+    /// direction `dir`, in their order: a grid becomes a row or a column (with even shares,
+    /// or its column shares if it has one row, its row shares if it has one column), and a
+    /// row becomes a column or the other way round. The children keep their indices.
+    ///
+    /// The tree stays flat: children that are linear nodes of direction `dir` join the new
+    /// one, and it joins its parent if that is a linear node of direction `dir`. Joined
+    /// containers are removed, so `node` itself may be gone; the root stays at the root.
+    ///
+    /// Returns `false`, changing nothing, if `node` is not a [`Linear`](Node::Linear) or a
+    /// [`Grid`](Node::Grid) node.
+    pub fn arrange_as_linear(&mut self, node: NodeIndex, dir: LinearDir) -> bool {
+        let linear = match self.nodes.get(node.0) {
+            Some(Node::Linear(linear)) => {
+                let mut linear = linear.clone();
+                linear.dir = dir;
+                linear
+            }
+            Some(Node::Grid(grid)) => {
+                let shares = match dir {
+                    LinearDir::Horizontal if grid.rows() == 1 => grid.col_shares.clone(),
+                    LinearDir::Vertical if grid.columns() == 1 => grid.row_shares.clone(),
+                    _ => vec![1.0; grid.len()],
+                };
+                let mut linear = LinearNode::new(dir, grid.children.clone(), shares);
+                linear.rect = grid.rect;
+                linear.fully_collapsed = grid.fully_collapsed;
+                linear
+            }
+            _ => return false,
+        };
+        self[node] = Node::Linear(linear);
+        let mut at = 0;
+        while at < self[node].children().len() {
+            let before = self[node].children().len();
+            self.join(node, at);
+            at += 1 + self[node].children().len() - before;
+        }
+        self.update_collapsed_leaf_count(node);
+        self.node_update_collapsed(node);
+        if let Some(parent) = self.parent(node) {
+            let at = self[parent]
+                .children()
+                .iter()
+                .position(|&c| c == node)
+                .expect("a child of its parent");
+            self.join(parent, at);
+            self.update_collapsed_leaf_count(parent);
+            self.trim();
+        }
+        true
     }
 
     /// Find a given tab based on ``predicate``.
@@ -1341,5 +1516,149 @@ mod test {
         let (mut tree, [a, ..]) = row();
         tree.push_to_first_leaf(Tab(9));
         assert_eq!(tree[a].tabs(), Some([Tab(0), Tab(9)].as_slice()));
+    }
+
+    fn grid(tree: &Tree<Tab>, index: NodeIndex) -> &GridNode {
+        tree[index].get_grid().expect("a grid node")
+    }
+
+    /// Four leaves in a row turned into a 2 by 2 grid.
+    fn grid_of_four() -> (Tree<Tab>, [NodeIndex; 4]) {
+        let (mut tree, [a, b, c]) = row();
+        let [_, d] = tree.split_right(c, 0.5, vec![Tab(3)]);
+        assert!(tree.arrange_as_grid(NodeIndex::root(), GridLayout::Auto));
+        (tree, [a, b, c, d])
+    }
+
+    #[test]
+    fn a_row_arranged_as_a_grid_keeps_its_children() {
+        let (tree, [a, b, c, d]) = grid_of_four();
+        let grid = grid(&tree, NodeIndex::root());
+        assert_eq!(grid.children(), &[a, b, c, d]);
+        assert_eq!((grid.columns(), grid.rows()), (2, 2));
+        assert!(close(grid.col_shares(), &[1.0, 1.0]));
+        assert!(close(grid.row_shares(), &[1.0, 1.0]));
+        assert_eq!(tree.parent(c), Some(NodeIndex::root()));
+    }
+
+    #[test]
+    fn only_containers_are_arranged() {
+        let mut tree = Tree::new(vec![Tab(0)]);
+        assert!(!tree.arrange_as_grid(NodeIndex::root(), GridLayout::Auto));
+        assert!(!tree.arrange_as_linear(NodeIndex::root(), LinearDir::Vertical));
+        assert!(tree[NodeIndex::root()].is_leaf());
+    }
+
+    #[test]
+    fn a_split_in_a_grid_adds_a_child_next_to_the_leaf() {
+        let (mut tree, [a, b, c, d]) = grid_of_four();
+        let [b2, e] = tree.split_below(b, 0.5, vec![Tab(4)]);
+        assert_eq!(b2, b);
+        let grid = grid(&tree, NodeIndex::root());
+        assert_eq!(grid.children(), &[a, b, e, c, d]);
+        assert_eq!((grid.columns(), grid.rows()), (3, 2));
+        assert_eq!(grid.col_shares().len(), 3);
+
+        let [_, f] = tree.split_left(a, 0.5, vec![Tab(5)]);
+        assert_eq!(grid_children(&tree), vec![f, a, b, e, c, d]);
+        assert_eq!(tree.focused_leaf(), Some(f));
+    }
+
+    fn grid_children(tree: &Tree<Tab>) -> Vec<NodeIndex> {
+        grid(tree, NodeIndex::root()).children().to_vec()
+    }
+
+    #[test]
+    fn insert_child_adds_to_a_grid() {
+        let (mut tree, [a, b, c, d]) = grid_of_four();
+        let e = tree.insert_child(NodeIndex::root(), 4, Node::leaf(Tab(4)));
+        assert_eq!(grid_children(&tree), vec![a, b, c, d, e]);
+        let grid = grid(&tree, NodeIndex::root());
+        assert_eq!((grid.columns(), grid.rows()), (3, 2));
+        assert_eq!(tree.focused_leaf(), Some(e));
+    }
+
+    #[test]
+    fn a_grid_left_with_one_child_gives_way() {
+        // [x | grid(a, b, c, d)]: emptying the grid down to `d` leaves [x | d].
+        let mut tree = Tree::new(vec![Tab(9)]);
+        let [x, a] = tree.split_right(NodeIndex::root(), 0.5, vec![Tab(0)]);
+        let [_, b] = tree.split_below(a, 0.5, vec![Tab(1)]);
+        let column = tree.parent(a).unwrap();
+        let [_, c] = tree.split_below(b, 0.5, vec![Tab(2)]);
+        let [_, d] = tree.split_below(c, 0.5, vec![Tab(3)]);
+        assert!(tree.arrange_as_grid(column, GridLayout::Auto));
+        tree.remove_leaf(a);
+        tree.remove_leaf(b);
+        let grid = grid(&tree, column);
+        assert_eq!(grid.children(), &[c, d]);
+        assert_eq!((grid.columns(), grid.rows()), (2, 1));
+        tree.remove_leaf(c);
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.children(), &[x, d]);
+        assert!(tree[column].is_empty() || column.0 >= tree.len());
+    }
+
+    #[test]
+    fn retain_removes_an_emptied_grid() {
+        // [x | grid(a, b, c)]
+        let mut tree = Tree::new(vec![Tab(9)]);
+        let [x, a] = tree.split_right(NodeIndex::root(), 0.5, vec![Tab(0)]);
+        let [_, b] = tree.split_below(a, 0.5, vec![Tab(1)]);
+        tree.split_below(b, 0.5, vec![Tab(2)]);
+        let column = tree.parent(a).unwrap();
+        assert!(tree.arrange_as_grid(column, GridLayout::Columns(2)));
+
+        tree.retain_tabs(|tab| tab.0 != 1);
+        assert_eq!(grid(&tree, column).len(), 2);
+        assert_eq!(grid(&tree, column).rows(), 1);
+
+        tree.retain_tabs(|tab| tab.0 == 9);
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[NodeIndex::root()].tabs(), Some([Tab(9)].as_slice()));
+        let _ = x;
+    }
+
+    #[test]
+    fn a_grid_arranged_as_a_column_joins_its_parent() {
+        // (x / grid(a, b, c, d)) as a column gives (x / a / b / c / d).
+        let mut tree = Tree::new(vec![Tab(9)]);
+        let [x, a] = tree.split_below(NodeIndex::root(), 0.5, vec![Tab(0)]);
+        let [_, b] = tree.split_right(a, 0.5, vec![Tab(1)]);
+        let [_, c] = tree.split_right(b, 0.5, vec![Tab(2)]);
+        let [_, d] = tree.split_right(c, 0.5, vec![Tab(3)]);
+        let row = tree.parent(a).unwrap();
+        assert!(tree.arrange_as_grid(row, GridLayout::Auto));
+        assert!(tree.arrange_as_linear(row, LinearDir::Vertical));
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.dir, LinearDir::Vertical);
+        assert_eq!(root.children(), &[x, a, b, c, d]);
+        assert!(close(root.shares(), &[0.5, 0.125, 0.125, 0.125, 0.125]));
+    }
+
+    #[test]
+    fn a_grid_of_one_row_keeps_its_column_shares_as_a_row() {
+        let (mut tree, _) = row();
+        assert!(tree.arrange_as_grid(NodeIndex::root(), GridLayout::Columns(3)));
+        tree[NodeIndex::root()]
+            .get_grid_mut()
+            .unwrap()
+            .set_shares(vec![2.0, 1.0, 1.0], vec![1.0]);
+        assert!(tree.arrange_as_linear(NodeIndex::root(), LinearDir::Horizontal));
+        assert!(close(
+            linear(&tree, NodeIndex::root()).shares(),
+            &[2.0, 1.0, 1.0]
+        ));
+    }
+
+    #[test]
+    fn a_grid_counts_collapsed_leaves_per_row() {
+        let (mut tree, [a, b, c, d]) = grid_of_four();
+        for leaf in [a, b, c, d] {
+            tree[leaf].set_collapsed(true);
+            tree.node_update_collapsed(leaf);
+        }
+        assert!(tree[NodeIndex::root()].is_collapsed());
+        assert_eq!(tree[NodeIndex::root()].collapsed_leaf_count(), 2);
     }
 }

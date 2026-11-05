@@ -1,5 +1,6 @@
 use egui::Rect;
 
+use super::shares;
 use crate::NodeIndex;
 
 /// The direction in which a [`LinearNode`] lays out its children.
@@ -121,12 +122,7 @@ impl LinearNode {
     ///
     /// If `index` is out of bounds.
     pub fn fraction(&self, index: usize) -> f32 {
-        let total = self.total();
-        if total > 0.0 {
-            self.shares[index] / total
-        } else {
-            1.0 / self.shares.len() as f32
-        }
+        shares::fraction(&self.shares, index)
     }
 
     /// Where the separator after the child at `index` stands, from 0 (the start of the node)
@@ -134,7 +130,7 @@ impl LinearNode {
     ///
     /// For two children, `boundary(0)` is the split's fraction.
     pub fn boundary(&self, index: usize) -> f32 {
-        (0..=index).map(|i| self.fraction(i)).sum()
+        shares::boundary(&self.shares, index)
     }
 
     /// Replaces the shares.
@@ -155,38 +151,9 @@ impl LinearNode {
         self.shares = shares;
     }
 
-    /// The sum of the shares.
-    fn total(&self) -> f32 {
-        self.shares.iter().sum()
-    }
-
     /// Scales the shares so they sum to 1, or makes them equal if they sum to 0.
     pub(crate) fn normalize_shares(&mut self) {
-        let total = self.total();
-        let n = self.shares.len() as f32;
-        for share in &mut self.shares {
-            *share = if total > 0.0 { *share / total } else { 1.0 / n };
-        }
-    }
-
-    /// Moves the separator after the child at `index` by `delta`, a part of the whole node
-    /// (0 to 1), between that child and the next one. Each keeps at least `min`, a part of the
-    /// whole node too. The other children keep their size.
-    pub(crate) fn move_boundary(&mut self, index: usize, delta: f32, min: f32) {
-        self.normalize_shares();
-        let pair = self.shares[index] + self.shares[index + 1];
-        let min = min.min(pair / 2.0);
-        let first = (self.shares[index] + delta).clamp(min, pair - min);
-        self.shares[index] = first;
-        self.shares[index + 1] = pair - first;
-    }
-
-    /// Gives the child at `index` and the next one the same size.
-    pub(crate) fn even_pair(&mut self, index: usize) {
-        self.normalize_shares();
-        let half = (self.shares[index] + self.shares[index + 1]) / 2.0;
-        self.shares[index] = half;
-        self.shares[index + 1] = half;
+        shares::normalize(&mut self.shares);
     }
 }
 
@@ -214,12 +181,12 @@ mod tests {
     #[test]
     fn a_boundary_moves_its_pair_only() {
         let mut n = node(&[0.25, 0.5, 0.25]);
-        n.move_boundary(1, 0.1, 0.05);
+        shares::move_boundary(&mut n.shares, 1, 0.1, 0.05);
         assert_eq!(n.shares()[0], 0.25);
         assert!((n.shares()[1] - 0.6).abs() < 1e-6);
         assert!((n.shares()[2] - 0.15).abs() < 1e-6);
         // Clamped so the next child keeps its minimum.
-        n.move_boundary(1, 1.0, 0.05);
+        shares::move_boundary(&mut n.shares, 1, 1.0, 0.05);
         assert!((n.shares()[2] - 0.05).abs() < 1e-6);
         assert_eq!(n.shares()[0], 0.25);
     }
@@ -227,7 +194,7 @@ mod tests {
     #[test]
     fn an_even_pair() {
         let mut n = node(&[2.0, 1.0, 1.0]);
-        n.even_pair(0);
+        shares::even_pair(&mut n.shares, 0);
         assert_eq!(n.shares(), &[0.375, 0.375, 0.25]);
     }
 }

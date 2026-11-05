@@ -1,0 +1,5 @@
+---
+egui_stack: major
+---
+
+A grid container: `Node::Grid(GridNode)` lays out two or more children in rows and columns, row by row, with `GridLayout::Auto` (as many columns as the square root of the number of children, rounded up, the rule of egui_tiles' grid) or `GridLayout::Columns(n)`. Each column and each row has a share; a separator on each column line and each row line resizes the two beside it, by drag, by the arrow keys (Enter evens them) and by assistive technology, as a linear node's separators do. `Tree::arrange_as_grid` turns a row or a column into a grid and `Tree::arrange_as_linear` turns a grid back into a row or a column. A drop on the edge of a leaf inside a grid, or `Tree::split` on it, adds the new view to the grid next to the leaf, and `Tree::insert_child` adds a view to a grid at run time. A grid emptied down to one child gives way to it, an empty one is removed, and grids are saved and loaded with the `serde` feature. Migration: exhaustive matches on `Node` need a `Node::Grid` arm.
