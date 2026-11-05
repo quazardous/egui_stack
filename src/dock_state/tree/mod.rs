@@ -1,12 +1,10 @@
-//! Binary tree representing the relationships between [`Node`]s.
+//! Tree representing the relationships between [`Node`]s.
 //!
 //! # Implementation details
 //!
-//! The binary tree is stored in a [`Vec`] indexed by [`NodeIndex`].
-//! The root is always at index *0*.
-//! For a given node *n*:
-//!  - left child of *n* will be at index *n * 2 + 1*.
-//!  - right child of *n* will be at index *n * 2 + 2*.
+//! The nodes are stored in a [`Vec`] indexed by [`NodeIndex`]. The root is always at index
+//! *0*; a [`Linear`](Node::Linear) node lists its children's indices. Free slots hold
+//! [`Empty`](Node::Empty) nodes and are reused.
 
 /// Iterates over all tabs in a [`Tree`].
 pub mod tab_iter;
@@ -20,9 +18,11 @@ pub mod node;
 /// Wrapper around indices to the collection of nodes inside a [`Tree`].
 pub mod node_index;
 
+#[cfg(feature = "serde")]
+mod legacy;
+
 use std::{
-    cmp::max,
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     fmt,
     ops::{Index, IndexMut},
     slice::{Iter, IterMut},
@@ -31,7 +31,7 @@ use std::{
 use egui::Rect;
 pub use node::LeafNode;
 pub use node::Node;
-pub use node::SplitNode;
+pub use node::{LinearDir, LinearNode};
 pub use node_index::{NodeIndex, NodePath};
 pub use tab_index::{TabIndex, TabPath};
 pub use tab_iter::TabIter;
@@ -51,6 +51,19 @@ pub enum Split {
 }
 
 impl Split {
+    /// The direction of a linear node holding the split node and the new one.
+    pub const fn dir(self) -> LinearDir {
+        match self {
+            Split::Left | Split::Right => LinearDir::Horizontal,
+            Split::Above | Split::Below => LinearDir::Vertical,
+        }
+    }
+
+    /// Whether the new node comes before the split one: left of it or above it.
+    pub const fn new_first(self) -> bool {
+        matches!(self, Split::Left | Split::Above)
+    }
+
     /// Returns whether the split is vertical.
     pub const fn is_top_bottom(self) -> bool {
         matches!(self, Split::Above | Split::Below)
@@ -105,31 +118,32 @@ impl TabDestination {
     }
 }
 
-/// Binary tree representing the relationships between [`Node`]s.
+/// Tree representing the relationships between [`Node`]s.
 ///
 /// # Implementation details
 ///
-/// The binary tree is stored in a [`Vec`] indexed by [`NodeIndex`].
-/// The root is always at index *0*.
-/// For a given node *n*:
-///  - left child of *n* will be at index *n * 2 + 1*.
-///  - right child of *n* will be at index *n * 2 + 2*.
+/// The nodes are stored in a [`Vec`] indexed by [`NodeIndex`]. The root is always at index
+/// *0*. A [`Linear`](Node::Linear) node holds two or more children, side by side or one above
+/// the other, each with a share of the space; [`Leaf`](Node::Leaf) nodes hold the tabs. Free
+/// slots hold [`Empty`](Node::Empty) nodes.
 ///
-/// For "Horizontal" nodes:
-///  - left child contains Left node.
-///  - right child contains Right node.
+/// Splitting a node whose parent already lays out its children in the split's direction adds
+/// the new node to that parent, next to the split one, instead of nesting a new split: a row
+/// or a column grows by one, and the separator between two neighbours resizes those two.
 ///
-/// For "Vertical" nodes:
-///  - left child contains Top node.
-///  - right child contains Bottom node.
+/// With the `serde` feature, trees saved by earlier versions, binary trees of `Horizontal`
+/// and `Vertical` splits, load as linear nodes with the same layout.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(
     feature = "serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(default)
+    serde(
+        from = "legacy::TreeRepr<Tab>",
+        bound(deserialize = "Tab: serde::Deserialize<'de>")
+    )
 )]
 pub struct Tree<Tab> {
-    // Binary tree vector
+    // The nodes, the root first.
     pub(super) nodes: Vec<Node<Tab>>,
     focused_node: Option<NodeIndex>,
     // Whether all subnodes of the tree is collapsed
@@ -226,10 +240,84 @@ impl<Tab> Tree<Tab> {
         self.nodes.iter_mut()
     }
 
-    /// Returns an [`Iterator`] of [`NodeIndex`] ordered in a breadth first manner.
-    #[inline(always)]
+    /// Returns an [`Iterator`] of [`NodeIndex`] ordered in a breadth first manner, from the
+    /// root: a parent always comes before its children. Free slots are skipped.
     pub(crate) fn breadth_first_index_iter(&self) -> impl Iterator<Item = NodeIndex> + use<Tab> {
-        (0..self.nodes.len()).map(NodeIndex)
+        let mut order = Vec::new();
+        if !self.nodes.is_empty() {
+            let mut queue = VecDeque::from([NodeIndex::root()]);
+            let mut seen = HashSet::new();
+            while let Some(index) = queue.pop_front() {
+                if !seen.insert(index) {
+                    continue;
+                }
+                let Some(node) = self.nodes.get(index.0) else {
+                    continue;
+                };
+                if node.is_empty() {
+                    continue;
+                }
+                order.push(index);
+                queue.extend(node.children().iter().copied());
+            }
+        }
+        order.into_iter()
+    }
+
+    /// Returns the parent of `node`, or `None` for the root or a node that is not in the tree.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use egui_stack::{DockState, NodeIndex};
+    /// let mut dock_state = DockState::new(vec!["tab 1"]);
+    /// let tree = dock_state.main_surface_mut();
+    /// let [a, b] = tree.split_right(NodeIndex::root(), 0.5, vec!["tab 2"]);
+    /// assert_eq!(tree.parent(a), Some(NodeIndex::root()));
+    /// assert_eq!(tree.parent(b), Some(NodeIndex::root()));
+    /// assert_eq!(tree.parent(NodeIndex::root()), None);
+    /// ```
+    pub fn parent(&self, node: NodeIndex) -> Option<NodeIndex> {
+        self.nodes
+            .iter()
+            .position(|n| n.children().contains(&node))
+            .map(NodeIndex)
+    }
+
+    /// Puts `node` in a free slot and returns its index.
+    fn alloc(&mut self, node: Node<Tab>) -> NodeIndex {
+        match self
+            .nodes
+            .iter()
+            .skip(1)
+            .position(|n| n.is_empty())
+            .map(|i| i + 1)
+        {
+            Some(index) => {
+                self.nodes[index] = node;
+                NodeIndex(index)
+            }
+            None => {
+                self.nodes.push(node);
+                NodeIndex(self.nodes.len() - 1)
+            }
+        }
+    }
+
+    /// Moves the node at `from` to the slot `to`, leaving `from` free; the focus follows it.
+    /// The caller fixes the references to `from`.
+    fn move_node(&mut self, from: NodeIndex, to: NodeIndex) {
+        self.nodes[to.0] = std::mem::replace(&mut self.nodes[from.0], Node::Empty);
+        if self.focused_node == Some(from) {
+            self.focused_node = Some(to);
+        }
+    }
+
+    /// Drops the free slots at the end of the collection.
+    fn trim(&mut self) {
+        while self.nodes.last().is_some_and(Node::is_empty) {
+            self.nodes.pop();
+        }
     }
 
     /// Returns an iterator over all tabs in arbitrary order.
@@ -440,21 +528,27 @@ impl<Tab> Tree<Tab> {
         self.split(parent, Split::Right, fraction, Node::leaf_with(tabs))
     }
 
-    /// Creates two new nodes by splitting a given `parent` node and assigns them as its children. The first (old) node
-    /// inherits content of the `parent` from before the split, and the second (new) uses `new`.
+    /// Splits a given `parent` node in two: the old node keeps the content of `parent`, and the
+    /// new node is `new`.
     ///
-    /// `fraction` (in range 0..=1) specifies how much of the `parent` node's area the old node will attempt to occupy
-    /// after the split.
+    /// `fraction` (in range 0..=1) specifies how much of the `parent` node's area the first of the
+    /// two nodes (the left or the top one) will attempt to occupy after the split.
     ///
     /// The new node is placed relatively to the old node, in the direction specified by `split`.
     ///
-    /// Returns the indices of the old node and the new node.
+    /// When the parent of `parent` already lays out its children in that direction, the new node
+    /// joins it, next to the old one, and the two share the old node's space: no split is nested.
+    /// Otherwise a new [`Linear`](Node::Linear) node takes the place of `parent` and holds the
+    /// two.
+    ///
+    /// Returns the indices of the old node and the new node. The old node keeps its index unless
+    /// it was the root.
     ///
     /// # Panics
     ///
     /// If `fraction` isn't in range 0..=1.
     ///
-    /// If `new` is an [`Empty`](Node::Empty), [`Horizontal`](Node::Horizontal) or [`Vertical`](Node::Vertical) node.
+    /// If `new` is an [`Empty`](Node::Empty) or [`Linear`](Node::Linear) node.
     ///
     /// If `new` is a [`Leaf`](Node::Leaf) node without any tabs.
     ///
@@ -476,6 +570,12 @@ impl<Tab> Tree<Tab> {
     /// assert!(dock_state.main_surface().root_node().unwrap().is_parent());
     /// assert!(dock_state[SurfaceIndex::main()][old].is_leaf());
     /// assert!(dock_state[SurfaceIndex::main()][new].is_leaf());
+    ///
+    /// // Splitting "tab 3" below again makes a column of three, not a nested split.
+    /// let [_, newer] = dock_state.main_surface_mut()
+    ///     .split(new, Split::Below, 0.5, Node::leaf_with(vec!["tab 4"]));
+    /// let root = dock_state.main_surface().root_node().unwrap();
+    /// assert_eq!(root.children(), &[old, new, newer]);
     /// ```
     pub fn split(
         &mut self,
@@ -484,57 +584,135 @@ impl<Tab> Tree<Tab> {
         fraction: f32,
         new: Node<Tab>,
     ) -> [NodeIndex; 2] {
-        let old = self[parent].split(split, fraction);
-        assert!(old.is_leaf() || old.is_parent());
+        assert!((0.0..=1.0).contains(&fraction));
+        assert!(!self[parent].is_empty());
         assert_ne!(new.tabs_count(), 0);
-        // Resize vector to fit the new size of the binary tree.
+
+        let dir = split.dir();
+        let shares = |total: f32| [total * fraction, total * (1.0 - fraction)];
+
+        let index = if let Some(grand) = self.parent(parent)
+            && let Node::Linear(linear) = &self[grand]
+            && linear.dir == dir
         {
-            let index = self.nodes.iter().rposition(|n| !n.is_empty()).unwrap_or(0);
-            let level = NodeIndex(index).level();
-            self.nodes
-                .resize_with((1 << (level + 1)) - 1, || Node::Empty);
-        }
-
-        let index = match split {
-            Split::Left | Split::Above => [parent.right(), parent.left()],
-            Split::Right | Split::Below => [parent.left(), parent.right()],
-        };
-
-        // If the node were splitting is a parent, all it's children need to be moved.
-        if old.is_parent() {
-            let levels_to_move = NodeIndex(self.nodes.len()).level() - index[0].level();
-
-            // Level 0 is ourself, which is done when we assign self[index[0]] = old, so start at 1.
-            for level in (1..levels_to_move).rev() {
-                // Old child indices for this level
-                let old_start = parent.children_at(level).start;
-                // New child indices for this level
-                let new_start = index[0].children_at(level).start;
-
-                // Children to be moved this level change
-                let len = 1 << level;
-
-                // Swap self[old_start..(old_start+len)] with self[new_start..(new_start+len)]
-                // (the new part will only contain empty entries).
-                let (old_range, new_range) = {
-                    let (first_part, second_part) = self.nodes.split_at_mut(new_start);
-                    // Cut to length.
-                    (
-                        &mut first_part[old_start..old_start + len],
-                        &mut second_part[..len],
-                    )
+            // Join the parent's row or column, sharing the old node's space.
+            let new_index = self.alloc(new);
+            let Node::Linear(linear) = &mut self[grand] else {
+                unreachable!()
+            };
+            let at = linear.position(parent).expect("a child of its parent");
+            let [a, b] = shares(linear.shares[at]);
+            let children = if split.new_first() {
+                [new_index, parent]
+            } else {
+                [parent, new_index]
+            };
+            linear.shares[at] = a;
+            linear.shares.insert(at + 1, b);
+            linear.children[at] = children[0];
+            linear.children.insert(at + 1, children[1]);
+            [parent, new_index]
+        } else {
+            // A new linear node takes the parent's place and holds the old and the new nodes.
+            let collapsed = self[parent].is_collapsed();
+            let collapsed_leaf_count = self[parent].collapsed_leaf_count();
+            // The new nodes take free slots in their order on screen.
+            let (old_index, new_index, holder) = if parent == NodeIndex::root() {
+                let old = std::mem::replace(&mut self.nodes[0], Node::Empty);
+                let (old_index, new_index) = if split.new_first() {
+                    let new_index = self.alloc(new);
+                    (self.alloc(old), new_index)
+                } else {
+                    let old_index = self.alloc(old);
+                    (old_index, self.alloc(new))
                 };
-                old_range.swap_with_slice(new_range);
+                if self.focused_node == Some(parent) {
+                    self.focused_node = Some(old_index);
+                }
+                (old_index, new_index, NodeIndex::root())
+            } else {
+                // A placeholder keeps the slot taken until the holder is built.
+                let holder = self.alloc(Node::Linear(LinearNode::default()));
+                let grand = self
+                    .parent(parent)
+                    .expect("a node other than the root has one");
+                let Node::Linear(linear) = &mut self[grand] else {
+                    unreachable!()
+                };
+                let at = linear.position(parent).expect("a child of its parent");
+                linear.children[at] = holder;
+                (parent, self.alloc(new), holder)
+            };
+            let mut children = vec![old_index, new_index];
+            if split.new_first() {
+                children.reverse();
             }
-        }
-
-        self[index[0]] = old;
-        self[index[1]] = new;
+            let mut linear = LinearNode::new(dir, children, shares(1.0).to_vec());
+            linear.fully_collapsed = collapsed;
+            linear.collapsed_leaf_count = collapsed_leaf_count;
+            self.nodes[holder.0] = Node::Linear(linear);
+            [old_index, new_index]
+        };
 
         self.focused_node = Some(index[1]);
         self.node_update_collapsed(index[1]);
 
         index
+    }
+
+    /// Adds `new` to the [`Linear`](Node::Linear) node `container`, as its child at `index`.
+    ///
+    /// The new child gets an even share: `1 / n` of the space, `n` counting it, and the other
+    /// children keep their proportions in the rest.
+    ///
+    /// Returns the index of the new node.
+    ///
+    /// # Panics
+    ///
+    /// If `container` is not a [`Linear`](Node::Linear) node, or `index` is greater than its
+    /// number of children.
+    ///
+    /// If `new` is not a [`Leaf`](Node::Leaf) node with tabs.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use egui_stack::{DockState, NodeIndex, Node};
+    /// let mut dock_state = DockState::new(vec!["a"]);
+    /// let tree = dock_state.main_surface_mut();
+    /// let [a, b] = tree.split_right(NodeIndex::root(), 0.5, vec!["b"]);
+    /// let c = tree.insert_child(NodeIndex::root(), 2, Node::leaf("c"));
+    ///
+    /// let row = tree.root_node().unwrap().get_linear().unwrap();
+    /// assert_eq!(row.children(), &[a, b, c]);
+    /// assert!((row.fraction(2) - 1.0 / 3.0).abs() < 1e-6);
+    /// ```
+    pub fn insert_child(
+        &mut self,
+        container: NodeIndex,
+        index: usize,
+        new: Node<Tab>,
+    ) -> NodeIndex {
+        assert!(
+            self[container].is_parent(),
+            "the container is a linear node"
+        );
+        assert!(index <= self[container].children().len());
+        assert_ne!(new.tabs_count(), 0);
+        let new_index = self.alloc(new);
+        let Node::Linear(linear) = &mut self[container] else {
+            unreachable!()
+        };
+        linear.normalize_shares();
+        let n = linear.len() as f32;
+        for share in &mut linear.shares {
+            *share *= n / (n + 1.0);
+        }
+        linear.children.insert(index, new_index);
+        linear.shares.insert(index, 1.0 / (n + 1.0));
+        self.focused_node = Some(new_index);
+        self.node_update_collapsed(new_index);
+        new_index
     }
 
     /// Immutably borrows a leaf node at the given path.
@@ -559,24 +737,15 @@ impl<Tab> Tree<Tab> {
             .ok_or(Error::NonLeafNode)
     }
 
+    /// The first leaf in the subtree of `top`, `top` included, depth first.
     fn first_leaf(&self, top: NodeIndex) -> Option<NodeIndex> {
-        let left = top.left();
-        let right = top.right();
-        match (self.nodes.get(left.0), self.nodes.get(right.0)) {
-            (Some(&Node::Leaf { .. }), _) => Some(left),
-            (_, Some(&Node::Leaf { .. })) => Some(right),
-
-            (
-                Some(Node::Horizontal { .. } | Node::Vertical { .. }),
-                Some(Node::Horizontal { .. } | Node::Vertical { .. }),
-            ) => self.first_leaf(left).or(self.first_leaf(right)),
-            (Some(Node::Horizontal { .. } | Node::Vertical { .. }), _) => self.first_leaf(left),
-            (_, Some(Node::Horizontal { .. } | Node::Vertical { .. })) => self.first_leaf(right),
-
-            (None, None)
-            | (Some(&Node::Empty), None)
-            | (None, Some(&Node::Empty))
-            | (Some(&Node::Empty), Some(&Node::Empty)) => None,
+        match self.nodes.get(top.0)? {
+            Node::Leaf(_) => Some(top),
+            Node::Linear(linear) => linear
+                .children()
+                .iter()
+                .find_map(|&child| self.first_leaf(child)),
+            Node::Empty => None,
         }
     }
 
@@ -609,6 +778,9 @@ impl<Tab> Tree<Tab> {
 
     /// Removes the given node from the [`Tree`].
     ///
+    /// Its siblings share its space, in proportion to their own. A parent left with one child
+    /// gives way to that child.
+    ///
     /// # Panics
     ///
     /// - If the tree is empty.
@@ -617,99 +789,192 @@ impl<Tab> Tree<Tab> {
         assert!(!self.is_empty());
         assert!(self[node].is_leaf());
 
-        let Some(parent) = node.parent() else {
+        let Some(parent) = self.parent(node) else {
             self.nodes.clear();
+            self.focused_node = None;
             return;
         };
 
         if Some(node) == self.focused_node {
+            // Focus the nearest leaf: a sibling's, then an uncle's, and so on up.
             self.focused_node = None;
-            let mut node = node;
-            while let Some(parent) = node.parent() {
-                let next = if node.is_left() {
-                    parent.right()
-                } else {
-                    parent.left()
-                };
-                if self.nodes.get(next.0).is_some_and(|node| node.is_leaf()) {
-                    self.focused_node = Some(next);
+            let mut child = node;
+            let mut ancestor = Some(parent);
+            while let Some(up) = ancestor {
+                // The nearest siblings first.
+                let siblings = self[up].children();
+                let at = siblings.iter().position(|&c| c == child).unwrap_or(0);
+                let mut order: Vec<usize> = (0..siblings.len()).filter(|&i| i != at).collect();
+                order.sort_by_key(|&i| i.abs_diff(at));
+                let found = order.into_iter().find_map(|i| self.first_leaf(siblings[i]));
+                if found.is_some() {
+                    self.focused_node = found;
                     break;
                 }
-                if let Some(node) = self.first_leaf(next) {
-                    self.focused_node = Some(node);
-                    break;
-                }
-                node = parent;
+                child = up;
+                ancestor = self.parent(up);
             }
         }
 
-        self[parent] = Node::Empty;
         self[node] = Node::Empty;
-
-        let mut level = 0;
-
-        if node.is_left() {
-            'left_end: loop {
-                let dst = parent.children_at(level);
-                let src = parent.children_right(level + 1);
-                for (dst, src) in dst.zip(src) {
-                    if src >= self.nodes.len() {
-                        break 'left_end;
-                    }
-                    if Some(NodeIndex(src)) == self.focused_node {
-                        self.focused_node = Some(NodeIndex(dst));
-                    }
-                    self.nodes[dst] = std::mem::replace(&mut self.nodes[src], Node::Empty);
-                }
-                level += 1;
-            }
-        } else {
-            'right_end: loop {
-                let dst = parent.children_at(level);
-                let src = parent.children_left(level + 1);
-                for (dst, src) in dst.zip(src) {
-                    if src >= self.nodes.len() {
-                        break 'right_end;
-                    }
-                    if Some(NodeIndex(src)) == self.focused_node {
-                        self.focused_node = Some(NodeIndex(dst));
-                    }
-                    self.nodes[dst] = std::mem::replace(&mut self.nodes[src], Node::Empty);
-                }
-                level += 1;
-            }
+        let Node::Linear(linear) = &mut self[parent] else {
+            unreachable!("a parent is a linear node")
+        };
+        let at = linear.position(node).expect("a child of its parent");
+        linear.children.remove(at);
+        linear.shares.remove(at);
+        if linear.len() == 1 {
+            self.give_way(parent);
         }
-        // Ensure that there are no trailing `Node::Empty` items
-        while let Some(last_index) = self.nodes.len().checked_sub(1).map(NodeIndex) {
-            if self[last_index].is_empty()
-                && last_index.parent().is_some_and(|pi| !self[pi].is_parent())
-            {
-                self.nodes.pop();
-            } else {
-                break;
+        self.trim();
+    }
+
+    /// Replaces the linear node `holder`, left with one child, by that child.
+    fn give_way(&mut self, holder: NodeIndex) {
+        let child = self[holder].children()[0];
+        let grand = self.parent(holder);
+        match grand {
+            None => {
+                // The root: the child moves into its slot, and its children stay where they are.
+                self.move_node(child, holder);
+            }
+            Some(grand) => {
+                self[holder] = Node::Empty;
+                let Node::Linear(linear) = &mut self[grand] else {
+                    unreachable!("a parent is a linear node")
+                };
+                let at = linear.position(holder).expect("a child of its parent");
+                linear.children[at] = child;
+                self.join(grand, at);
             }
         }
     }
 
-    /// Pushes a tab to the first `Leaf` it finds or create a new leaf if an `Empty` node is encountered.
-    pub fn push_to_first_leaf(&mut self, tab: Tab) {
-        for (index, node) in &mut self.nodes.iter_mut().enumerate() {
-            match node {
-                Node::Leaf(leaf) => {
-                    leaf.active = TabIndex(leaf.tabs.len());
-                    leaf.tabs.push(tab);
-                    self.focused_node = Some(NodeIndex(index));
-                    return;
-                }
-                Node::Empty => {
-                    *node = Node::leaf(tab);
-                    self.focused_node = Some(NodeIndex(index));
-                    return;
-                }
-                _ => {}
+    /// If the child at `at` of the linear node `parent` is a linear node of the same direction,
+    /// puts its children in its place, sharing its space in the same proportions.
+    fn join(&mut self, parent: NodeIndex, at: usize) {
+        let child = self[parent].children()[at];
+        let (Node::Linear(outer), Node::Linear(inner)) = (&self[parent], &self[child]) else {
+            return;
+        };
+        if outer.dir != inner.dir {
+            return;
+        }
+        let mut inner = inner.clone();
+        inner.normalize_shares();
+        self[child] = Node::Empty;
+        let Node::Linear(outer) = &mut self[parent] else {
+            unreachable!()
+        };
+        let share = outer.shares[at];
+        outer
+            .children
+            .splice(at..=at, inner.children.iter().copied());
+        outer
+            .shares
+            .splice(at..=at, inner.shares.iter().map(|s| s * share));
+    }
+
+    /// Restores the tree's shape after nodes were emptied or loaded: drops the
+    /// [`Empty`](Node::Empty) children and the references to missing nodes, replaces a linear
+    /// node with one child by that child, joins a linear node into a parent of the same
+    /// direction, frees the slots no longer reached from the root, and drops the focus if it
+    /// is no longer on a leaf.
+    pub(crate) fn simplify(&mut self) {
+        let mut seen = HashSet::new();
+        match self.simplify_node(NodeIndex::root(), &mut seen) {
+            None => {
+                self.nodes.clear();
+                self.focused_node = None;
+                return;
+            }
+            Some(root) if root != NodeIndex::root() => self.move_node(root, NodeIndex::root()),
+            Some(_) => {}
+        }
+        let reached: HashSet<_> = self.breadth_first_index_iter().collect();
+        for (index, node) in self.nodes.iter_mut().enumerate() {
+            if !reached.contains(&NodeIndex(index)) {
+                *node = Node::Empty;
             }
         }
-        assert!(self.nodes.is_empty());
+        self.trim();
+        if self
+            .focused_node
+            .is_some_and(|f| self.nodes.get(f.0).is_none_or(|n| !n.is_leaf()))
+        {
+            self.focused_node = None;
+        }
+    }
+
+    /// Simplifies the subtree at `index`; returns what takes its place, if anything.
+    fn simplify_node(
+        &mut self,
+        index: NodeIndex,
+        seen: &mut HashSet<NodeIndex>,
+    ) -> Option<NodeIndex> {
+        if !seen.insert(index) {
+            return None;
+        }
+        match self.nodes.get(index.0)? {
+            Node::Empty => None,
+            Node::Leaf(_) => Some(index),
+            Node::Linear(linear) => {
+                let old: Vec<_> = linear
+                    .children
+                    .iter()
+                    .copied()
+                    .zip(linear.shares.iter().copied())
+                    .collect();
+                let mut kept = Vec::new();
+                for (child, share) in old {
+                    if let Some(child) = self.simplify_node(child, seen) {
+                        let share = if share.is_finite() {
+                            share.max(0.0)
+                        } else {
+                            0.0
+                        };
+                        kept.push((child, share));
+                    }
+                }
+                match kept.len() {
+                    0 => {
+                        self[index] = Node::Empty;
+                        None
+                    }
+                    1 => {
+                        self[index] = Node::Empty;
+                        Some(kept[0].0)
+                    }
+                    _ => {
+                        let Node::Linear(linear) = &mut self[index] else {
+                            unreachable!()
+                        };
+                        (linear.children, linear.shares) = kept.into_iter().unzip();
+                        let mut at = 0;
+                        while at < self[index].children().len() {
+                            let before = self[index].children().len();
+                            self.join(index, at);
+                            at += 1 + self[index].children().len() - before;
+                        }
+                        Some(index)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Pushes a tab to the first `Leaf` it finds or creates a new leaf if the tree is empty.
+    pub fn push_to_first_leaf(&mut self, tab: Tab) {
+        if let Some(index) = self.first_leaf(NodeIndex::root()) {
+            let Node::Leaf(leaf) = &mut self[index] else {
+                unreachable!()
+            };
+            leaf.active = TabIndex(leaf.tabs.len());
+            leaf.tabs.push(tab);
+            self.focused_node = Some(index);
+            return;
+        }
+        self.nodes.clear();
         self.nodes.push(Node::leaf_with(vec![tab]));
         self.focused_node = Some(NodeIndex(0));
     }
@@ -734,35 +999,12 @@ impl<Tab> Tree<Tab> {
     ///
     /// If no leaf is available then a new leaf will be created.
     pub fn push_to_focused_leaf(&mut self, tab: Tab) {
-        match self.focused_node {
-            Some(node) => {
-                if self.nodes.is_empty() {
-                    self.nodes.push(Node::leaf(tab));
-                    self.focused_node = Some(NodeIndex::root());
-                } else {
-                    match &mut self[node] {
-                        Node::Empty => {
-                            self[node] = Node::leaf(tab);
-                            self.focused_node = Some(node);
-                        }
-                        Node::Leaf(leaf) => {
-                            leaf.append_tab(tab);
-                            self.focused_node = Some(node);
-                        }
-                        _ => {
-                            self.push_to_first_leaf(tab);
-                        }
-                    }
-                }
-            }
-            None => {
-                if self.nodes.is_empty() {
-                    self.nodes.push(Node::leaf(tab));
-                    self.focused_node = Some(NodeIndex::root());
-                } else {
-                    self.push_to_first_leaf(tab);
-                }
-            }
+        match self
+            .focused_node
+            .and_then(|node| self.nodes.get_mut(node.0))
+        {
+            Some(Node::Leaf(leaf)) => leaf.append_tab(tab),
+            _ => self.push_to_first_leaf(tab),
         }
     }
 
@@ -792,17 +1034,9 @@ impl<Tab> Tree<Tab> {
             collapsed,
             collapsed_leaf_count,
         } = self;
-        let mut emptied_nodes = HashSet::default();
         let nodes = nodes
             .iter()
-            .enumerate()
-            .map(|(index, node)| {
-                let filtered_node = node.filter_map_tabs(&mut function);
-                if filtered_node.is_empty() && !node.is_empty() {
-                    emptied_nodes.insert(NodeIndex(index));
-                }
-                filtered_node
-            })
+            .map(|node| node.filter_map_tabs(&mut function))
             .collect();
         let mut new_tree = Tree {
             nodes,
@@ -810,7 +1044,7 @@ impl<Tab> Tree<Tab> {
             collapsed: *collapsed,
             collapsed_leaf_count: *collapsed_leaf_count,
         };
-        new_tree.balance(emptied_nodes);
+        new_tree.simplify();
         new_tree
     }
 
@@ -838,14 +1072,10 @@ impl<Tab> Tree<Tab> {
     where
         F: FnMut(&mut Tab) -> bool,
     {
-        let mut emptied_nodes = HashSet::default();
-        for (index, node) in self.nodes.iter_mut().enumerate() {
+        for node in self.nodes.iter_mut() {
             node.retain_tabs(&mut predicate);
-            if node.is_empty() {
-                emptied_nodes.insert(NodeIndex(index));
-            }
         }
-        self.balance(emptied_nodes);
+        self.simplify();
     }
 
     /// Sets the collapsing state of the [`Tree`].
@@ -868,78 +1098,43 @@ impl<Tab> Tree<Tab> {
         self.collapsed_leaf_count
     }
 
-    fn balance(&mut self, emptied_nodes: HashSet<NodeIndex>) {
-        let mut emptied_parents = HashSet::default();
-        for parent_index in emptied_nodes.into_iter().filter_map(|ni| ni.parent()) {
-            if !self[parent_index].is_parent() {
-                continue;
-            } else if self[parent_index.left()].is_empty() && self[parent_index.right()].is_empty()
-            {
-                self[parent_index] = Node::Empty;
-                emptied_parents.insert(parent_index);
-            } else if self[parent_index.left()].is_empty() {
-                self.nodes.swap(parent_index.0, parent_index.right().0);
-                self[parent_index.right()] = Node::Empty;
-            } else if self[parent_index.right()].is_empty() {
-                self.nodes.swap(parent_index.0, parent_index.left().0);
-                self[parent_index.left()] = Node::Empty;
-            }
-        }
-        if !emptied_parents.is_empty() {
-            self.balance(emptied_parents);
-        }
-    }
-
     /// Updates the collapsed state of the node and its parents.
     pub(crate) fn node_update_collapsed(&mut self, node_index: NodeIndex) {
         let collapsed = self[node_index].is_collapsed();
+        let mut ancestor = self.parent(node_index);
+        while let Some(index) = ancestor {
+            ancestor = self.parent(index);
+            let counts: Vec<_> = self[index]
+                .children()
+                .iter()
+                .map(|&c| (self[c].is_collapsed(), self[c].collapsed_leaf_count()))
+                .collect();
+            let Node::Linear(linear) = &mut self[index] else {
+                unreachable!("a parent is a linear node")
+            };
+            let all_collapsed = counts.iter().all(|&(collapsed, _)| collapsed);
+            let counts = counts.iter().map(|&(_, count)| count);
+            linear.collapsed_leaf_count = match linear.dir {
+                LinearDir::Horizontal => counts.max().unwrap_or(0),
+                LinearDir::Vertical => counts.sum(),
+            };
+            if !collapsed {
+                linear.fully_collapsed = false;
+            } else if all_collapsed {
+                linear.fully_collapsed = true;
+            }
+        }
+        let root = self
+            .root_node()
+            .map(|r| (r.is_collapsed(), r.collapsed_leaf_count()));
         if !collapsed {
-            // Recursively notify parent nodes that the leaf has expanded
-            let mut parent_index_option = node_index.parent();
-            while let Some(parent_index) = parent_index_option {
-                parent_index_option = parent_index.parent();
-
-                // Update collapsed leaf count and collapse status
-                let left_count = self[parent_index.left()].collapsed_leaf_count();
-                let right_count = self[parent_index.right()].collapsed_leaf_count();
-                self[parent_index].set_collapsed(false);
-
-                if self[parent_index].is_horizontal() {
-                    self[parent_index].set_collapsed_leaf_count(max(left_count, right_count));
-                } else {
-                    self[parent_index].set_collapsed_leaf_count(left_count + right_count);
-                }
-            }
             self.set_collapsed(false);
-            let root_index = NodeIndex::root();
-            self.set_collapsed_leaf_count(self[root_index].collapsed_leaf_count());
-        } else {
-            // Recursively notify parent nodes that the leaf has collapsed
-            let mut parent_index_option = node_index.parent();
-            while let Some(parent_index) = parent_index_option {
-                parent_index_option = parent_index.parent();
-
-                // Update collapsed leaf count and collapse status
-                let left_count = self[parent_index.left()].collapsed_leaf_count();
-                let right_count = self[parent_index.right()].collapsed_leaf_count();
-
-                if self[parent_index].is_horizontal() {
-                    self[parent_index].set_collapsed_leaf_count(max(left_count, right_count));
-                } else {
-                    self[parent_index].set_collapsed_leaf_count(left_count + right_count);
-                }
-
-                if self[parent_index.left()].is_collapsed()
-                    && self[parent_index.right()].is_collapsed()
-                {
-                    self[parent_index].set_collapsed(true);
-                }
+            if let Some((_, count)) = root {
+                self.set_collapsed_leaf_count(count);
             }
-            if self.root_node().is_some_and(|root| root.is_collapsed()) {
-                self.set_collapsed(true);
-                let root_index = NodeIndex::root();
-                self.set_collapsed_leaf_count(self[root_index].collapsed_leaf_count());
-            }
+        } else if let Some((true, count)) = root {
+            self.set_collapsed(true);
+            self.set_collapsed_leaf_count(count);
         }
     }
 
@@ -1013,5 +1208,138 @@ mod test {
 
         tree.retain_tabs(|_| true);
         assert!(tree.find_tab(&Tab(0)).is_some());
+    }
+
+    fn linear(tree: &Tree<Tab>, index: NodeIndex) -> &LinearNode {
+        tree[index].get_linear().expect("a linear node")
+    }
+
+    fn close(a: &[f32], b: &[f32]) -> bool {
+        a.len() == b.len() && a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-5)
+    }
+
+    /// Three leaves in a row: `[0 | 1 | 2]` with the shares `[0.5, 0.25, 0.25]`.
+    fn row() -> (Tree<Tab>, [NodeIndex; 3]) {
+        let mut tree = Tree::new(vec![Tab(0)]);
+        let [a, b] = tree.split_right(NodeIndex::root(), 0.5, vec![Tab(1)]);
+        let [b2, c] = tree.split_right(b, 0.5, vec![Tab(2)]);
+        assert_eq!(b, b2, "a split node keeps its index");
+        (tree, [a, b, c])
+    }
+
+    #[test]
+    fn a_split_along_its_parent_joins_the_row() {
+        let (tree, [a, b, c]) = row();
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.dir, LinearDir::Horizontal);
+        assert_eq!(root.children(), &[a, b, c]);
+        assert!(close(root.shares(), &[0.5, 0.25, 0.25]));
+        assert_eq!(tree.focused_leaf(), Some(c));
+    }
+
+    #[test]
+    fn a_split_before_takes_the_first_share() {
+        let (mut tree, [a, b, c]) = row();
+        let [b2, d] = tree.split_left(b, 0.2, vec![Tab(3)]);
+        assert_eq!(b2, b);
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.children(), &[a, d, b, c]);
+        assert!(close(root.shares(), &[0.5, 0.05, 0.2, 0.25]));
+    }
+
+    #[test]
+    fn a_split_across_its_parent_nests() {
+        let (mut tree, [a, b, c]) = row();
+        let [b2, d] = tree.split_below(b, 0.5, vec![Tab(3)]);
+        assert_eq!(b2, b);
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.children()[0], a);
+        assert_eq!(root.children()[2], c);
+        let column = root.children()[1];
+        assert_eq!(tree.parent(b), Some(column));
+        let column = linear(&tree, column);
+        assert_eq!(column.dir, LinearDir::Vertical);
+        assert_eq!(column.children(), &[b, d]);
+    }
+
+    #[test]
+    fn removing_a_leaf_keeps_the_others_in_proportion() {
+        let (mut tree, [a, b, c]) = row();
+        tree.remove_leaf(a);
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.children(), &[b, c]);
+        assert_eq!(root.fraction(0), 0.5);
+        // The focus was on `c` and stays.
+        assert_eq!(tree.focused_leaf(), Some(c));
+
+        tree.remove_leaf(c);
+        assert!(tree[NodeIndex::root()].is_leaf());
+        assert_eq!(tree[NodeIndex::root()].tabs(), Some([Tab(1)].as_slice()));
+        assert_eq!(tree.focused_leaf(), Some(NodeIndex::root()));
+        assert_eq!(tree.len(), 1);
+    }
+
+    #[test]
+    fn a_column_left_with_one_child_gives_way_and_joins_the_row() {
+        // [0 | (1 / [2 | 3]) ] : removing 1 leaves [0 | 2 | 3].
+        let mut tree = Tree::new(vec![Tab(0)]);
+        let [a, b] = tree.split_right(NodeIndex::root(), 0.5, vec![Tab(1)]);
+        let [_, c] = tree.split_below(b, 0.5, vec![Tab(2)]);
+        let [_, d] = tree.split_right(c, 0.5, vec![Tab(3)]);
+        tree.remove_leaf(b);
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.children(), &[a, c, d]);
+        assert!(close(root.shares(), &[0.5, 0.25, 0.25]));
+        assert_eq!(tree.breadth_first_index_iter().count(), 4);
+    }
+
+    #[test]
+    fn removing_the_focused_leaf_focuses_a_neighbour() {
+        let (mut tree, [_, b, c]) = row();
+        tree.set_focused_node(c);
+        tree.remove_leaf(c);
+        assert_eq!(tree.focused_leaf(), Some(b));
+    }
+
+    #[test]
+    fn retain_simplifies_the_tree() {
+        let (mut tree, [a, _, c]) = row();
+        tree.retain_tabs(|tab| tab.0 != 1);
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.children(), &[a, c]);
+        assert!(close(root.shares(), &[0.5, 0.25]));
+
+        tree.retain_tabs(|tab| tab.0 == 2);
+        assert_eq!(tree[NodeIndex::root()].tabs(), Some([Tab(2)].as_slice()));
+        assert_eq!(tree.len(), 1);
+
+        tree.retain_tabs(|_| false);
+        assert!(tree.is_empty());
+    }
+
+    #[test]
+    fn insert_child_gives_an_even_share() {
+        let (mut tree, [a, b, c]) = row();
+        let d = tree.insert_child(NodeIndex::root(), 0, Node::leaf(Tab(3)));
+        let root = linear(&tree, NodeIndex::root());
+        assert_eq!(root.children(), &[d, a, b, c]);
+        assert!(close(root.shares(), &[0.25, 0.375, 0.1875, 0.1875]));
+    }
+
+    #[test]
+    fn freed_slots_are_reused() {
+        let (mut tree, [a, ..]) = row();
+        let len = tree.len();
+        tree.remove_leaf(a);
+        let [_, d] = tree.split_left(NodeIndex(2), 0.5, vec![Tab(3)]);
+        assert_eq!(d, a);
+        assert_eq!(tree.len(), len);
+    }
+
+    #[test]
+    fn push_to_first_leaf_in_layout_order() {
+        let (mut tree, [a, ..]) = row();
+        tree.push_to_first_leaf(Tab(9));
+        assert_eq!(tree[a].tabs(), Some([Tab(0), Tab(9)].as_slice()));
     }
 }

@@ -1,8 +1,11 @@
-use std::ops::Range;
-
 use crate::SurfaceIndex;
 
-/// Wrapper around indices to the collection of nodes inside a [`Tree`](crate::Tree).
+/// Identifies a node inside a [`Tree`](crate::Tree): its slot in the tree's collection of nodes.
+///
+/// A node keeps its index while the tree changes around it, with two exceptions: the root is
+/// always at [`NodeIndex::root`], so a node that becomes the root, or stops being it, moves.
+/// [`Tree::parent`](crate::Tree::parent) and [`Node::children`](crate::Node::children) walk the
+/// tree.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(
     feature = "serde",
@@ -22,6 +25,7 @@ impl NodeIndex {
     /// Returns the index of the root node.
     ///
     /// In the context of a [`Tree`](crate::Tree), this will be the node that contains all other nodes.
+    /// The root is always at index 0.
     ///
     /// # Examples
     ///
@@ -34,70 +38,6 @@ impl NodeIndex {
     #[inline(always)]
     pub const fn root() -> Self {
         Self(0)
-    }
-
-    /// Returns the index of the node to the left of the current one.
-    #[inline(always)]
-    pub const fn left(self) -> Self {
-        Self(self.0 * 2 + 1)
-    }
-
-    /// Returns the index of the node to the right of the current one.
-    #[inline(always)]
-    pub const fn right(self) -> Self {
-        Self(self.0 * 2 + 2)
-    }
-
-    /// Returns the index of the parent node or `None` if current node is the root.
-    #[inline]
-    pub const fn parent(self) -> Option<Self> {
-        if self.0 > 0 {
-            Some(Self((self.0 - 1) / 2))
-        } else {
-            None
-        }
-    }
-
-    /// Returns the number of nodes leading from the root to the current node, including `self`.
-    #[inline(always)]
-    pub const fn level(self) -> usize {
-        (usize::BITS - (self.0 + 1).leading_zeros()) as usize
-    }
-
-    /// Returns `true` if current node is the left child of its parent, otherwise `false`.
-    #[inline(always)]
-    pub const fn is_left(self) -> bool {
-        !self.0.is_multiple_of(2)
-    }
-
-    /// Returns `true` if current node is the right child of its parent, otherwise `false`.
-    #[inline(always)]
-    pub const fn is_right(self) -> bool {
-        self.0.is_multiple_of(2)
-    }
-
-    #[inline]
-    pub(super) const fn children_at(self, level: usize) -> Range<usize> {
-        let base = 1 << level;
-        let s = (self.0 + 1) * base - 1;
-        let e = (self.0 + 2) * base - 1;
-        s..e
-    }
-
-    #[inline]
-    pub(super) const fn children_left(self, level: usize) -> Range<usize> {
-        let base = 1 << level;
-        let s = (self.0 + 1) * base - 1;
-        let e = (self.0 + 1) * base + (base / 2) - 1;
-        s..e
-    }
-
-    #[inline]
-    pub(super) const fn children_right(self, level: usize) -> Range<usize> {
-        let base = 1 << level;
-        let s = (self.0 + 1) * base + (base / 2) - 1;
-        let e = (self.0 + 2) * base - 1;
-        s..e
     }
 }
 
@@ -125,21 +65,5 @@ impl NodePath {
     /// Creates a fully qualified new path to a node.
     pub const fn new(surface: SurfaceIndex, node: NodeIndex) -> Self {
         Self { surface, node }
-    }
-
-    /// Returns the path to the node to the left of the current one.
-    pub const fn left_node(self) -> Self {
-        Self {
-            surface: self.surface,
-            node: self.node.left(),
-        }
-    }
-
-    /// Returns the path to the node to the right of the current one.
-    pub const fn right_node(self) -> Self {
-        Self {
-            surface: self.surface,
-            node: self.node.right(),
-        }
     }
 }

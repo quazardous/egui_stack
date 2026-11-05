@@ -3,7 +3,7 @@
 
 use egui::{Id, Key, Modifiers, Ui, WidgetText, accesskit::Role};
 use egui_kittest::{Harness, kittest::Queryable as _};
-use egui_stack::{DockArea, DockState, Node, NodeIndex, TabViewer};
+use egui_stack::{DockArea, DockState, LinearDir, Node, NodeIndex, TabViewer};
 
 struct Viewer;
 
@@ -39,7 +39,9 @@ fn harness() -> Harness<'static, DockState<String>> {
 /// The split's fraction and its width in points.
 fn split(dock_state: &DockState<String>) -> (f32, f32) {
     match &dock_state.main_surface()[NodeIndex::root()] {
-        Node::Horizontal(split) => (split.fraction, split.rect.width()),
+        Node::Linear(split) if split.dir == LinearDir::Horizontal => {
+            (split.boundary(0), split.rect.width())
+        }
         node => panic!("the root is a horizontal split, not {node:?}"),
     }
 }
@@ -83,5 +85,5 @@ fn arrows_move_a_focused_separator_and_enter_resets_it() {
     harness.get_by_role(Role::Splitter).focus();
     harness.run();
     press(&mut harness, Modifiers::NONE, Key::Enter);
-    assert_eq!(split(harness.state()).0, 0.5);
+    assert!((split(harness.state()).0 - 0.5).abs() < 1e-6);
 }

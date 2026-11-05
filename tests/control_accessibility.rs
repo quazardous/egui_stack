@@ -7,7 +7,7 @@ use egui_kittest::{
     Harness,
     kittest::{NodeT as _, Queryable as _},
 };
-use egui_stack::{DockArea, DockState, Labels, Node, NodeIndex, NodePath, TabViewer};
+use egui_stack::{DockArea, DockState, Labels, LinearDir, Node, NodeIndex, NodePath, TabViewer};
 
 #[derive(Default)]
 struct Viewer {
@@ -68,7 +68,7 @@ fn harness(dock_state: DockState<String>, labels: Labels) -> Harness<'static, Ap
 
 fn split_fraction(app: &App) -> f32 {
     match &app.dock_state.main_surface()[NodeIndex::root()] {
-        Node::Horizontal(split) => split.fraction,
+        Node::Linear(split) if split.dir == LinearDir::Horizontal => split.boundary(0),
         node => panic!("the root is a horizontal split, not {node:?}"),
     }
 }
