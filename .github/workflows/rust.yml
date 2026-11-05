@@ -50,6 +50,37 @@ jobs:
           command: doc
           args: --lib --no-deps --all-features
 
+  # The demo (demo/) builds for the browser, as the Pages workflow
+  # (pages.yml) builds it on main; nothing is deployed here.
+  web-demo:
+    name: Web demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      # The CLI must have the version of the `wasm-bindgen` crate, which demo/Cargo.toml pins.
+      - name: wasm-bindgen version
+        id: wasm-bindgen
+        run: echo "version=$(sed -n 's/^wasm-bindgen = "=\(.*\)"$/\1/p' demo/Cargo.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}
+
+      - name: Clippy
+        run: cargo clippy -p egui_stack_demo --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Build
+        run: sh demo/build-web.sh
+
   # The crate against its latest release on crates.io, with the version
   # the pending changesets lead to: a break passes when its changeset says
   # major (a new minor before 1.0), fails otherwise (RELEASING.md).

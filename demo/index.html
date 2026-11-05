@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>egui_stack demo</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background: #1b1b1b;
+            color: #ccc;
+            font-family: sans-serif;
+        }
+        #demo_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="demo_canvas"></canvas>
+    <p id="loading">Loading the egui_stack demo…</p>
+    <noscript>The demo needs JavaScript and WebAssembly.</noscript>
+    <script type="module">
+        import init from "./egui_stack_demo.js";
+        init().catch((error) => {
+            document.getElementById("loading").textContent =
+                "The demo failed to load: " + error;
+            console.error(error);
+        });
+    </script>
+</body>
+</html>
