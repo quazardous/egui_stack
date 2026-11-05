@@ -3,6 +3,7 @@
 [![github](https://img.shields.io/badge/github-quazardous/egui__stack-8da0cb?logo=github)](https://github.com/quazardous/egui_stack)
 [![crates.io](https://img.shields.io/crates/v/egui_stack.svg)](https://crates.io/crates/egui_stack)
 [![docs.rs](https://img.shields.io/docsrs/egui_stack)](https://docs.rs/egui_stack)
+[![live demo](https://img.shields.io/badge/demo-live-brightgreen?logo=webassembly)](https://quazardous.github.io/egui_stack/)
 [![egui_version](https://img.shields.io/badge/egui-0.37-blue)](https://github.com/emilk/egui)
 
 `egui_stack` continues [`egui_dock`](https://github.com/anhosh/egui_dock): a docking system for `egui`, originally
