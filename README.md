@@ -70,6 +70,6 @@ is rebuilt on each push to the main branch.
 
 It's a library aiming to achieve similar goals in addition to being more flexible and customizable.
 
-One feature it supports that `egui_stack` does not at the moment is the ability to divide nodes into more than two
-children, enabling horizontal, vertical, and grid layouts.
+Both divide a node into more than two children: since 0.24, `egui_stack`'s `Linear` and `Grid` containers
+hold any number of children, in a row, a column or a grid.
 
