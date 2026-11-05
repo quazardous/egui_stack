@@ -201,7 +201,10 @@ pub struct TabBarStyle {
     /// Show a scroll bar when tab bar overflows. By `Default` it's `true`.
     pub show_scroll_bar_on_overflow: bool,
 
-    /// Tab corner_radius. By `Default` it's [`CornerRadius::default`].
+    /// Tab bar corner radius. By `Default` it's [`CornerRadius::default`].
+    ///
+    /// Only the top corners are used: the bar's bottom edge joins the tab body, so its bottom
+    /// corners are painted square.
     pub corner_radius: CornerRadius,
 
     /// Color of the line separating the tab name area from the tab content area.
@@ -279,6 +282,9 @@ pub struct TabInteractionStyle {
     pub outline_color: Color32,
 
     /// Tab corner radius. By `Default` it's [`CornerRadius::default`].
+    ///
+    /// A tab in its tab bar joins the body below it, so its bottom corners are painted square;
+    /// a dragged tab uses all four.
     pub corner_radius: CornerRadius,
 
     /// Colour of the tab's background. By `Default` it's [`Color32::WHITE`].
@@ -302,7 +308,10 @@ pub struct TabBodyStyle {
     /// The stroke of the tabs border. By `Default` it's ['Stroke::default'].
     pub stroke: Stroke,
 
-    /// Tab corner radius. By `Default` it's [`CornerRadius::default`].
+    /// Tab body corner radius. By `Default` it's [`CornerRadius::default`].
+    ///
+    /// Under a tab bar, the body's top corners join the bar and are painted square; only a body
+    /// whose tab bar is hidden uses them.
     pub corner_radius: CornerRadius,
 
     /// Colour of the tab's background. By `Default` it's [`Color32::WHITE`].
