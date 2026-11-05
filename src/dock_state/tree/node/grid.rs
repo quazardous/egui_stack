@@ -4,8 +4,11 @@ use super::shares;
 use crate::NodeIndex;
 
 /// How a [`GridNode`] chooses its number of columns.
+///
+/// More layouts may come: the enum is `#[non_exhaustive]`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[non_exhaustive]
 pub enum GridLayout {
     /// As many columns as the square root of the number of children, rounded up: 2 columns
     /// for 2 to 4 children, 3 for 5 to 9, and so on. The rows fill from the top; the last
