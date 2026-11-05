@@ -6,7 +6,7 @@ use egui::{
 };
 
 use crate::{
-    Split, Style, TabDestination, TabStyle,
+    OverlayType, Split, Style, TabDestination, TabStyle,
     utils::{rect_set_size_centered, rect_stroke_box},
 };
 
@@ -191,7 +191,7 @@ pub trait DockPainter {
         );
     }
 
-    /// One of the drop overlay's buttons ([`OverlayType::Widgets`](crate::OverlayType::Widgets)):
+    /// One of the drop overlay's buttons ([`OverlayType::Widgets`]):
     /// the middle one (no split) or a split's.
     fn drop_button(&self, painter: &Painter, button: &DropButtonPaint<'_>) {
         let visuals = &button.style.overlay;
@@ -242,6 +242,10 @@ pub trait DockPainter {
 
     /// Where a dragged tab would land if released now, or why it may not
     /// ([`TabViewer::drop_allowed`](crate::TabViewer::drop_allowed)).
+    ///
+    /// With [`OverlayType::Zones`], the default tints the region the tab would take
+    /// ([`OverlayStyle::zone_fill`](crate::OverlayStyle::zone_fill)) and borders it
+    /// ([`OverlayStyle::zone_stroke`](crate::OverlayStyle::zone_stroke)).
     fn drop_preview(&self, painter: &Painter, drop: &DropPaint<'_>) {
         let overlay = &drop.style.overlay;
         if let TabDestination::Window(_) = drop.destination {
@@ -249,6 +253,14 @@ pub trait DockPainter {
                 drop.rect,
                 0.0,
                 Stroke::new(overlay.selection_stroke_width, overlay.selection_color),
+                StrokeKind::Inside,
+            );
+        } else if overlay.overlay_type == OverlayType::Zones {
+            painter.rect(
+                drop.rect,
+                overlay.zone_corner_radius,
+                overlay.zone_fill,
+                overlay.zone_stroke,
                 StrokeKind::Inside,
             );
         } else if !drop.from_buttons {

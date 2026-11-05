@@ -7,7 +7,7 @@ pub mod painter;
 /// Trait for tab-viewing types.
 pub mod tab_viewer;
 
-pub use dock_area::{AllowedSplits, DockArea, DraggedTab, Labels, TabFocus};
+pub use dock_area::{AllowedSplits, DockArea, DraggedTab, DropZone, Labels, TabFocus};
 pub use painter::{
     DockPainter, DropButtonPaint, DropPaint, DropRefusal, DropTargetPaint, PartState,
     SectionBandPaint, SectionBoundaryPaint, SeparatorAxis, SeparatorPaint, StylePainter,
