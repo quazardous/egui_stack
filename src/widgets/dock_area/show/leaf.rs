@@ -1494,7 +1494,12 @@ impl<Tab> DockArea<'_, Tab> {
                 ui.memory_mut(|mem| {
                     mem.data.insert_temp(
                         self.id.with("hover_data"),
-                        Some(HoverData { rect, dst, tab }),
+                        Some(HoverData {
+                            rect,
+                            dst,
+                            tab,
+                            outside: false,
+                        }),
                     );
                 });
             }

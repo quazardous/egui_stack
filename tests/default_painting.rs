@@ -224,6 +224,8 @@ fn drop_overlays() {
         ("drop_areas", false, OverlayType::HighlightedAreas),
         ("drop_refused_widgets", true, OverlayType::Widgets),
         ("drop_refused_areas", true, OverlayType::HighlightedAreas),
+        ("drop_zones", false, OverlayType::Zones),
+        ("drop_refused_zones", true, OverlayType::Zones),
     ] {
         let mut harness = scene(refuse, overlay);
         drag_first_to(&mut harness, third_body);
@@ -243,4 +245,18 @@ fn drop_overlays() {
         pos2(leaf.right() - 20.0, leaf.center().y)
     });
     check("drop_split", &harness);
+    let mut harness = scene(false, OverlayType::Zones);
+    drag_first_to(&mut harness, |h| {
+        let leaf = h.state().dock_state.main_surface()[NodeIndex::root().right()]
+            .rect()
+            .unwrap();
+        pos2(leaf.right() - 20.0, leaf.center().y)
+    });
+    check("drop_zone_split", &harness);
+    let mut harness = scene(false, OverlayType::Zones);
+    drag_first_to(&mut harness, |h| {
+        let third = tab_rect(h, "Third");
+        pos2(third.right() + 40.0, third.center().y)
+    });
+    check("drop_zone_tab_bar", &harness);
 }

@@ -352,6 +352,17 @@ pub struct OverlayStyle {
     /// The stroke of the button border.
     pub button_border_stroke: Stroke,
 
+    /// The light tint over the region a dragged tab would take, with [`OverlayType::Zones`].
+    /// By `Default` it's `(0, 191, 255)` (light blue) at `0.15` opacity.
+    pub zone_fill: Color32,
+
+    /// The border around the region a dragged tab would take, with [`OverlayType::Zones`].
+    /// By `Default` it's `2.0` wide, `(0, 191, 255)` (light blue).
+    pub zone_stroke: Stroke,
+
+    /// The rounding of the region a dragged tab would take, with [`OverlayType::Zones`].
+    pub zone_corner_radius: CornerRadius,
+
     /// The type of overlay used.
     pub overlay_type: OverlayType,
 
@@ -381,11 +392,18 @@ pub struct OverlayFeel {
 
     /// Units which the buttons interact area will be expanded by.
     pub interact_expansion: f32,
+
+    /// With [`OverlayType::Zones`], how much of a leaf's width (left and right) or height (top
+    /// and bottom) the band along each edge covers, in `0.0..=0.5`: over a band, a dropped tab
+    /// splits the leaf on that side; over the rest, it joins the leaf's tabs. See
+    /// [`DropZone::at`](crate::DropZone::at).
+    pub zone_edge_coverage: f32,
 }
 
 /// Specifies the type of overlay used.
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[non_exhaustive]
 pub enum OverlayType {
     /// Shows highlighted areas predicting where a dropped tab would land were it to be dropped this frame.
     ///
@@ -393,9 +411,21 @@ pub enum OverlayType {
     HighlightedAreas,
 
     /// Shows icons indicating the possible drop positions which the user may hover over to drop a tab at that given location.
-    ///
-    /// This is the default type of overlay for leaves.
     Widgets,
+
+    /// Highlights, on the leaf under the pointer, the region the tab would take: the half along
+    /// an edge when the pointer is in that edge's band ([`OverlayFeel::zone_edge_coverage`]),
+    /// which splits the leaf, or the whole leaf elsewhere, where the tab joins its tabs. The
+    /// region gets a border ([`OverlayStyle::zone_stroke`]) and a light tint
+    /// ([`OverlayStyle::zone_fill`]); there are no buttons. Over a tab bar, the tab goes where
+    /// the pointer is in it.
+    ///
+    /// A tab allowed in windows ([`TabViewer::allowed_in_windows`](crate::TabViewer::allowed_in_windows))
+    /// dropped outside the dock, where no leaf and no window of the dock is under the pointer,
+    /// opens in a new window.
+    ///
+    /// This is the default.
+    Zones,
 }
 
 /// Highlighting on the currently hovered leaf.
@@ -568,7 +598,10 @@ impl Default for OverlayStyle {
             hovered_leaf_highlight: Default::default(),
             button_color: Color32::from_gray(140),
             button_border_stroke: Stroke::new(1.0_f32, Color32::from_gray(60)),
-            overlay_type: OverlayType::Widgets,
+            zone_fill: Color32::from_rgb(0, 191, 255).gamma_multiply(0.15),
+            zone_stroke: Stroke::new(2.0, Color32::from_rgb(0, 191, 255)),
+            zone_corner_radius: CornerRadius::same(2),
+            overlay_type: OverlayType::Zones,
             feel: Default::default(),
         }
     }
@@ -582,6 +615,7 @@ impl Default for OverlayFeel {
             center_drop_coverage: 0.25,
             fade_hold_time: 0.2,
             interact_expansion: 20.0,
+            zone_edge_coverage: 0.3,
         }
     }
 }
@@ -873,9 +907,16 @@ impl OverlayStyle {
     /// - [`OverlayStyle::button_spacing]
     /// - [`OverlayStyle::button_color`]
     /// - [`OverlayStyle::button_border_stroke`]
+    /// - [`OverlayStyle::zone_fill`]
+    /// - [`OverlayStyle::zone_stroke`]
+    /// - [`OverlayStyle::zone_corner_radius`]
     pub fn from_egui(style: &egui::Style) -> Self {
+        let selection = style.visuals.selection.bg_fill;
         Self {
-            selection_color: style.visuals.selection.bg_fill.linear_multiply(0.5),
+            selection_color: selection.linear_multiply(0.5),
+            zone_fill: selection.gamma_multiply(0.15),
+            zone_stroke: Stroke::new(2.0, selection),
+            zone_corner_radius: style.visuals.widgets.noninteractive.corner_radius,
             button_spacing: style.spacing.icon_spacing,
             button_color: style.visuals.widgets.noninteractive.fg_stroke.color,
             button_border_stroke: style.visuals.widgets.noninteractive.bg_stroke,

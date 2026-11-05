@@ -5,7 +5,11 @@ use egui::{
 };
 use paste::paste;
 
-use super::{drag_and_drop::TreeComponent, state::State, tab_removal::TabRemoval};
+use super::{
+    drag_and_drop::{DragData, HoverData, TreeComponent},
+    state::State,
+    tab_removal::TabRemoval,
+};
 use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
 use crate::tab_viewer::{DropVerdict, OnCloseResponse};
@@ -47,6 +51,9 @@ impl<Tab> DockArea<'_, Tab> {
                 mem.data.remove_temp(self.id.with("hover_data")).flatten(),
             )
         });
+
+        let hover_data = hover_data
+            .or_else(|| self.hover_outside(ui.available_rect_before_wrap(), &state, &drag_data));
 
         if let (Some(source), Some(hover)) = (drag_data, hover_data) {
             let style = self.style.as_ref().unwrap();
@@ -168,6 +175,34 @@ impl<Tab> DockArea<'_, Tab> {
         state.store(ui.ctx(), self.id);
     }
 
+    /// With [`OverlayType::Zones`], a tab dragged outside the dock, where none of its surfaces
+    /// is under the pointer, hovers "outside": dropped there, it opens in a new window.
+    fn hover_outside(
+        &self,
+        dock_rect: Rect,
+        state: &State,
+        drag_data: &Option<DragData>,
+    ) -> Option<HoverData> {
+        if drag_data.is_none()
+            || self.style.as_ref().unwrap().overlay.overlay_type != OverlayType::Zones
+        {
+            return None;
+        }
+        let pointer = state.last_hover_pos?;
+        let over_a_window = self
+            .dock_state
+            .valid_surface_indices()
+            .iter()
+            .filter_map(|&surface| self.dock_state.get_window_state(surface))
+            .any(|window| window.rect().contains(pointer));
+        (!dock_rect.contains(pointer) && !over_a_window).then_some(HoverData {
+            rect: Rect::NOTHING,
+            dst: TreeComponent::Surface(SurfaceIndex::main()),
+            tab: None,
+            outside: true,
+        })
+    }
+
     /// Returns some when windows are fading, and what surface index is being hovered over
     #[inline(always)]
     fn hovered_window_surface(
@@ -258,6 +293,10 @@ impl<Tab> DockArea<'_, Tab> {
                         allowed_in_window,
                     ),
                     true,
+                ),
+                (OverlayType::Zones, false) => (
+                    drag_state.resolve_zones(ui, style, painter, allowed_splits, allowed_in_window),
+                    false,
                 ),
             };
         let destination = destination?;

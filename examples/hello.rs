@@ -403,11 +403,18 @@ impl MyContext {
             let selected_text = match style.overlay.overlay_type {
                 OverlayType::HighlightedAreas => "Highlighted Areas",
                 OverlayType::Widgets => "Widgets",
+                OverlayType::Zones => "Zones",
+                _ => "Other",
             };
             ui.label("Overlay Style:");
             ComboBox::new("overlay styles", "")
                 .selected_text(selected_text)
                 .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut style.overlay.overlay_type,
+                        OverlayType::Zones,
+                        "Zones",
+                    );
                     ui.selectable_value(
                         &mut style.overlay.overlay_type,
                         OverlayType::HighlightedAreas,
@@ -420,6 +427,12 @@ impl MyContext {
                     );
                 });
             ui.collapsing("Feel", |ui|{
+                labeled_widget!(
+                    ui,
+                    unit_slider!(&mut style.overlay.feel.zone_edge_coverage, 0.0..=0.5, "%", 100.0),
+                    "Zone edge coverage",
+                    "how much of a leaf the band along each edge covers, with the Zones overlay."
+                );
                 labeled_widget!(
                     ui,
                     unit_slider!(&mut style.overlay.feel.center_drop_coverage, 0.0..=1.0, "%", 100.0),

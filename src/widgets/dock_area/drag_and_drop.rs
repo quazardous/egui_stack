@@ -8,7 +8,7 @@ use egui::{
 };
 
 use crate::{
-    AllowedSplits, DockPainter, DropButtonPaint, DropPaint, DropRefusal, DropTargetPaint,
+    AllowedSplits, DockPainter, DropButtonPaint, DropPaint, DropRefusal, DropTargetPaint, DropZone,
     NodeIndex, NodePath, Split, Style, SurfaceIndex, TabDestination, TabInsert, TabPath,
 };
 
@@ -22,6 +22,10 @@ pub(super) struct HoverData {
 
     /// If a tab title or the tab head is hovered, this is the rect of it.
     pub tab: Option<Rect>,
+
+    /// Whether the pointer is outside the dock, over none of its surfaces: with
+    /// [`OverlayType::Zones`](crate::OverlayType::Zones), a drop there opens a new window.
+    pub outside: bool,
 }
 
 /// Specifies the location of a tab on the tree, used when moving tabs.
@@ -217,6 +221,48 @@ impl DragDropState {
         };
         self.update_lock(target_lock_state, style, ui.ctx());
         destination
+    }
+
+    /// Resolves the destination from the zone of the hovered node under the pointer
+    /// ([`DropZone::at`]), or a new window outside the dock; the preview, which shows the zone,
+    /// is left to the caller.
+    pub(super) fn resolve_zones(
+        &mut self,
+        ui: &Ui,
+        style: &Style,
+        painter: &dyn DockPainter,
+        allowed_splits: AllowedSplits,
+        windows_allowed: bool,
+    ) -> Option<TabDestination> {
+        assert!(!self.is_on_title_bar());
+
+        if self.hover.outside {
+            self.update_lock(LockState::Unlocked, style, ui.ctx());
+            return windows_allowed.then(|| {
+                TabDestination::Window(Rect::from_min_size(self.pointer, self.drag.rect.size()))
+            });
+        }
+        // If windows are not allowed, any hover over a window is immediately disallowed.
+        if !windows_allowed && !self.hover.dst.surface_address().is_main() {
+            return None;
+        }
+        draw_highlight_rect(self.hover.rect, ui, style, painter);
+        self.update_lock(LockState::SoftLock, style, ui.ctx());
+
+        let zone = DropZone::at(
+            self.hover.rect,
+            self.pointer,
+            style.overlay.feel.zone_edge_coverage,
+            allowed_splits,
+        );
+        match self.hover.dst {
+            TreeComponent::Surface(surface) => Some(TabDestination::EmptySurface(surface)),
+            TreeComponent::Node(path) => Some(TabDestination::Node(
+                path,
+                zone.split().map_or(TabInsert::Append, TabInsert::Split),
+            )),
+            TreeComponent::Tab(_) => Some(self.hover.dst.as_tab_destination()),
+        }
     }
 
     /// Resolves the destination from where the pointer is in the hovered node, painting the
