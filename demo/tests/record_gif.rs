@@ -31,7 +31,8 @@ impl Recorder<'_> {
         self.harness.hover_at(self.pointer);
         self.harness.step();
         self.harness.step();
-        let image = self.harness.render().expect("a rendered frame");
+        let mut image = self.harness.render().expect("a rendered frame");
+        make_opaque(&mut image);
         match self.frames.last_mut() {
             Some((last, count)) if *last == image => *count += 1,
             _ => self.frames.push((image, 1)),
@@ -153,6 +154,22 @@ fn record_demo_gif() {
         frame.dispose = gif::DisposalMethod::Keep;
         encoder.write_frame(&frame).expect("the GIF is written");
         previous = Some(image);
+    }
+}
+
+/// Lays `image` over the panels' fill. The render leaves the screen's margin around the
+/// central panel transparent, and a GIF frame drawn with `DisposalMethod::Keep` shows the
+/// previous frame through its transparent pixels: a ghost dragged over the margin would stay
+/// there in every later frame.
+fn make_opaque(image: &mut RgbaImage) {
+    let fill = egui::Visuals::dark().panel_fill;
+    for pixel in image.pixels_mut() {
+        let alpha = u16::from(pixel[3]);
+        for (channel, background) in pixel.0[..3].iter_mut().zip([fill.r(), fill.g(), fill.b()]) {
+            *channel =
+                ((u16::from(*channel) * alpha + u16::from(background) * (255 - alpha)) / 255) as u8;
+        }
+        pixel[3] = 255;
     }
 }
 
