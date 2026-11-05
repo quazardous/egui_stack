@@ -1,5 +1,12 @@
 # egui_stack changelog
 
+## egui_stack 0.24.0 - 2026-11-05
+
+### Breaking changes
+
+- A grid container: `Node::Grid(GridNode)` lays out two or more children in rows and columns, row by row, with `GridLayout::Auto` (as many columns as the square root of the number of children, rounded up, the rule of egui_tiles' grid) or `GridLayout::Columns(n)`. Each column and each row has a share; a separator on each column line and each row line resizes the two beside it, by drag, by the arrow keys (Enter evens them) and by assistive technology, as a linear node's separators do. `Tree::arrange_as_grid` turns a row or a column into a grid and `Tree::arrange_as_linear` turns a grid back into a row or a column. A drop on the edge of a leaf inside a grid, or `Tree::split` on it, adds the new view to the grid next to the leaf, and `Tree::insert_child` adds a view to a grid at run time. A grid emptied down to one child gives way to it, an empty one is removed, and grids are saved and loaded with the `serde` feature. `Node` and `GridLayout` are now `#[non_exhaustive]`, so later container kinds will not break callers. Migration: a `match` on `Node` outside the crate needs a wildcard arm (`_ => ...`), which also covers `Node::Grid`; use `Node::children` to walk any container.
+- The tree's splits are n-ary: `Node::Linear(LinearNode)` lays out two or more children in a row or a column, each with a share, and replaces `Node::Horizontal` and `Node::Vertical`. Splitting a leaf along its parent's direction, by a drop or by `Tree::split`, adds it to that row or column instead of nesting a split, and the separator between two neighbours resizes those two only (the model follows egui_tiles). `Tree::insert_child` adds a node to a row or column, `Tree::parent` and `Node::children` walk the tree, and node indices stay stable as the tree changes, except for the root, always at index 0. Trees saved by earlier versions load with the same layout, nested splits of one direction joined into one row or column. Migration: match `Node::Linear(linear)` instead of `Node::Horizontal(split)` or `Node::Vertical(split)`, with `linear.dir` for the direction and `linear.boundary(0)` for a two-child split's former `fraction`; `SplitNode`, `Node::split`, and the heap arithmetic `NodeIndex::{left, right, parent, level, is_left, is_right}` and `NodePath::{left_node, right_node}` are gone: use the indices `Tree::split` returns, `Tree::parent` and `Node::children`.
+
 ## egui_stack 0.23.0 - 2026-11-05
 
 ### Breaking changes
