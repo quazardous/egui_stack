@@ -41,17 +41,21 @@ pub trait DockPainter {
     }
 
     /// A tab bar's background, painted before its tabs.
+    ///
+    /// Only its top corners are rounded: its bottom edge joins the body below it.
     fn tab_bar(&self, painter: &Painter, bar: &TabBarPaint<'_>) {
         painter.rect_filled(
             bar.rect,
-            bar.style.tab_bar.corner_radius,
+            square_bottom(bar.style.tab_bar.corner_radius),
             bar.style.tab_bar.bg_fill,
         );
     }
 
     /// A tab, with its title and its close button if it has one.
     ///
-    /// A dragged tab is painted on a layer of its own, moved with the pointer.
+    /// A dragged tab is painted on a layer of its own, moved with the pointer. A tab in its bar
+    /// has square bottom corners, where it joins the body below it; a dragged tab keeps all its
+    /// corners rounded.
     fn tab(&self, painter: &Painter, tab: &TabPaint<'_>) {
         let state = tab.state;
         let selected = state.contains(PartState::SELECTED) || state.contains(PartState::DRAGGED);
@@ -78,13 +82,18 @@ pub trait DockPainter {
             &tab_style.inactive
         };
         let rect = tab.rect;
+        let corner_radius = if dragged {
+            look.corner_radius
+        } else {
+            square_bottom(look.corner_radius)
+        };
 
         // The whole tab first, then its outline over it, so that they do not mix.
-        painter.rect_filled(rect, look.corner_radius, look.bg_fill);
+        painter.rect_filled(rect, corner_radius, look.bg_fill);
         let stroke_rect = rect_stroke_box(rect, 1.0);
         painter.rect_stroke(
             stroke_rect,
-            look.corner_radius,
+            corner_radius,
             Stroke::new(1.0_f32, look.outline_color),
             StrokeKind::Inside,
         );
@@ -92,8 +101,8 @@ pub trait DockPainter {
             // Joins the tab to its body.
             painter.hline(
                 RangeInclusive::new(
-                    stroke_rect.min.x + f32::max(look.corner_radius.sw.into(), 1.5),
-                    stroke_rect.max.x - f32::max(look.corner_radius.se.into(), 1.5),
+                    stroke_rect.min.x + f32::max(corner_radius.sw.into(), 1.5),
+                    stroke_rect.max.x - f32::max(corner_radius.se.into(), 1.5),
                 ),
                 stroke_rect.bottom(),
                 Stroke::new(2.0_f32, look.bg_fill),
@@ -121,10 +130,10 @@ pub trait DockPainter {
             let lit = close.state.contains(PartState::HOVERED)
                 || close.state.contains(PartState::FOCUSED);
             if lit {
-                let mut corner_radius = look.corner_radius;
-                corner_radius.nw = 0;
-                corner_radius.sw = 0;
-                painter.rect_filled(close.rect, corner_radius, buttons.close_tab_bg_fill);
+                let mut close_radius = corner_radius;
+                close_radius.nw = 0;
+                close_radius.sw = 0;
+                painter.rect_filled(close.rect, close_radius, buttons.close_tab_bg_fill);
             }
             let color = if lit {
                 buttons.close_tab_active_color
@@ -934,4 +943,22 @@ pub struct ToolSeparatorPaint<'a> {
     pub vertical: bool,
     /// The style of the [`Ui`](egui::Ui) the row is in.
     pub style: &'a egui::Style,
+}
+
+/// `radius` with its bottom corners square, for a part whose bottom edge joins the part below it.
+pub(crate) fn square_bottom(radius: CornerRadius) -> CornerRadius {
+    CornerRadius {
+        sw: 0,
+        se: 0,
+        ..radius
+    }
+}
+
+/// `radius` with its top corners square, for a part whose top edge joins the part above it.
+pub(crate) fn square_top(radius: CornerRadius) -> CornerRadius {
+    CornerRadius {
+        nw: 0,
+        ne: 0,
+        ..radius
+    }
 }

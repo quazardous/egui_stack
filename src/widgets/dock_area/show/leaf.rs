@@ -18,6 +18,7 @@ use crate::{
         state::State,
     },
     utils::{fade_visuals, rect_set_size_centered, rect_stroke_box},
+    widgets::painter::square_top,
 };
 
 fn tab_body_id(dock_area_id: Id, path: NodePath, tab_id: Id) -> Id {
@@ -1367,6 +1368,7 @@ impl<Tab> DockArea<'_, Tab> {
             .dock_state
             .leaf_mut(path)
             .expect("This node must be a leaf");
+        let tab_bar_shown = !(self.hidable_tab_bars && leaf.tab_bar_hidden);
         let LeafNode {
             rect,
             viewport,
@@ -1393,13 +1395,16 @@ impl<Tab> DockArea<'_, Tab> {
             let tabs_styles = tab_viewer.tab_style_override(tab, &style.tab);
 
             let tabs_style = tabs_styles.as_ref().unwrap_or(&style.tab);
+            // Under its tab bar, the body's top corners are square: they join the bar.
+            let body_radius = if tab_bar_shown {
+                square_top(tabs_style.tab_body.corner_radius)
+            } else {
+                tabs_style.tab_body.corner_radius
+            };
 
             if tab_viewer.clear_background(tab) {
-                ui.painter().rect_filled(
-                    body_rect,
-                    tabs_style.tab_body.corner_radius,
-                    tabs_style.tab_body.bg_fill,
-                );
+                ui.painter()
+                    .rect_filled(body_rect, body_radius, tabs_style.tab_body.bg_fill);
             }
 
             // Construct a new ui with the correct tab id.
@@ -1429,7 +1434,7 @@ impl<Tab> DockArea<'_, Tab> {
             );
             ui.painter().rect_stroke(
                 rect_stroke_box(tab_body_rect, tabs_style.tab_body.stroke.width),
-                tabs_style.tab_body.corner_radius,
+                body_radius,
                 tabs_style.tab_body.stroke,
                 StrokeKind::Inside,
             );
