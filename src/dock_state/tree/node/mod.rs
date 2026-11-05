@@ -11,8 +11,12 @@ pub use leaf::LeafNode;
 pub use linear::{LinearDir, LinearNode};
 
 /// Represents an abstract node of a [`Tree`](crate::Tree).
+///
+/// More kinds of containers may come: the enum is `#[non_exhaustive]`, so a `match` outside
+/// this crate needs a wildcard arm, and [`Node::children`] walks any container.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[non_exhaustive]
 pub enum Node<Tab> {
     /// Empty node.
     Empty,
