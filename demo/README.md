@@ -3,8 +3,9 @@
 A dock to play with: tabs to drag between leaves, into the edge bands that split them and out
 into floating windows; a toolbar to switch the drop overlay (drop zones, the cross, highlighted
 areas), set the width of the edge bands, arrange the focused leaf's row, column or grid, open
-windows, save and restore the layout, and inspect a part of the dock (Ctrl+Shift+F12): a side
-panel says what it is and which `Style` fields drew it, with a Copy button for bug reports.
+windows, save and restore the layout, outline the focused leaf with a custom `DockPainter`, and
+inspect a part of the dock (Ctrl+Shift+F12): a side panel says what it is and which `Style`
+fields drew it, with a Copy button for bug reports.
 
 It is a separate crate, not published, so that its dependencies (the web ones included) are not
 the library's.
