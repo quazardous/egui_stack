@@ -228,17 +228,23 @@ impl Picker {
     }
 }
 
-/// egui's own inspection: debug on hover, then its inspection panel.
+/// egui's own inspection: debug on hover (egui has it in debug builds only), then its
+/// inspection panel.
 fn egui_view(ui: &mut Ui) {
     let ctx = ui.ctx().clone();
-    let mut debug_on_hover = ctx.debug_on_hover();
-    if ui
-        .checkbox(&mut debug_on_hover, "Debug on hover")
-        .on_hover_text("Outline the widget under the pointer and say how egui laid it out")
-        .changed()
+    #[cfg(debug_assertions)]
     {
-        ctx.set_debug_on_hover(debug_on_hover);
+        let mut debug_on_hover = ctx.debug_on_hover();
+        if ui
+            .checkbox(&mut debug_on_hover, "Debug on hover")
+            .on_hover_text("Outline the widget under the pointer and say how egui laid it out")
+            .changed()
+        {
+            ctx.set_debug_on_hover(debug_on_hover);
+        }
     }
+    #[cfg(not(debug_assertions))]
+    ui.weak("Debug on hover is in egui's debug builds only.");
     ui.separator();
     ScrollArea::vertical().show(ui, |ui| ctx.inspection_ui(ui));
 }
