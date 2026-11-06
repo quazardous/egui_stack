@@ -65,6 +65,9 @@ The demo, a separate crate in [`demo/`](demo), runs natively with `cargo run -p 
 [`demo/build-web.sh`](demo/build-web.sh) builds it into `demo/dist`. The [online demo](https://quazardous.github.io/egui_stack/)
 is rebuilt on each push to the main branch.
 
+Its Inspect button (Ctrl+Shift+F12) picks a part of the dock (a tab, a tab bar, a body, a separator) and says what it is
+and which `Style` fields drew it, with a Copy button for bug reports; a second view holds egui's own inspection.
+
 ## Alternatives
 
 ### [egui_tiles](https://github.com/rerun-io/egui_tiles)

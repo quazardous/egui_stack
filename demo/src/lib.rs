@@ -4,12 +4,16 @@
 //! adds the tab to the leaf's tabs, and outside the dock the tab opens in a window. The
 //! toolbar switches the overlay, sets the width of the edge bands, arranges the focused
 //! leaf's container as a grid, a row or a column, opens windows, and saves and restores the
-//! layout.
+//! layout. Its Inspect button picks a part of the dock and says what it is (see [`picker`]).
 
-use egui::{Color32, Id, Panel, RichText, Slider, Stroke, Ui, WidgetText, pos2, vec2};
+use egui::{Color32, Id, Panel, Rect, RichText, Slider, Stroke, Ui, WidgetText, pos2, vec2};
 use egui_stack::{
     DockArea, DockState, GridLayout, LinearDir, NodeIndex, NodePath, OverlayType, Style, TabViewer,
 };
+
+pub mod picker;
+
+use picker::Picker;
 
 /// The demo's state: the dock, the tabs' contents and the toolbar's settings.
 pub struct DemoApp {
@@ -21,6 +25,8 @@ pub struct DemoApp {
     pub overlay_type: OverlayType,
     /// The share of a leaf the band along each of its edges covers, with the zones overlay.
     pub zone_edge_coverage: f32,
+    /// The inspection picker and its panel.
+    pub picker: Picker,
     saved: Option<String>,
     status: String,
     opened: usize,
@@ -31,6 +37,8 @@ pub struct Tabs {
     notes: String,
     code: String,
     add_request: Option<NodePath>,
+    /// The tab buttons' rects of the frame, which the picker hit-tests.
+    tab_rects: Vec<(String, Rect)>,
 }
 
 impl Default for DemoApp {
@@ -44,9 +52,11 @@ impl Default for DemoApp {
                         .to_owned(),
                 code: "fn main() {\n    println!(\"Hello, docking!\");\n}\n".to_owned(),
                 add_request: None,
+                tab_rects: Vec::new(),
             },
             overlay_type: OverlayType::Zones,
             zone_edge_coverage: Style::default().overlay.feel.zone_edge_coverage,
+            picker: Picker::default(),
             saved: None,
             status: String::new(),
             opened: 0,
@@ -74,16 +84,27 @@ fn initial_layout() -> DockState<String> {
 impl DemoApp {
     /// Shows the toolbar and the dock in `ui`.
     pub fn show(&mut self, ui: &mut Ui) {
+        self.picker.keys(ui);
         Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
+        self.picker.panel(ui);
 
         let mut style = Style::from_egui(ui.style());
         style.overlay.overlay_type = self.overlay_type;
         style.overlay.feel.zone_edge_coverage = self.zone_edge_coverage;
+        let dock_rect = ui.available_rect_before_wrap();
+        self.tabs.tab_rects.clear();
         DockArea::new(&mut self.dock_state)
-            .style(style)
+            .style(style.clone())
             .show_add_buttons(true)
             .show_leaf_collapse_buttons(true)
             .show_inside(ui, &mut self.tabs);
+        self.picker.after_dock(
+            ui,
+            dock_rect,
+            &self.dock_state,
+            &self.tabs.tab_rects,
+            &style,
+        );
 
         // A leaf's add button (`on_add`) asks for a tab here.
         if let Some(path) = self.tabs.add_request.take() {
@@ -149,6 +170,9 @@ impl DemoApp {
                 let tab = format!("Tab {}", self.opened);
                 self.dock_state.add_window(vec![tab]);
             }
+
+            ui.separator();
+            self.picker.button(ui);
 
             ui.separator();
             if ui.button("Save layout").clicked() {
@@ -249,6 +273,10 @@ impl TabViewer for Tabs {
         }
     }
 
+    fn on_tab_button(&mut self, tab: &mut String, response: &egui::Response) {
+        self.tab_rects.push((tab.clone(), response.rect));
+    }
+
     fn on_add(&mut self, path: NodePath) {
         self.add_request = Some(path);
     }
@@ -265,6 +293,8 @@ fn guide(ui: &mut Ui) {
         "Click a leaf, then Arrange: its row becomes a grid, a column, or a row again.",
         "Switch the overlay to the cross (egui_dock's former default) or highlighted areas.",
         "Save the layout, change it, then restore it.",
+        "Inspect (Ctrl+Shift+F12), then point at a part of the dock: a panel says what it is \
+         and which style fields drew it.",
     ] {
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new("•").strong());
