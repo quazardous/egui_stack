@@ -19,13 +19,13 @@ clip [[32.0 8.0] - [352.0 32.0]]
 clip [[32.0 8.0] - [352.0 32.0]]
   Rect(RectShape { rect: [[97.3 8.0] - [179.7 32.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #12_12_12_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[32.0 8.0] - [352.0 32.0]]
+  Rect(RectShape { rect: [[155.7 8.0] - [179.7 32.0]], corner_radius: CornerRadius { nw: 0, ne: 6, sw: 0, se: 0 }, fill: #46_46_46_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[32.0 8.0] - [352.0 32.0]]
   Rect(RectShape { rect: [[98.3 9.0] - [178.7 31.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #96_96_96_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[32.0 8.0] - [352.0 32.0]]
   LineSegment { points: [[99.8 31.0], [177.2 31.0]], stroke: Stroke { width: 2.0, color: #12_12_12_FF } }
 clip [[32.0 8.0] - [352.0 32.0]]
   Text "Second" at [105.3 12.5] size [42.4 15.0] fallback #FF_FF_FF_FF override None opacity 1.0
-clip [[32.0 8.0] - [352.0 32.0]]
-  Rect(RectShape { rect: [[155.7 8.0] - [179.7 32.0]], corner_radius: CornerRadius { nw: 0, ne: 6, sw: 0, se: 0 }, fill: #46_46_46_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[32.0 8.0] - [352.0 32.0]]
   LineSegment { points: [[163.2 15.5], [172.2 24.5]], stroke: Stroke { width: 1.0, color: #FF_FF_FF_FF } }
 clip [[32.0 8.0] - [352.0 32.0]]

@@ -109,9 +109,9 @@ clip [[0.0 0.0] - [800.0 400.0]]
 clip [[0.0 0.0] - [800.0 400.0]]
   Rect(RectShape { rect: [[401.0 8.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_2E_40_80, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[563.8 208.0] - [883.8 232.0]]
-  Rect(RectShape { rect: [[563.8 208.0] - [629.2 232.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+  Rect(RectShape { rect: [[563.8 208.0] - [629.2 232.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[563.8 208.0] - [883.8 232.0]]
-  Rect(RectShape { rect: [[564.8 209.0] - [628.2 231.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+  Rect(RectShape { rect: [[564.8 209.0] - [628.2 231.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[563.8 208.0] - [883.8 232.0]]
   Text "First" at [571.8 212.5] size [25.3 15.0] fallback #FF_FF_FF_FF override None opacity 1.0
 clip [[563.8 208.0] - [883.8 232.0]]

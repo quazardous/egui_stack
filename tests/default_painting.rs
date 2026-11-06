@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use egui::epaint::ClippedShape;
 
 use egui::{Id, Pos2, Rect, Shape, Ui, WidgetText, pos2, vec2};
-use egui_kittest::Harness;
+use egui_kittest::{Harness, kittest::Queryable as _};
 use egui_stack::{
     DockArea, DockState, NodeIndex, OverlayType, Style, TabDestination, TabViewer,
     tab_viewer::DropVerdict,
@@ -202,6 +202,51 @@ fn tabs_at_rest_and_hovered() {
     harness.hover_at(pos2(second.right() - 8.0, second.center().y));
     harness.run();
     check("close_hovered", &harness);
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn tab_focused() {
+    let mut harness = scene(false, OverlayType::Widgets);
+    let third = tab_rect(&harness, "Third");
+    harness.hover_at(third.center());
+    harness.step();
+    harness.drag_at(third.center());
+    harness.step();
+    harness.drop_at(third.center());
+    harness.run();
+    assert!(harness.state().dock_state.focused_leaf().is_some());
+    check("tab_focused", &harness);
+}
+
+/// A folded leaf shows only its tab bar, with no body below it: the bar and its tabs are
+/// rounded at the bottom too.
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn leaf_folded() {
+    let mut harness = scene(false, OverlayType::Widgets);
+    let collapse = harness
+        .get_all_by_label("Collapse")
+        .map(|button| button.rect())
+        .max_by(|a, b| a.left().total_cmp(&b.left()))
+        .unwrap();
+    harness.hover_at(collapse.center());
+    harness.step();
+    harness.drag_at(collapse.center());
+    harness.step();
+    harness.drop_at(collapse.center());
+    // Away from the button, so that it is painted at rest.
+    harness.hover_at(pos2(1.0, 1.0));
+    harness.run();
+    assert!(
+        harness.state().dock_state.main_surface()[NodeIndex(2)].is_collapsed(),
+        "the leaf holding Third is folded"
+    );
+    check("leaf_folded", &harness);
+    // The collapse button's highlight, at the bar's left end, keeps to its rounded corners.
+    harness.hover_at(collapse.center());
+    harness.run();
+    check("collapse_hovered_folded", &harness);
 }
 
 #[test]

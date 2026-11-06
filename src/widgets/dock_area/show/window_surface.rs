@@ -7,6 +7,7 @@ use crate::{
     DockArea, NodeIndex, Style, SurfaceIndex, TabViewer,
     dock_area::{state::State, tab_removal::TabRemoval},
     utils::{fade_visuals, rect_set_size_centered},
+    widgets::painter::{Attached, corners_within},
 };
 
 impl<Tab> DockArea<'_, Tab> {
@@ -141,12 +142,11 @@ impl<Tab> DockArea<'_, Tab> {
                 vec2(Style::TAB_EXPAND_BUTTON_SIZE, style.tab_bar.height),
                 Sense::hover(),
             );
-            ui.painter().rect_filled(
-                tabbar_outer_rect,
-                style.tab_bar.corner_radius,
-                style.tab_bar.bg_fill,
-            );
-            self.window_expand(ui, surface_index, tabbar_outer_rect, fade_style);
+            // A minimized window shows only this bar: nothing is below it.
+            let bar_radius = Attached::Nothing.corner_radius(style.tab_bar.corner_radius);
+            ui.painter()
+                .rect_filled(tabbar_outer_rect, bar_radius, style.tab_bar.bg_fill);
+            self.window_expand(ui, surface_index, tabbar_outer_rect, fade_style, bar_radius);
             ui.label(title);
             if tab_count > 1 {
                 ui.label(
@@ -165,6 +165,7 @@ impl<Tab> DockArea<'_, Tab> {
         surface_index: SurfaceIndex,
         tabbar_outer_rect: Rect,
         fade_style: Option<&Style>,
+        bar_radius: CornerRadius,
     ) {
         let rect = tabbar_outer_rect;
 
@@ -191,7 +192,7 @@ impl<Tab> DockArea<'_, Tab> {
         let color = if response.hovered() || response.has_focus() {
             ui.painter().rect_filled(
                 rect,
-                CornerRadius::ZERO,
+                corners_within(rect, tabbar_outer_rect, bar_radius),
                 style.buttons.minimize_window_bg_fill,
             );
             style.buttons.minimize_window_active_color

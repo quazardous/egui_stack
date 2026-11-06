@@ -18,7 +18,7 @@ use crate::{
         state::State,
     },
     utils::{fade_visuals, rect_set_size_centered, rect_stroke_box},
-    widgets::painter::square_top,
+    widgets::painter::{Attached, corners_within},
 };
 
 fn tab_body_id(dock_area_id: Id, path: NodePath, tab_id: Id) -> Id {
@@ -230,11 +230,22 @@ impl<Tab> DockArea<'_, Tab> {
             Sense::hover(),
         );
         let scrolled = 0.0 - self.dock_state.leaf(path).map_or(0.0, |leaf| leaf.scroll);
+        // The bar's outline, which the highlights of its buttons keep to at its corners.
+        let attached = if collapsed {
+            Attached::Nothing
+        } else {
+            Attached::Below
+        };
+        let bar = (
+            tabbar_outer_rect,
+            attached.corner_radius(style.tab_bar.corner_radius),
+        );
         self.painter.tab_bar(
             ui.painter(),
             &TabBarPaint {
                 rect: tabbar_outer_rect,
                 scrolled,
+                folded: collapsed,
                 style,
             },
         );
@@ -310,6 +321,7 @@ impl<Tab> DockArea<'_, Tab> {
                 tabbar_outer_rect,
                 prefered_width,
                 fade_style,
+                collapsed,
             );
 
             // The rest of the bar, right of the tabs.
@@ -326,6 +338,7 @@ impl<Tab> DockArea<'_, Tab> {
                 &TabBarTailPaint {
                     rect: tail,
                     bar: tabbar_outer_rect,
+                    folded: collapsed,
                     style,
                 },
             );
@@ -342,7 +355,15 @@ impl<Tab> DockArea<'_, Tab> {
                 } else {
                     0.0
                 };
-                self.tab_plus(ui, path, tab_viewer, tabbar_outer_rect, offset, fade_style);
+                self.tab_plus(
+                    ui,
+                    path,
+                    tab_viewer,
+                    tabbar_outer_rect,
+                    offset,
+                    fade_style,
+                    bar,
+                );
             }
 
             if self.show_leaf_close_all_buttons {
@@ -368,11 +389,12 @@ impl<Tab> DockArea<'_, Tab> {
                     fade_style,
                     disabled,
                     close_window_disabled,
+                    bar,
                 )
             }
 
             if self.show_leaf_collapse_buttons {
-                self.tab_collapse(ui, path, tabbar_outer_rect, fade_style, collapsed)
+                self.tab_collapse(ui, path, tabbar_outer_rect, fade_style, collapsed, bar)
             }
 
             (tabs_ui.min_rect().width(), tab_hovered)
@@ -403,6 +425,7 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_outer_rect: Rect,
         preferred_width: Option<f32>,
         fade: Option<&Style>,
+        folded: bool,
     ) -> bool {
         let mut tab_hovered = false;
 
@@ -466,6 +489,7 @@ impl<Tab> DockArea<'_, Tab> {
                             preferred_width,
                             show_close_button,
                             fade,
+                            folded,
                         )
                     })
                     .response;
@@ -495,6 +519,7 @@ impl<Tab> DockArea<'_, Tab> {
                     preferred_width,
                     show_close_button,
                     fade,
+                    folded,
                 );
                 let title_id = response.id;
                 let close_clicked = close_response.is_some_and(|res| res.clicked());
@@ -664,6 +689,7 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_outer_rect: Rect,
         offset: f32,
         fade_style: Option<&Style>,
+        bar: (Rect, CornerRadius),
     ) {
         let rect = Rect::from_min_max(
             tabbar_outer_rect.right_top() - vec2(Style::TAB_ADD_BUTTON_SIZE + offset, 0.0),
@@ -685,8 +711,11 @@ impl<Tab> DockArea<'_, Tab> {
 
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
         let color = if response.hovered() || response.has_focus() {
-            ui.painter()
-                .rect_filled(rect, CornerRadius::ZERO, style.buttons.add_tab_bg_fill);
+            ui.painter().rect_filled(
+                rect,
+                corners_within(rect, bar.0, bar.1),
+                style.buttons.add_tab_bg_fill,
+            );
             style.buttons.add_tab_active_color
         } else {
             style.buttons.add_tab_color
@@ -741,6 +770,7 @@ impl<Tab> DockArea<'_, Tab> {
         fade_style: Option<&Style>,
         disabled: bool,
         close_window_disabled: bool,
+        bar: (Rect, CornerRadius),
     ) {
         let rect = Rect::from_min_max(
             tabbar_outer_rect.right_top() - vec2(Style::TAB_CLOSE_ALL_BUTTON_SIZE, 0.0),
@@ -775,7 +805,7 @@ impl<Tab> DockArea<'_, Tab> {
             if !(close_window_disabled && on_secondary_button) {
                 ui.painter().rect_filled(
                     rect,
-                    CornerRadius::ZERO,
+                    corners_within(rect, bar.0, bar.1),
                     style.buttons.close_all_tabs_bg_fill,
                 );
             }
@@ -884,6 +914,7 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_outer_rect: Rect,
         fade_style: Option<&Style>,
         collapsed: bool,
+        bar: (Rect, CornerRadius),
     ) {
         let rect = Rect::from_min_max(
             tabbar_outer_rect.left_top(),
@@ -921,7 +952,7 @@ impl<Tab> DockArea<'_, Tab> {
         let color = if response.hovered() || response.has_focus() {
             ui.painter().rect_filled(
                 rect,
-                CornerRadius::ZERO,
+                corners_within(rect, bar.0, bar.1),
                 style.buttons.collapse_tabs_bg_fill,
             );
             style.buttons.collapse_tabs_active_color
@@ -1169,6 +1200,7 @@ impl<Tab> DockArea<'_, Tab> {
         preferred_width: Option<f32>,
         show_close_button: bool,
         fade: Option<&Style>,
+        folded: bool,
     ) -> (Response, Option<Response>) {
         let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
         let galley = label.into_galley(ui, None, f32::INFINITY, TextStyle::Button);
@@ -1250,6 +1282,7 @@ impl<Tab> DockArea<'_, Tab> {
                 title: &galley,
                 state,
                 close,
+                folded,
                 style,
                 tab_style,
             },
@@ -1397,7 +1430,7 @@ impl<Tab> DockArea<'_, Tab> {
             let tabs_style = tabs_styles.as_ref().unwrap_or(&style.tab);
             // Under its tab bar, the body's top corners are square: they join the bar.
             let body_radius = if tab_bar_shown {
-                square_top(tabs_style.tab_body.corner_radius)
+                Attached::Above.corner_radius(tabs_style.tab_body.corner_radius)
             } else {
                 tabs_style.tab_body.corner_radius
             };
