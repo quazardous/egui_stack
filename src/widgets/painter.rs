@@ -42,20 +42,28 @@ pub trait DockPainter {
 
     /// A tab bar's background, painted before its tabs.
     ///
-    /// Only its top corners are rounded: its bottom edge joins the body below it.
+    /// Its bottom corners are square where its bottom edge joins the body below it, and
+    /// rounded like its top ones when its leaf is folded ([`TabBarPaint::folded`]).
     fn tab_bar(&self, painter: &Painter, bar: &TabBarPaint<'_>) {
+        let attached = if bar.folded {
+            Attached::Nothing
+        } else {
+            Attached::Below
+        };
         painter.rect_filled(
             bar.rect,
-            square_bottom(bar.style.tab_bar.corner_radius),
+            attached.corner_radius(bar.style.tab_bar.corner_radius),
             bar.style.tab_bar.bg_fill,
         );
     }
 
     /// A tab, with its title and its close button if it has one.
     ///
-    /// A dragged tab is painted on a layer of its own, moved with the pointer. A tab in its bar
-    /// has square bottom corners, where it joins the body below it; a dragged tab keeps all its
-    /// corners rounded.
+    /// A dragged tab is painted on a layer of its own, moved with the pointer. Whatever its
+    /// state (hovered, selected, focused), a tab in its bar has square bottom corners, where it
+    /// joins the body below it; a dragged tab, or one in the bar of a folded leaf
+    /// ([`TabPaint::folded`]), has nothing below it and its bottom corners are rounded like its
+    /// top ones. The close button's highlight follows the tab's right corners.
     fn tab(&self, painter: &Painter, tab: &TabPaint<'_>) {
         let state = tab.state;
         let selected = state.contains(PartState::SELECTED) || state.contains(PartState::DRAGGED);
@@ -82,14 +90,26 @@ pub trait DockPainter {
             &tab_style.inactive
         };
         let rect = tab.rect;
-        let corner_radius = if dragged {
-            look.corner_radius
+        let attached = if dragged || tab.folded {
+            Attached::Nothing
         } else {
-            square_bottom(look.corner_radius)
+            Attached::Below
         };
+        let corner_radius = attached.corner_radius(look.corner_radius);
 
-        // The whole tab first, then its outline over it, so that they do not mix.
+        // The whole tab first, its close button's highlight, then its outline over them, so
+        // that they do not mix.
         painter.rect_filled(rect, corner_radius, look.bg_fill);
+        if let Some(close) = tab.close
+            && (close.state.contains(PartState::HOVERED)
+                || close.state.contains(PartState::FOCUSED))
+        {
+            painter.rect_filled(
+                close.rect,
+                corners_within(close.rect, rect, corner_radius),
+                tab.style.buttons.close_tab_bg_fill,
+            );
+        }
         let stroke_rect = rect_stroke_box(rect, 1.0);
         painter.rect_stroke(
             stroke_rect,
@@ -97,7 +117,7 @@ pub trait DockPainter {
             Stroke::new(1.0_f32, look.outline_color),
             StrokeKind::Inside,
         );
-        if !dragged {
+        if attached == Attached::Below {
             // Joins the tab to its body.
             painter.hline(
                 RangeInclusive::new(
@@ -129,12 +149,6 @@ pub trait DockPainter {
             let buttons = &tab.style.buttons;
             let lit = close.state.contains(PartState::HOVERED)
                 || close.state.contains(PartState::FOCUSED);
-            if lit {
-                let mut close_radius = corner_radius;
-                close_radius.nw = 0;
-                close_radius.sw = 0;
-                painter.rect_filled(close.rect, close_radius, buttons.close_tab_bg_fill);
-            }
             let color = if lit {
                 buttons.close_tab_active_color
             } else {
@@ -152,8 +166,9 @@ pub trait DockPainter {
             );
         }
 
-        // The line under the bar, under every tab but the selected one.
-        if !dragged && (!selected || tab_style.hline_below_active_tab_name) {
+        // The line under the bar, under every tab but the selected one: it parts the bar from
+        // the body, so none without one.
+        if attached == Attached::Below && (!selected || tab_style.hline_below_active_tab_name) {
             let px = painter.pixels_per_point().recip();
             painter.hline(
                 rect.x_range(),
@@ -164,8 +179,12 @@ pub trait DockPainter {
     }
 
     /// The part of a tab bar right of its last tab, painted after the tabs. Its rect is empty
-    /// when the tabs fill the bar.
+    /// when the tabs fill the bar. The default paints the line under the bar, which parts it
+    /// from the body: none when the leaf is folded.
     fn tab_bar_tail(&self, painter: &Painter, tail: &TabBarTailPaint<'_>) {
+        if tail.folded {
+            return;
+        }
         let px = painter.pixels_per_point().recip();
         painter.hline(
             tail.rect.x_range(),
@@ -698,6 +717,8 @@ pub struct TabBarPaint<'a> {
     pub rect: Rect,
     /// How far its tabs are scrolled to the left, in points: `0.0` when not scrolled.
     pub scrolled: f32,
+    /// Whether its leaf is folded: only the bar shows, with no body below it.
+    pub folded: bool,
     /// The dock's style.
     pub style: &'a Style,
 }
@@ -710,6 +731,8 @@ pub struct TabBarTailPaint<'a> {
     pub rect: Rect,
     /// The bar, inside its margins.
     pub bar: Rect,
+    /// Whether its leaf is folded: only the bar shows, with no body below it.
+    pub folded: bool,
     /// The dock's style.
     pub style: &'a Style,
 }
@@ -728,6 +751,8 @@ pub struct TabPaint<'a> {
     pub state: PartState,
     /// Its close button, if it shows one.
     pub close: Option<TabClose>,
+    /// Whether its leaf is folded: only the tab bar shows, with no body below it.
+    pub folded: bool,
     /// The dock's style.
     pub style: &'a Style,
     /// The tab's style, after [`TabViewer::tab_style_override`](crate::TabViewer::tab_style_override).
@@ -945,20 +970,62 @@ pub struct ToolSeparatorPaint<'a> {
     pub style: &'a egui::Style,
 }
 
-/// `radius` with its bottom corners square, for a part whose bottom edge joins the part below it.
-pub(crate) fn square_bottom(radius: CornerRadius) -> CornerRadius {
-    CornerRadius {
-        sw: 0,
-        se: 0,
-        ..radius
+/// What a part of a leaf (its tab bar, a tab, a close button, its body) is attached to, which
+/// says which of its corners are square: square only where something is attached.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Attached {
+    /// The leaf's body is below it: its bottom corners are square, to join it.
+    Below,
+    /// A tab bar is above it, as above a leaf's body: its top corners are square, to join it.
+    Above,
+    /// Nothing is below it (a folded leaf, a dragged tab): its bottom corners are rounded like
+    /// its top ones.
+    Nothing,
+}
+
+impl Attached {
+    /// The corners of a part styled with `radius` and attached so. A style gives the parts of
+    /// a tab bar their top corners (their bottom ones are usually square): a part with nothing
+    /// below it takes its top corners at the bottom too, unless its style rounds them more.
+    pub(crate) fn corner_radius(self, radius: CornerRadius) -> CornerRadius {
+        match self {
+            Self::Below => CornerRadius {
+                sw: 0,
+                se: 0,
+                ..radius
+            },
+            Self::Above => CornerRadius {
+                nw: 0,
+                ne: 0,
+                ..radius
+            },
+            Self::Nothing => CornerRadius {
+                sw: radius.sw.max(radius.nw),
+                se: radius.se.max(radius.ne),
+                ..radius
+            },
+        }
     }
 }
 
-/// `radius` with its top corners square, for a part whose top edge joins the part above it.
-pub(crate) fn square_top(radius: CornerRadius) -> CornerRadius {
+/// The corners of `part`, a piece of `outer` painted over it (a tab's close button, a tab
+/// bar's button) whose corners are `outer_radius`: a corner of `part` that lies on a corner
+/// of `outer` is rounded like it, so that it does not stick out of it; the others are square.
+pub(crate) fn corners_within(part: Rect, outer: Rect, outer_radius: CornerRadius) -> CornerRadius {
+    let near = |a: f32, b: f32| (a - b).abs() < 0.5;
+    let (top, bottom) = (
+        near(part.top(), outer.top()),
+        near(part.bottom(), outer.bottom()),
+    );
+    let (left, right) = (
+        near(part.left(), outer.left()),
+        near(part.right(), outer.right()),
+    );
+    let pick = |on: bool, radius: u8| if on { radius } else { 0 };
     CornerRadius {
-        nw: 0,
-        ne: 0,
-        ..radius
+        nw: pick(top && left, outer_radius.nw),
+        ne: pick(top && right, outer_radius.ne),
+        sw: pick(bottom && left, outer_radius.sw),
+        se: pick(bottom && right, outer_radius.se),
     }
 }
