@@ -4,11 +4,13 @@
 //! adds the tab to the leaf's tabs, and outside the dock the tab opens in a window. The
 //! toolbar switches the overlay, sets the width of the edge bands, arranges the focused
 //! leaf's container as a grid, a row or a column, opens windows, and saves and restores the
-//! layout. Its Inspect button picks a part of the dock and says what it is (see [`picker`]).
+//! layout. Its Inspect button picks a part of the dock and says what it is (see [`picker`]),
+//! and its Focus border toggle shows a custom [`DockPainter`] outlining the focused leaf.
 
 use egui::{Color32, Id, Panel, Rect, RichText, Slider, Stroke, Ui, WidgetText, pos2, vec2};
 use egui_stack::{
-    DockArea, DockState, GridLayout, LinearDir, NodeIndex, NodePath, OverlayType, Style, TabViewer,
+    DockArea, DockPainter, DockState, GridLayout, LinearDir, NodeIndex, NodePath, OverlayType,
+    PartState, Style, StylePainter, TabBodyPaint, TabViewer,
 };
 
 pub mod picker;
@@ -27,6 +29,8 @@ pub struct DemoApp {
     pub zone_edge_coverage: f32,
     /// The inspection picker and its panel.
     pub picker: Picker,
+    /// Whether the focused leaf's body is outlined, by [`FocusBorder`].
+    pub focus_border: bool,
     saved: Option<String>,
     status: String,
     opened: usize,
@@ -57,6 +61,7 @@ impl Default for DemoApp {
             overlay_type: OverlayType::Zones,
             zone_edge_coverage: Style::default().overlay.feel.zone_edge_coverage,
             picker: Picker::default(),
+            focus_border: false,
             saved: None,
             status: String::new(),
             opened: 0,
@@ -93,8 +98,14 @@ impl DemoApp {
         style.overlay.feel.zone_edge_coverage = self.zone_edge_coverage;
         let dock_rect = ui.available_rect_before_wrap();
         self.tabs.tab_rects.clear();
+        let painter: &(dyn DockPainter + Sync) = if self.focus_border {
+            &FocusBorder
+        } else {
+            &StylePainter
+        };
         DockArea::new(&mut self.dock_state)
             .style(style.clone())
+            .painter(painter)
             .show_add_buttons(true)
             .show_leaf_collapse_buttons(true)
             .show_inside(ui, &mut self.tabs);
@@ -172,6 +183,10 @@ impl DemoApp {
             }
 
             ui.separator();
+            ui.toggle_value(&mut self.focus_border, "Focus border")
+                .on_hover_text("Outline the focused leaf, with a custom DockPainter");
+
+            ui.separator();
             self.picker.button(ui);
 
             ui.separator();
@@ -215,6 +230,24 @@ impl DemoApp {
             surface: leaf.surface,
             node,
         })
+    }
+}
+
+/// A painter outlining the focused leaf's body in the selection colour; the rest as the style
+/// says. The style itself draws no border around the bodies.
+pub struct FocusBorder;
+
+impl DockPainter for FocusBorder {
+    fn tab_body(&self, painter: &egui::Painter, body: &TabBodyPaint<'_>) {
+        if body.state.contains(PartState::FOCUSED) {
+            let stroke = painter.ctx().global_style().visuals.selection.stroke;
+            painter.rect_stroke(
+                body.rect,
+                body.corner_radius,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+        }
     }
 }
 
@@ -293,6 +326,7 @@ fn guide(ui: &mut Ui) {
         "Click a leaf, then Arrange: its row becomes a grid, a column, or a row again.",
         "Switch the overlay to the cross (egui_dock's former default) or highlighted areas.",
         "Save the layout, change it, then restore it.",
+        "Focus border: a custom painter outlines the focused leaf, which no style field does.",
         "Inspect (Ctrl+Shift+F12), then point at a part of the dock: a panel says what it is \
          and which style fields drew it.",
     ] {
