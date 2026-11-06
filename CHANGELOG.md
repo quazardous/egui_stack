@@ -1,5 +1,11 @@
 # egui_stack changelog
 
+## egui_stack 0.24.2 - 2026-11-06
+
+### Added
+
+- The corners of a tab bar follow what is below it: a folded leaf, which shows only its tab bar, has its bar and tabs rounded at the bottom, with no line under them, and so does a dragged tab, while a bar over a body stays square at the bottom whatever the state of its tabs. The highlights of a tab's close button and of the bar's buttons (collapse, add, close all) are rounded where they meet a rounded corner of the tab or bar instead of sticking out square, and the close button's highlight no longer covers the tab's outline. `TabBarPaint`, `TabBarTailPaint` and `TabPaint` have a new field, `folded`, which tells a painter that the leaf is folded.
+
 ## egui_stack 0.24.1 - 2026-11-05
 
 ### Fixed
