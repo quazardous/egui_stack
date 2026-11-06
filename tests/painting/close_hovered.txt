@@ -67,8 +67,6 @@ clip [[8.0 8.0] - [400.0 392.0]]
 clip [[8.0 8.0] - [400.0 392.0]]
   Rect(RectShape { rect: [[8.0 32.0] - [400.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[8.0 32.0] - [400.0 392.0]]
-  Rect(RectShape { rect: [[9.0 31.0] - [399.0 391.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
-clip [[8.0 32.0] - [400.0 392.0]]
   Rect(RectShape { rect: [[8.0 32.0] - [400.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[8.0 32.0] - [400.0 392.0]]
   Rect(RectShape { rect: [[8.0 32.0] - [400.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
@@ -109,12 +107,10 @@ clip [[401.0 8.0] - [792.0 392.0]]
 clip [[401.0 8.0] - [792.0 392.0]]
   Rect(RectShape { rect: [[401.0 32.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[401.0 32.0] - [792.0 392.0]]
-  Rect(RectShape { rect: [[402.0 31.0] - [791.0 391.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
-clip [[401.0 32.0] - [792.0 392.0]]
   Rect(RectShape { rect: [[401.0 32.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[401.0 32.0] - [792.0 392.0]]
   Rect(RectShape { rect: [[401.0 32.0] - [792.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[401.0 32.0] - [792.0 392.0]]
   Text "Body of Third" at [407.0 38.0] size [77.9 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
 clip [[0.0 0.0] - [800.0 400.0]]
-  Rect(RectShape { rect: [[400.0 8.0] - [401.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #3C_3C_3C_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+  Rect(RectShape { rect: [[400.0 8.0] - [401.0 392.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })

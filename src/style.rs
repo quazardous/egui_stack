@@ -171,7 +171,9 @@ pub struct SeparatorStyle {
     /// `bigger value > less allowed offset` for the current window size.
     pub extra: f32,
 
-    /// Idle color of the rectangle separator. By `Default` it's [`Color32::BLACK`].
+    /// Idle color of the rectangle separator. By `Default` it's [`Color32::TRANSPARENT`]: at
+    /// rest the separator is the gap between the two nodes, and it shows on hover and drag.
+    /// Set a colour to draw it at rest too.
     pub color_idle: Color32,
 
     /// Hovered color of the rectangle separator. By `Default` it's [`Color32::GRAY`].
@@ -305,7 +307,9 @@ pub struct TabBodyStyle {
     /// Inner margin of tab body. By `Default` it's `Margin::same(4.0)`.
     pub inner_margin: Margin,
 
-    /// The stroke of the tabs border. By `Default` it's ['Stroke::default'].
+    /// The stroke of the body's border. By `Default` it's [`Stroke::NONE`]: no border, the
+    /// separators part the leaves. Set a stroke to border each body, or paint borders of your
+    /// own with [`DockPainter::tab_body`](crate::DockPainter::tab_body).
     pub stroke: Stroke,
 
     /// Tab body corner radius. By `Default` it's [`CornerRadius::default`].
@@ -516,7 +520,7 @@ impl Default for SeparatorStyle {
             width: 1.0,
             extra_interact_width: 2.0,
             extra: 175.0,
-            color_idle: Color32::BLACK,
+            color_idle: Color32::TRANSPARENT,
             color_hovered: Color32::GRAY,
             color_dragged: Color32::WHITE,
         }
@@ -586,7 +590,7 @@ impl Default for TabBodyStyle {
     fn default() -> Self {
         Self {
             inner_margin: Margin::same(4),
-            stroke: Stroke::default(),
+            stroke: Stroke::NONE,
             corner_radius: CornerRadius::default(),
             bg_fill: Color32::WHITE,
             hidden_tab_bar_drag_height: None,
@@ -727,15 +731,16 @@ impl SeparatorStyle {
     /// Derives relevant fields from `egui::Style` and sets the remaining fields to their default values.
     ///
     /// Fields overwritten by [`egui::Style`] are:
-    /// - [`SeparatorStyle::color_idle`]
     /// - [`SeparatorStyle::color_hovered`]
     /// - [`SeparatorStyle::color_dragged`]
+    ///
+    /// [`SeparatorStyle::color_idle`] stays transparent. For a line at rest as well, set it, for
+    /// example to `style.visuals.widgets.noninteractive.bg_stroke.color`.
     pub fn from_egui(style: &egui::Style) -> Self {
         Self {
             // Same as egui panel resize colors:
-            color_idle: style.visuals.widgets.noninteractive.bg_stroke.color, // dim
-            color_hovered: style.visuals.widgets.hovered.fg_stroke.color,     // bright
-            color_dragged: style.visuals.widgets.active.fg_stroke.color,      // bright
+            color_hovered: style.visuals.widgets.hovered.fg_stroke.color, // bright
+            color_dragged: style.visuals.widgets.active.fg_stroke.color,  // bright
             ..SeparatorStyle::default()
         }
     }
@@ -895,12 +900,15 @@ impl TabBodyStyle {
     ///
     /// Fields overwritten by [`egui::Style`] are:
     /// - [`TabBodyStyle::inner_margin`]
-    /// - [`TabBodyStyle::stroke]
+    /// - [`TabBodyStyle::corner_radius`]
     /// - [`TabBodyStyle::bg_fill`]
+    ///
+    /// [`TabBodyStyle::stroke`] stays [`Stroke::NONE`]. For a border around each body, set it,
+    /// for example to `style.visuals.widgets.noninteractive.bg_stroke`.
     pub fn from_egui(style: &egui::Style) -> Self {
         Self {
             inner_margin: style.spacing.window_margin,
-            stroke: style.visuals.widgets.noninteractive.bg_stroke,
+            stroke: Stroke::NONE,
             corner_radius: style.visuals.widgets.active.corner_radius,
             bg_fill: style.visuals.window_fill(),
             hidden_tab_bar_drag_height: None,

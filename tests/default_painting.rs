@@ -51,9 +51,20 @@ struct App {
     dock_state: DockState<String>,
     viewer: Viewer,
     overlay: OverlayType,
+    classic: bool,
 }
 
 fn scene(refuse: bool, overlay: OverlayType) -> Harness<'static, App> {
+    scene_with(refuse, overlay, false)
+}
+
+/// A scene in the former look of `Style::from_egui`: a border around each body and a
+/// separator line at rest, set explicitly.
+fn classic_scene() -> Harness<'static, App> {
+    scene_with(false, OverlayType::Widgets, true)
+}
+
+fn scene_with(refuse: bool, overlay: OverlayType, classic: bool) -> Harness<'static, App> {
     let mut dock_state = DockState::new(vec![
         "First".to_owned(),
         "Second".to_owned(),
@@ -69,12 +80,18 @@ fn scene(refuse: bool, overlay: OverlayType) -> Harness<'static, App> {
             tab_rects: Vec::new(),
         },
         overlay,
+        classic,
     };
     let mut harness = Harness::builder().with_size([800.0, 400.0]).build_ui_state(
         |ui, app: &mut App| {
             app.viewer.tab_rects.clear();
             let mut style = Style::from_egui(ui.style());
             style.overlay.overlay_type = app.overlay;
+            if app.classic {
+                let line = ui.visuals().widgets.noninteractive.bg_stroke;
+                style.tab.tab_body.stroke = line;
+                style.separator.color_idle = line.color;
+            }
             DockArea::new(&mut app.dock_state)
                 .style(style)
                 .show_add_buttons(true)
@@ -304,4 +321,23 @@ fn drop_overlays() {
         pos2(third.right() + 40.0, third.center().y)
     });
     check("drop_zone_tab_bar", &harness);
+}
+
+/// With the body stroke and the idle separator colour set explicitly, the default painter
+/// paints what it painted before they became invisible by default: the shapes are those of the
+/// former `rest` and `tab_focused` scenes.
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn classic_look_by_style() {
+    let harness = classic_scene();
+    check("classic_rest", &harness);
+    let mut harness = classic_scene();
+    let third = tab_rect(&harness, "Third");
+    harness.hover_at(third.center());
+    harness.step();
+    harness.drag_at(third.center());
+    harness.step();
+    harness.drop_at(third.center());
+    harness.run();
+    check("classic_tab_focused", &harness);
 }
