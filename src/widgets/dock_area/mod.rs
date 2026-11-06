@@ -162,7 +162,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     ///
     /// impl DockPainter for ThinSeparators {
     ///     fn separator(&self, painter: &egui::Painter, separator: &SeparatorPaint<'_>) {
-    ///         let color = separator.style.separator.color_idle;
+    ///         let color = separator.style.separator.color_hovered;
     ///         painter.rect_filled(separator.rect.shrink(1.0), 0.0, color);
     ///     }
     /// }
@@ -178,6 +178,46 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     /// let mut dock_state = DockState::new(vec!["Tab".to_owned()]);
     /// DockArea::new(&mut dock_state)
     ///     .painter(&ThinSeparators)
+    ///     .show_inside(ui, &mut Viewer);
+    /// # });
+    /// ```
+    ///
+    /// A painter can draw what no style field gives, such as a border on the focused leaf
+    /// alone, glowing:
+    ///
+    /// ```
+    /// # use egui_stack::{DockArea, DockPainter, DockState, PartState, TabBodyPaint};
+    /// /// A glow inside the focused leaf's body, and no border on the others.
+    /// struct FocusGlow;
+    ///
+    /// impl DockPainter for FocusGlow {
+    ///     fn tab_body(&self, painter: &egui::Painter, body: &TabBodyPaint<'_>) {
+    ///         if !body.state.contains(PartState::FOCUSED) {
+    ///             return;
+    ///         }
+    ///         let color = egui::Color32::from_rgb(0, 160, 255);
+    ///         for (inset, alpha) in [(0.5, 1.0), (1.5, 0.4), (2.5, 0.15)] {
+    ///             painter.rect_stroke(
+    ///                 body.rect.shrink(inset),
+    ///                 body.corner_radius,
+    ///                 egui::Stroke::new(1.0, color.gamma_multiply(alpha)),
+    ///                 egui::StrokeKind::Middle,
+    ///             );
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// # egui::__run_test_ui(|ui| {
+    /// # struct Viewer;
+    /// # impl egui_stack::TabViewer for Viewer {
+    /// #     type Tab = String;
+    /// #     fn id(&mut self, tab: &mut String) -> egui::Id { egui::Id::new(tab.as_str()) }
+    /// #     fn title(&mut self, tab: &mut String) -> egui::WidgetText { tab.as_str().into() }
+    /// #     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut String) { ui.label(tab.as_str()); }
+    /// # }
+    /// let mut dock_state = DockState::new(vec!["Tab".to_owned()]);
+    /// DockArea::new(&mut dock_state)
+    ///     .painter(&FocusGlow)
     ///     .show_inside(ui, &mut Viewer);
     /// # });
     /// ```

@@ -5,9 +5,9 @@ use std::sync::Mutex;
 use egui::{Color32, Id, Painter, Rect, Ui, WidgetText, accesskit::Role, vec2};
 use egui_kittest::{Harness, kittest::Queryable as _};
 use egui_stack::{
-    DockArea, DockPainter, DockState, DropPaint, NodeIndex, PartState, SeparatorAxis,
-    SeparatorPaint, TabBarPaint, TabDestination, TabMeasure, TabPaint, TabViewer,
-    tab_viewer::DropVerdict,
+    DockArea, DockPainter, DockState, DropPaint, NodeIndex, NodePath, PartState, SeparatorAxis,
+    SeparatorPaint, SurfaceIndex, TabBarPaint, TabBodyPaint, TabDestination, TabMeasure, TabPaint,
+    TabViewer, tab_viewer::DropVerdict,
 };
 
 const TAB_WIDTH: f32 = 30.0;
@@ -20,6 +20,7 @@ struct Recorder {
     tabs: Mutex<Vec<(String, Rect, PartState, bool)>>,
     separators: Mutex<Vec<(SeparatorAxis, PartState)>>,
     drops: Mutex<Vec<(bool, Option<String>)>>,
+    bodies: Mutex<Vec<(Rect, PartState)>>,
 }
 
 impl DockPainter for Recorder {
@@ -40,6 +41,10 @@ impl DockPainter for Recorder {
             tab.close.is_some(),
         ));
         painter.rect_filled(tab.rect, 0.0, INK);
+    }
+
+    fn tab_body(&self, _painter: &Painter, body: &TabBodyPaint<'_>) {
+        self.bodies.lock().unwrap().push((body.rect, body.state));
     }
 
     fn separator(&self, painter: &Painter, separator: &SeparatorPaint<'_>) {
@@ -191,4 +196,43 @@ fn the_painter_shows_a_refused_drop() {
     }
     let drops = harness.state().painter.drops.lock().unwrap();
     assert_eq!(drops.last(), Some(&(true, Some("Not here".to_owned()))));
+}
+
+/// The body of the focused leaf is painted FOCUSED, the other not; the one under the pointer
+/// HOVERED.
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn the_painter_gets_the_body_states() {
+    let mut harness = harness(false);
+    harness.run();
+    let third = NodePath {
+        surface: SurfaceIndex::main(),
+        node: NodeIndex(2),
+    };
+    harness
+        .state_mut()
+        .dock_state
+        .set_focused_node_and_surface(third);
+    let third_rect = harness.state().dock_state.main_surface()[NodeIndex(2)]
+        .rect()
+        .unwrap();
+    harness.hover_at(third_rect.center() + vec2(0.0, 30.0));
+    harness.run();
+
+    let bodies = harness.state().painter.bodies.lock().unwrap();
+    assert_eq!(bodies.len(), 2);
+    let (focused, other): (Vec<_>, Vec<_>) = bodies
+        .iter()
+        .partition(|(rect, _)| third_rect.contains_rect(*rect));
+    let [(_, focused)] = focused[..] else {
+        panic!("one body in the third leaf: {bodies:?}");
+    };
+    let [(_, other)] = other[..] else {
+        panic!("one body in the first leaf: {bodies:?}");
+    };
+    assert!(focused.contains(PartState::FOCUSED));
+    assert!(focused.contains(PartState::LEAF_FOCUSED));
+    assert!(focused.contains(PartState::HOVERED));
+    assert!(!other.contains(PartState::FOCUSED));
+    assert!(!other.contains(PartState::HOVERED));
 }

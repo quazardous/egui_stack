@@ -26,7 +26,8 @@ use crate::{
 /// structs are `#[non_exhaustive]`: they may gain fields in minor releases.
 ///
 /// The buttons of the tab bars (add, close all, collapse), the hidden tab bar's handle, the tab
-/// bar's scroll bar and the tab bodies are still painted from [`Style`].
+/// bar's scroll bar and the tab bodies' background are still painted from [`Style`]; a body's
+/// border is the painter's ([`tab_body`](Self::tab_body)).
 pub trait DockPainter {
     /// The width of a tab, padding and close button included. A tab bar filling its width
     /// ([`TabBarStyle::fill_tab_bar`](crate::TabBarStyle::fill_tab_bar)) can still make it
@@ -190,6 +191,32 @@ pub trait DockPainter {
             tail.rect.x_range(),
             tail.rect.bottom() - px,
             (px, tail.style.tab_bar.hline_color),
+        );
+    }
+
+    /// A leaf's body border, painted over the body's background and before its contents.
+    ///
+    /// The painter is clipped to the body ([`TabBodyPaint::rect`]); paint outside it with
+    /// [`Painter::with_clip_rect`]. The default strokes
+    /// [`TabBodyStyle::stroke`](crate::TabBodyStyle::stroke) inside the body, its top edge hidden
+    /// under the tab bar, and paints nothing when the stroke is empty, as it is by default.
+    fn tab_body(&self, painter: &Painter, body: &TabBodyPaint<'_>) {
+        let stroke = body.tab_style.tab_body.stroke;
+        if stroke.is_empty() {
+            return;
+        }
+        // The top edge goes up behind the clip rect, out of sight. By an even number of
+        // points, so that an odd stroke width does not leave an anti-aliased line.
+        let effective_stroke_width = (stroke.width / 2.0).ceil() * 2.0;
+        let rect = Rect::from_min_max(
+            body.rect.min - vec2(0.0, effective_stroke_width),
+            body.rect.max,
+        );
+        painter.rect_stroke(
+            rect_stroke_box(rect, stroke.width),
+            body.corner_radius,
+            stroke,
+            StrokeKind::Inside,
         );
     }
 
@@ -635,7 +662,9 @@ const fn lerp_vec(split: Split, alpha: f32) -> Vec2 {
 /// on, a menu open) and [`DISABLED`](Self::DISABLED); its More button the first four. A tool of a
 /// [`ToolRow`](crate::toolbar::ToolRow) uses [`HOVERED`](Self::HOVERED),
 /// [`PRESSED`](Self::PRESSED), [`FOCUSED`](Self::FOCUSED), [`SELECTED`](Self::SELECTED) (a toggle
-/// on, a menu open) and [`DISABLED`](Self::DISABLED); the More button the first four.
+/// on, a menu open) and [`DISABLED`](Self::DISABLED); the More button the first four. A leaf's
+/// body ([`TabBodyPaint`]) uses [`HOVERED`](Self::HOVERED), and [`FOCUSED`](Self::FOCUSED) with
+/// [`LEAF_FOCUSED`](Self::LEAF_FOCUSED) when its leaf is the dock's focused one.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct PartState(u8);
 
@@ -790,6 +819,28 @@ pub struct SeparatorPaint<'a> {
     pub state: PartState,
     /// The dock's style.
     pub style: &'a Style,
+}
+
+/// A leaf's body, for [`DockPainter::tab_body`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct TabBodyPaint<'a> {
+    /// The body, below its tab bar (or under the hidden bar's handle). The painter is clipped
+    /// to it.
+    pub rect: Rect,
+    /// Its corners: [`TabBodyStyle::corner_radius`](crate::TabBodyStyle::corner_radius), with
+    /// the top ones square when a tab bar is above it, to join it.
+    pub corner_radius: CornerRadius,
+    /// Its state: [`PartState::HOVERED`] while the pointer is over it, [`PartState::FOCUSED`]
+    /// and [`PartState::LEAF_FOCUSED`] when its leaf is the dock's focused one
+    /// ([`DockState::focused_leaf`](crate::DockState::focused_leaf)).
+    pub state: PartState,
+    /// The dock's style.
+    pub style: &'a Style,
+    /// The style of the leaf's active tab, after
+    /// [`TabViewer::tab_style_override`](crate::TabViewer::tab_style_override): its
+    /// [`tab_body`](TabStyle::tab_body) is the body's.
+    pub tab_style: &'a TabStyle,
 }
 
 /// The node or surface under a dragged tab, for [`DockPainter::drop_target`].
