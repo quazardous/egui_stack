@@ -1,8 +1,8 @@
 use egui::{
     Align, Button, Color32, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId, Layout,
     NumExt, Order, Popup, PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape, Stroke,
-    StrokeKind, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role,
-    emath::TSTransform, lerp, pos2, vec2,
+    TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role, emath::TSTransform,
+    lerp, pos2, vec2,
 };
 
 use crate::NodePath;
@@ -11,13 +11,13 @@ use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
     DockArea, DraggedTab, Node, NodeIndex, PartState, Style, SurfaceIndex, TabAddAlign,
-    TabBarPaint, TabBarTailPaint, TabClose, TabFocus, TabIndex, TabMeasure, TabPaint, TabStyle,
-    TabViewer,
+    TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabFocus, TabIndex, TabMeasure, TabPaint,
+    TabStyle, TabViewer,
     dock_area::{
         drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
         state::State,
     },
-    utils::{fade_visuals, rect_set_size_centered, rect_stroke_box},
+    utils::{fade_visuals, rect_set_size_centered},
     widgets::painter::{Attached, corners_within},
 };
 
@@ -1394,9 +1394,10 @@ impl<Tab> DockArea<'_, Tab> {
         fade: Option<(&Style, f32)>,
         collapsed: bool,
     ) {
-        let (body_rect, _body_response) =
+        let (body_rect, body_response) =
             ui.allocate_exact_size(ui.available_size_before_wrap(), Sense::hover());
 
+        let focused = self.dock_state.focused_leaf() == Some(path);
         let leaf = self
             .dock_state
             .leaf_mut(path)
@@ -1457,19 +1458,19 @@ impl<Tab> DockArea<'_, Tab> {
             // Use initial spacing for ui.
             ui.spacing_mut().item_spacing = spacing;
 
-            // Offset the background rectangle up to hide the top border behind the clip rect.
-            // To avoid anti-aliasing lines when the stroke width is not divisible by two, we
-            // need to calculate the effective anti-aliased stroke width.
-            let effective_stroke_width = (tabs_style.tab_body.stroke.width / 2.0).ceil() * 2.0;
-            let tab_body_rect = Rect::from_min_max(
-                ui.clip_rect().min - vec2(0.0, effective_stroke_width),
-                ui.clip_rect().max,
-            );
-            ui.painter().rect_stroke(
-                rect_stroke_box(tab_body_rect, tabs_style.tab_body.stroke.width),
-                body_radius,
-                tabs_style.tab_body.stroke,
-                StrokeKind::Inside,
+            let body_state = PartState::NONE
+                .with(PartState::HOVERED, body_response.contains_pointer())
+                .with(PartState::FOCUSED, focused)
+                .with(PartState::LEAF_FOCUSED, focused);
+            self.painter.tab_body(
+                ui.painter(),
+                &TabBodyPaint {
+                    rect: ui.clip_rect(),
+                    corner_radius: body_radius,
+                    state: body_state,
+                    style,
+                    tab_style: tabs_style,
+                },
             );
 
             ScrollArea::new(tab_viewer.scroll_bars(tab)).show(ui, |ui| {
