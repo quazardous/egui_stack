@@ -27,6 +27,12 @@
 //!   takes it back or a double click drops it.
 //! - [`Sections::keep_titles`] (off by default) leaves a title where it is when its section
 //!   folds or opens ([`plan::keep_title`]).
+//! - [`Sections::fill`] (on by default) off sizes the stack by its content: an open section
+//!   sized by the list is never taller than what its body lays out, the folded bands follow
+//!   right under it, and the room left stays empty under the last band ([`plan::fit_within`]).
+//! - [`Sections::bar_style`] and [`Sections::bar_track_inset`] give the scroll bars of the
+//!   bodies and of the stack a style of their own (their colours, say) and an inset along
+//!   their track, the content keeping the `Ui`'s style.
 //! - A body is scrolled by the stack ([`Stack::section`]), windowed over rows of one height, so
 //!   that only those in view are drawn ([`Stack::rows`]), or left to an application's own view
 //!   ([`Stack::bare`]). A wheel pushing past the end of a body's scroll stops there: neither the
@@ -71,6 +77,7 @@
 
 use std::collections::BTreeMap;
 use std::ops::Range;
+use std::sync::Arc;
 
 use egui::accesskit::{Action, Role};
 use egui::scroll_area::{DragScroll, ScrollBarVisibility, ScrollSource};
@@ -274,6 +281,7 @@ fn remove_temp<T: 'static + Clone + Send + Sync>(ctx: &Context, name: &str, what
 const LAID: &str = "laid";
 const DRAG: &str = "drag";
 const TITLE_CLICK: &str = "title_click";
+const CONTENT: &str = "content";
 
 /// The sections of the stack named `name` as drawn on the last pass, in order (empty when it
 /// was not drawn).
@@ -369,6 +377,9 @@ enum Body<'a> {
 struct Drawn {
     /// How far it is scrolled.
     scroll: f32,
+    /// How tall its content is, margins included: the height it asks for in a stack sized by
+    /// its content ([`Sections::fill`]).
+    content: f32,
     /// The rows drawn.
     window: Option<Range<usize>>,
     /// Whether the wheel over it stops there: it has a scroll of its own, with somewhere to go.
@@ -387,19 +398,31 @@ impl Body<'_> {
     }
 
     /// Draws it in `ui`, as tall as the section. `salt` tells its scroll from the others';
-    /// `row` is its rows' height.
-    fn draw(self, ui: &mut Ui, salt: &str, row: f32) -> Drawn {
-        let height = ui.max_rect().height();
-        let area = egui::ScrollArea::vertical()
-            .id_salt(("egui_stack.sections.scroll", salt))
-            .auto_shrink([false, false])
-            .max_height(height)
-            .min_scrolled_height(0.0);
+    /// `row` is its rows' height; `bars` how its scroll bar is drawn.
+    fn draw(self, ui: &mut Ui, salt: &str, row: f32, bars: &Bars) -> Drawn {
+        let rect = ui.max_rect();
+        let margin = ui.spacing().scroll.content_margin.sum().y;
+        // The content's style: the bars may be drawn in another.
+        let content = ui.style().clone();
+        let area = bars.on(
+            egui::ScrollArea::vertical()
+                .id_salt(("egui_stack.sections.scroll", salt))
+                .auto_shrink([false, false])
+                .max_height(rect.height())
+                .min_scrolled_height(0.0),
+            rect,
+        );
         match self {
             Body::Scrolled(draw) => {
-                let out = area.show(ui, draw);
+                let out = bars.show(ui, |ui| {
+                    area.show(ui, |ui| {
+                        ui.set_style(content);
+                        draw(ui);
+                    })
+                });
                 Drawn {
                     scroll: out.state.clamped_offset().y,
+                    content: out.content_size.y + margin,
                     window: None,
                     holds_wheel: scrolled(ui.ctx(), &out),
                 }
@@ -408,12 +431,16 @@ impl Body<'_> {
                 // Rows touch, as a list's: their height is all that places them.
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let mut window = None;
-                let out = area.show_rows(ui, row, count, |ui, range| {
-                    window = Some(range.clone());
-                    draw(ui, range);
+                let out = bars.show(ui, |ui| {
+                    area.show_rows(ui, row, count, |ui, range| {
+                        ui.set_style(content);
+                        window = Some(range.clone());
+                        draw(ui, range);
+                    })
                 });
                 Drawn {
                     scroll: out.state.clamped_offset().y,
+                    content: count as f32 * row + margin,
                     window,
                     holds_wheel: scrolled(ui.ctx(), &out),
                 }
@@ -422,11 +449,51 @@ impl Body<'_> {
                 draw(ui);
                 Drawn {
                     scroll: 0.0,
+                    content: ui.min_rect().height(),
                     window: None,
                     holds_wheel: true,
                 }
             }
         }
+    }
+}
+
+/// How the stack's scroll bars are drawn ([`Sections::bar_style`],
+/// [`Sections::bar_track_inset`]).
+#[derive(Clone, Default)]
+struct Bars {
+    style: Option<Arc<egui::Style>>,
+    inset: f32,
+}
+
+impl Bars {
+    /// The area, its bars inset along their track in an area shown in `rect`.
+    fn on(&self, area: egui::ScrollArea, rect: Rect) -> egui::ScrollArea {
+        if self.inset > 0.0 {
+            let inset = vec2(
+                self.inset.min(rect.width() / 2.0),
+                self.inset.min(rect.height() / 2.0),
+            );
+            area.scroll_bar_rect(rect.shrink2(inset))
+        } else {
+            area
+        }
+    }
+
+    /// Shows a scroll area in the bars' style, which egui paints its bars with; `show` sets
+    /// the content's style back inside the area. The `Ui`'s spacing is kept: the bars' style
+    /// changes how they look, not how anything is laid out.
+    fn show<R>(&self, ui: &mut Ui, show: impl FnOnce(&mut Ui) -> R) -> R {
+        let Some(style) = &self.style else {
+            return show(ui);
+        };
+        let mut scoped = style.as_ref().clone();
+        scoped.spacing = ui.spacing().clone();
+        ui.scope(|ui| {
+            ui.set_style(scoped);
+            show(ui)
+        })
+        .inner
     }
 }
 
@@ -566,6 +633,8 @@ pub struct Sections<'a> {
     band_height: Option<f32>,
     pull_when: PullWhen<'a>,
     overflow_scroll: Option<ScrollStyle>,
+    fill: bool,
+    bars: Bars,
     painter: &'a (dyn DockPainter + Sync),
     labels: Labels,
 }
@@ -578,6 +647,7 @@ impl std::fmt::Debug for Sections<'_> {
             .field("grab_titles", &self.grab_titles)
             .field("keep_titles", &self.keep_titles)
             .field("band_height", &self.band_height)
+            .field("fill", &self.fill)
             .field("labels", &self.labels)
             .finish_non_exhaustive()
     }
@@ -595,6 +665,8 @@ impl<'a> Sections<'a> {
             band_height: None,
             pull_when: pull_with(Some(Modifiers::COMMAND)),
             overflow_scroll: None,
+            fill: true,
+            bars: Bars::default(),
             painter: &StylePainter,
             labels: Labels::ENGLISH,
         }
@@ -648,6 +720,43 @@ impl<'a> Sections<'a> {
     /// fit; by default the `Ui`'s. The bodies keep the `Ui`'s.
     pub fn overflow_scroll(mut self, style: ScrollStyle) -> Self {
         self.overflow_scroll = Some(style);
+        self
+    }
+
+    /// Whether the stack fills the room it is given (yes by default): the last open section
+    /// takes what the others leave, so the bands of folded sections below it sit at the
+    /// bottom.
+    ///
+    /// Off, the stack is sized by its content: an open section sized by the list is never laid
+    /// out taller than what its body laid out on the last pass (its rows, its content, or what
+    /// a bare body drew), the long ones sharing what is left, and the folded bands follow right
+    /// under the last open section, the room left empty under the last band
+    /// ([`plan::fit_within`]). A section set by hand keeps its height; resizing, the least
+    /// heights and the scrolling inside a section are as when it fills.
+    pub fn fill(mut self, fill: bool) -> Self {
+        self.fill = fill;
+        self
+    }
+
+    /// The style the scroll bars of the bodies and of the stack are drawn in: egui paints a
+    /// bar from the visuals of the `Ui` its scroll area is shown in (the thumb in the widget
+    /// states' colours), so an application giving its bars colours of their own passes the
+    /// style it shows its scroll areas in. The content keeps the `Ui`'s style, and the
+    /// spacing (the bars' sizes included) stays the `Ui`'s. By default, the `Ui`'s.
+    pub fn bar_style(mut self, style: Arc<egui::Style>) -> Self {
+        self.bars.style = Some(style);
+        self
+    }
+
+    /// Points kept free at both ends of each scroll bar's track, along it, in the bodies and
+    /// the stack: the thumb starts and ends that far from the area's ends
+    /// (`ScrollArea::scroll_bar_rect`). 0 by default.
+    pub fn bar_track_inset(mut self, points: f32) -> Self {
+        self.bars.inset = if points.is_finite() {
+            points.max(0.0)
+        } else {
+            0.0
+        };
         self
     }
 
@@ -722,17 +831,30 @@ impl<'a> Sections<'a> {
         } else {
             0.0
         };
-        let fit = plan::fit(&asked, space, layout.empty);
+        // Sized by the content: each section's content height on the last pass.
+        let content: BTreeMap<String, f32> =
+            get_temp(&ctx, &self.name, CONTENT).unwrap_or_default();
+        let most: Vec<f32> = if self.fill {
+            Vec::new()
+        } else {
+            keys.iter()
+                .map(|k| content.get(k).copied().unwrap_or(f32::INFINITY))
+                .collect()
+        };
+        let (fit, spare) = plan::fit_within(&asked, &most, space, layout.empty);
         let tall = bands + fit.heights.iter().sum::<f32>();
         let overflows = finite && tall - room.height() > 0.5;
         let stack = Shown {
             keys: &keys,
             asked: &asked,
             heights: &fit.heights,
+            most: &most,
             space,
-            empty: fit.empty,
+            // What the content leaves is not the layout's: a drag keeps the empty room asked.
+            empty: fit.empty - spare,
             step: row,
         };
+        let mut contents: BTreeMap<String, f32> = BTreeMap::new();
 
         let mut response = SectionsResponse::default();
         let mut laid: Vec<Laid> = Vec::with_capacity(sections.len());
@@ -838,8 +960,13 @@ impl<'a> Sections<'a> {
                             .layout(egui::Layout::top_down(egui::Align::Min)),
                     );
                     child.set_clip_rect(rect.intersect(ui.clip_rect()));
-                    let shown =
-                        body.draw(&mut child, &section.key, section.row_height.unwrap_or(row));
+                    let shown = body.draw(
+                        &mut child,
+                        &section.key,
+                        section.row_height.unwrap_or(row),
+                        &self.bars,
+                    );
+                    contents.insert(section.key.clone(), shown.content);
                     if shown.holds_wheel {
                         contain_wheel_in(&child, rect);
                     }
@@ -921,20 +1048,30 @@ impl<'a> Sections<'a> {
                 } else {
                     ScrollBarVisibility::AlwaysHidden
                 });
+            let area = self.bars.on(area, room);
             // The stack's bar may have a style of its own; the bodies keep the Ui's.
             let bodies = ui.spacing().scroll;
+            let content = ui.style().clone();
             ui.scope(|ui| {
                 if overflows && let Some(style) = self.overflow_scroll {
                     ui.spacing_mut().scroll = style;
                 }
-                area.show(ui, |ui| {
-                    ui.spacing_mut().scroll = bodies;
-                    draw(ui);
+                self.bars.show(ui, |ui| {
+                    area.show(ui, |ui| {
+                        ui.set_style(content);
+                        ui.spacing_mut().scroll = bodies;
+                        draw(ui);
+                    })
                 });
             });
         } else {
             draw(ui);
         }
+        if !self.fill && contents != content {
+            // The heights follow the content from the next pass.
+            ctx.request_repaint();
+        }
+        set_temp(&ctx, &self.name, CONTENT, contents);
 
         if response.toggled.is_some() || response.resized || response.reset {
             ctx.request_repaint();
@@ -1145,6 +1282,8 @@ struct Shown<'a> {
     keys: &'a [String],
     asked: &'a [Asked],
     heights: &'a [f32],
+    /// What each section's content asks, in a stack sized by its content ([`plan::fit_within`]).
+    most: &'a [f32],
     /// The height the open sections divide.
     space: f32,
     /// The empty room shown under the last section.
@@ -1178,7 +1317,13 @@ impl Shown<'_> {
     ) -> bool {
         let placed = self.placed(self.heights);
         let plan = plan::plan_drag(&placed, above, delta, self.empty, mode);
-        let pinned = plan::pin_plan(&hands.asked(self), self.space, plan.empty, &plan.heights);
+        let pinned = plan::pin_plan_within(
+            &hands.asked(self),
+            self.most,
+            self.space,
+            plan.empty,
+            &plan.heights,
+        );
         for (key, hand) in self.keys.iter().zip(pinned) {
             layout.set_height(key, hand);
         }
