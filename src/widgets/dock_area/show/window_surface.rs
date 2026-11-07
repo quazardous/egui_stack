@@ -4,7 +4,7 @@ use egui::{
 };
 
 use crate::{
-    DockArea, NodeIndex, Style, SurfaceIndex, TabViewer,
+    DockArea, LinearDir, Node, NodeIndex, Style, SurfaceIndex, TabViewer,
     dock_area::{state::State, tab_removal::TabRemoval},
     utils::{fade_visuals, rect_set_size_centered},
     widgets::painter::{Attached, corners_within},
@@ -87,6 +87,9 @@ impl<Tab> DockArea<'_, Tab> {
             .get_window_state(surf_index)
             .unwrap()
             .is_minimized();
+        // The least size the window's content is laid out in: egui's resize stops there, so the
+        // frame, the tab bars and their buttons keep one width.
+        let min_size = self.window_min_size(surf_index);
         let window = if minimized {
             let height = tab_bar_height;
             window
@@ -100,8 +103,9 @@ impl<Tab> DockArea<'_, Tab> {
                 .max_height(height)
                 .min_height(height)
         } else {
-            window
+            window.min_size(min_size)
         }
+        .min_width(min_size.x)
         .frame(frame);
         let shown = window.show(ui.ctx(), |ui| {
             // Fade inner ui (if necessary)
@@ -131,6 +135,90 @@ impl<Tab> DockArea<'_, Tab> {
 
         if !open {
             self.to_remove.push(TabRemoval::Window(surf_index));
+        }
+    }
+
+    /// The least size of the content of the window `surface`: each leaf keeps its tab bar's
+    /// buttons and some of its tabs, and a body below its bar unless it is folded; the
+    /// separators and the dock's padding come on top.
+    fn window_min_size(&self, surface: SurfaceIndex) -> Vec2 {
+        let style = self.style.as_ref().unwrap();
+        let padding = style
+            .dock_area_padding
+            .map_or(Vec2::ZERO, |margin| margin.sum());
+        if self.dock_state[surface].is_empty() {
+            return padding;
+        }
+        self.node_min_size(surface, NodeIndex::root()) + padding
+    }
+
+    fn node_min_size(&self, surface: SurfaceIndex, node: NodeIndex) -> Vec2 {
+        let style = self.style.as_ref().unwrap();
+        let gap = style.separator.width;
+        let along = |sizes: &mut dyn Iterator<Item = f32>| {
+            let (sum, count) = sizes.fold((0.0, 0), |(sum, count), size| (sum + size, count + 1));
+            sum + gap * (count as f32 - 1.0).max(0.0)
+        };
+        let tree = &self.dock_state[surface];
+        match &tree[node] {
+            Node::Empty => Vec2::ZERO,
+            Node::Leaf(leaf) => {
+                let buttons = [
+                    (self.show_add_buttons, Style::TAB_ADD_BUTTON_SIZE),
+                    (
+                        self.show_leaf_close_all_buttons,
+                        Style::TAB_CLOSE_ALL_BUTTON_SIZE,
+                    ),
+                    (
+                        self.show_leaf_collapse_buttons,
+                        Style::TAB_COLLAPSE_BUTTON_SIZE,
+                    ),
+                ]
+                .iter()
+                .filter(|(shown, _)| *shown)
+                .map(|(_, size)| size)
+                .sum::<f32>();
+                // Room for a part of a tab, which scrolls when the bar is narrower.
+                let width = buttons + 2.0 * Style::TAB_CLOSE_BUTTON_SIZE;
+                let bar = if self.hidable_tab_bars && leaf.tab_bar_hidden {
+                    0.0
+                } else {
+                    style.tab_bar.height
+                };
+                let body = if leaf.collapsed {
+                    0.0
+                } else {
+                    style.tab_bar.height
+                };
+                vec2(width, bar + body)
+            }
+            Node::Linear(linear) => {
+                let sizes: Vec<Vec2> = linear
+                    .children()
+                    .iter()
+                    .map(|&child| self.node_min_size(surface, child))
+                    .collect();
+                let widest = sizes.iter().fold(Vec2::ZERO, |max, size| max.max(*size));
+                match linear.dir {
+                    LinearDir::Horizontal => {
+                        vec2(along(&mut sizes.iter().map(|size| size.x)), widest.y)
+                    }
+                    LinearDir::Vertical => {
+                        vec2(widest.x, along(&mut sizes.iter().map(|size| size.y)))
+                    }
+                }
+            }
+            Node::Grid(grid) => {
+                let widest = grid
+                    .children()
+                    .iter()
+                    .map(|&child| self.node_min_size(surface, child))
+                    .fold(Vec2::ZERO, Vec2::max);
+                vec2(
+                    along(&mut std::iter::repeat_n(widest.x, grid.columns())),
+                    along(&mut std::iter::repeat_n(widest.y, grid.rows())),
+                )
+            }
         }
     }
 

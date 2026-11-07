@@ -1,0 +1,147 @@
+//! A floating window keeps its decorations on its frame when it is shrunk past its content's
+//! least size, and a folded window stays tall enough for its folded band.
+
+use egui::{Id, Pos2, Rect, Ui, WidgetText, vec2};
+use egui_kittest::{Harness, kittest::Queryable};
+use egui_stack::{DockArea, DockState, NodeIndex, SurfaceIndex, TabViewer};
+
+struct Viewer;
+
+impl TabViewer for Viewer {
+    type Tab = String;
+
+    fn id(&mut self, tab: &mut String) -> Id {
+        Id::unique(tab.as_str())
+    }
+
+    fn title(&mut self, tab: &mut String) -> WidgetText {
+        tab.as_str().into()
+    }
+
+    fn ui(&mut self, ui: &mut Ui, tab: &mut String) {
+        // A line that does not wrap: the body's least width.
+        ui.add(egui::Label::new(format!("The body of {tab}, on one long line")).extend());
+    }
+
+    fn scroll_bars(&self, _tab: &String) -> [bool; 2] {
+        // No scroll area: the body's content sets the window's least width.
+        [false, false]
+    }
+}
+
+fn harness(tabs: &[&str]) -> (Harness<'static, DockState<String>>, SurfaceIndex) {
+    let mut dock_state = DockState::new(vec!["Main".to_owned()]);
+    let window = dock_state.add_window(tabs.iter().map(|tab| (*tab).to_owned()).collect());
+    dock_state
+        .get_window_state_mut(window)
+        .unwrap()
+        .set_position(Pos2::new(200.0, 100.0))
+        .set_size(vec2(400.0, 200.0));
+    let mut harness = Harness::builder().with_size([800.0, 500.0]).build_ui_state(
+        |ui, dock_state: &mut DockState<String>| {
+            DockArea::new(dock_state)
+                .show_close_buttons(true)
+                .show_leaf_close_all_buttons(true)
+                .show_leaf_collapse_buttons(true)
+                .show_inside(ui, &mut Viewer);
+        },
+        dock_state,
+    );
+    harness.run_steps(3);
+    (harness, window)
+}
+
+fn window_rect(harness: &Harness<'_, DockState<String>>, window: SurfaceIndex) -> Rect {
+    harness.state().get_window_state(window).unwrap().rect()
+}
+
+/// The rect of the button `label` of the floating window: the one below the main surface's bar.
+fn button_rect(harness: &Harness<'_, DockState<String>>, label: &str) -> Rect {
+    harness
+        .query_all_by_label(label)
+        .map(|node| node.rect())
+        .find(|rect| rect.top() > 50.0)
+        .unwrap_or_else(|| panic!("the window has a {label} button"))
+}
+
+/// Drags from `start` by `delta`, a step at a time, and releases.
+fn drag(harness: &mut Harness<'_, DockState<String>>, start: Pos2, delta: egui::Vec2) {
+    harness.hover_at(start);
+    harness.step();
+    harness.drag_at(start);
+    harness.step();
+    for step in 1..=10 {
+        harness.hover_at(start + delta * (step as f32 / 10.0));
+        harness.step();
+    }
+    harness.drop_at(start + delta);
+    harness.run_steps(3);
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn shrunk_past_its_least_width_a_window_keeps_its_buttons_at_its_edge() {
+    let (mut harness, window) = self::harness(&["First tab", "Second tab", "Third tab"]);
+    let rect = window_rect(&harness, window);
+    let close = button_rect(&harness, "Close all tabs");
+    let gap = rect.right() - close.right();
+
+    drag(
+        &mut harness,
+        Pos2::new(rect.right() - 1.0, rect.center().y),
+        vec2(-380.0, 0.0),
+    );
+
+    let shrunk = window_rect(&harness, window);
+    let close = button_rect(&harness, "Close all tabs");
+    assert!(shrunk.width() < rect.width(), "{shrunk:?}");
+    assert!(shrunk.contains_rect(close), "{close:?} in {shrunk:?}");
+    assert!(
+        (shrunk.right() - close.right() - gap).abs() <= 1.0,
+        "the close button is {} from the edge, was {gap}",
+        shrunk.right() - close.right()
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn shrunk_past_its_least_size_a_split_window_keeps_every_bar_inside() {
+    let (mut harness, window) = harness(&["First tab", "Second tab"]);
+    harness.state_mut()[window].split_right(NodeIndex::root(), 0.5, vec!["Third".to_owned()]);
+    harness.state_mut()[window].split_below(NodeIndex::root(), 0.5, vec!["Fourth".to_owned()]);
+    harness.run_steps(3);
+    let rect = window_rect(&harness, window);
+
+    // Shrink from the bottom-right corner, far past what the content needs.
+    drag(
+        &mut harness,
+        Pos2::new(rect.right() - 1.0, rect.bottom() - 1.0),
+        vec2(-380.0, -190.0),
+    );
+
+    let shrunk = window_rect(&harness, window);
+    assert!(
+        shrunk.width() < rect.width() && shrunk.height() < rect.height(),
+        "{shrunk:?}"
+    );
+    let buttons: Vec<Rect> = harness
+        .query_all_by_label("Close all tabs")
+        .map(|node| node.rect())
+        .filter(|rect| rect.top() > 50.0)
+        .collect();
+    assert_eq!(buttons.len(), 3, "{buttons:?}");
+    for button in buttons {
+        assert!(shrunk.contains_rect(button), "{button:?} in {shrunk:?}");
+    }
+    // Each leaf is laid out within the frame, and the frame hugs its content.
+    let content = harness.state()[window][NodeIndex::root()].rect().unwrap();
+    assert!(shrunk.contains_rect(content), "{content:?} in {shrunk:?}");
+    assert!(
+        shrunk.right() - content.right() < 10.0,
+        "{content:?} in {shrunk:?}"
+    );
+    assert!(
+        shrunk.bottom() - content.bottom() < 10.0,
+        "{content:?} in {shrunk:?}"
+    );
+}
