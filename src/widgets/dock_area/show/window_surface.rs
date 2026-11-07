@@ -29,11 +29,14 @@ impl<Tab> DockArea<'_, Tab> {
         let id = window_layer_id(surf_index).id;
         let bounds = self.window_bounds.unwrap();
         let open = true;
+        // egui sizes a window by its outer size: the frame's margins and stroke come on top of
+        // what the content takes.
+        let chrome = Frame::window(ui.style()).total_margin().sum();
         let window = self
             .dock_state
             .get_window_state_mut(surf_index)
             .unwrap()
-            .create_window(id, bounds);
+            .create_window(id, bounds, chrome.y);
 
         // Calculate fading of the window (if any)
         let (fade_factor, fade_style) = match fade_style {
@@ -89,15 +92,17 @@ impl<Tab> DockArea<'_, Tab> {
             .is_minimized();
         // The least size the window's content is laid out in: egui's resize stops there, so the
         // frame, the tab bars and their buttons keep one width.
-        let min_size = self.window_min_size(surf_index);
+        let min_size = self.window_min_size(surf_index) + chrome;
         let window = if minimized {
-            let height = tab_bar_height;
+            let height = tab_bar_height + chrome.y;
             window
                 .resizable([true, false])
                 .max_height(height)
                 .min_height(height)
         } else if self.dock_state[surf_index].is_collapsed() {
-            let height = self.dock_state[surf_index].collapsed_leaf_count() as f32 * tab_bar_height;
+            // Folded, the window is as tall as its folded bands, with the separators between
+            // them: the least height of its content.
+            let height = min_size.y;
             window
                 .resizable([true, false])
                 .max_height(height)

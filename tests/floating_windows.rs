@@ -145,3 +145,50 @@ fn shrunk_past_its_least_size_a_split_window_keeps_every_bar_inside() {
         "{content:?} in {shrunk:?}"
     );
 }
+
+/// Clicks the window's `label` button: the one below the main surface's bar.
+fn click_window_button(harness: &mut Harness<'_, DockState<String>>, label: &str) {
+    let rect = button_rect(harness, label);
+    harness.hover_at(rect.center());
+    harness.step();
+    harness.drag_at(rect.center());
+    harness.step();
+    harness.drop_at(rect.center());
+    harness.run_steps(4);
+}
+
+fn assert_bands_inside(harness: &Harness<'_, DockState<String>>, window: SurfaceIndex) {
+    let rect = window_rect(harness, window);
+    for label in ["Close all tabs", "Collapse"] {
+        let buttons: Vec<Rect> = harness
+            .query_all_by_label(label)
+            .map(|node| node.rect())
+            .filter(|rect| rect.top() > 50.0)
+            .collect();
+        assert!(!buttons.is_empty(), "the window has a {label} button");
+        for button in buttons {
+            assert!(rect.contains_rect(button), "{label} {button:?} in {rect:?}");
+        }
+    }
+    for tab in harness.query_all_by_role(egui::accesskit::Role::Tab) {
+        let tab = tab.rect();
+        if tab.top() > 50.0 {
+            assert!(rect.contains_rect(tab), "tab {tab:?} in {rect:?}");
+        }
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_folded_window_is_tall_enough_for_its_band() {
+    let (mut harness, window) = harness(&["First tab", "Second tab"]);
+    let rect = window_rect(&harness, window);
+
+    click_window_button(&mut harness, "Collapse");
+    let folded = window_rect(&harness, window);
+    assert!(folded.height() < rect.height(), "{folded:?}");
+    assert_bands_inside(&harness, window);
+
+    click_window_button(&mut harness, "Collapse");
+    assert!(window_rect(&harness, window).height() > folded.height());
+}

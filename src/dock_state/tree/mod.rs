@@ -1157,11 +1157,6 @@ impl<Tab> Tree<Tab> {
         self.collapsed_leaf_count = collapsed_leaf_count;
     }
 
-    /// Returns the number of collapsed layers of leaf subnodes in the [`Tree`].
-    pub(crate) fn collapsed_leaf_count(&self) -> i32 {
-        self.collapsed_leaf_count
-    }
-
     /// Updates the collapsed state of the node and its parents.
     pub(crate) fn node_update_collapsed(&mut self, node_index: NodeIndex) {
         let collapsed = self[node_index].is_collapsed();
