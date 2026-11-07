@@ -254,6 +254,24 @@ impl<Tab> DockArea<'_, Tab> {
         dock_allows && tab_viewer.allowed_in_windows(&mut leaf.tabs[path.tab.0])
     }
 
+    /// Whether one of this dock's floating windows, not the one `ui` draws, is the topmost
+    /// layer under `pointer`. What lies under it, a docked leaf or a window further down, is
+    /// not what a dragged tab hovers, whatever the order the surfaces are drawn in.
+    pub(super) fn covered_by_window(&self, ui: &Ui, pointer: Pos2) -> bool {
+        let Some(top) = ui.ctx().layer_id_at(pointer) else {
+            return false;
+        };
+        top != ui.layer_id()
+            && self
+                .dock_state
+                .valid_surface_indices()
+                .iter()
+                .any(|&surface| {
+                    self.dock_state.is_window(surface)
+                        && window_surface::window_layer_id(surface) == top
+                })
+    }
+
     /// With [`OverlayType::Zones`], a tab dragged outside the dock, where none of its surfaces
     /// is under the pointer, hovers "outside": dropped there, it opens in a new window.
     fn hover_outside(
