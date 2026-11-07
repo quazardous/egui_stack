@@ -1,5 +1,18 @@
 # egui_stack changelog
 
+## egui_stack 0.25.3 - 2026-11-07
+
+### Added
+
+- `DockSpace::no_drop_zone`, `DockSpace::no_drop_zones` and `DockSpace::no_drop_widget` declare, every frame, where no dragged tab may be dropped (an application's toolbar or status bar): a tab released there goes back where it was instead of becoming a floating window, and no drop preview shows there. `DockRules::accept_drops(false)` makes a dock of a space no drop target, its own tabs still free to leave it.
+- `Section::max_height` gives a section a greatest height, in points, and `Section::max_share` one as a share of the stack's height: sized by the list or set by hand, the section never grows past it, the room it leaves going to the other sections, or staying empty under the last band when none can take it, and a drag on its boundary stops there. A greatest height under the section's least height is its least height.
+
+### Fixed
+
+- A tab dragged over a floating window drops into the window, not into the docked leaf or the dock under it, whatever the order the docks of a `DockSpace` are drawn in; with overlapping windows, the topmost one takes it.
+- A floating window shrunk past what its content needs stops at its content's least size: each leaf keeps its tab bar with its buttons and a body, the separators come on top, and the tab bars and their buttons stay inside the frame instead of spilling past it.
+- A floating window whose leaves are folded is tall enough for its folded bands: its height counts the window's frame and the separators between the bands, so the band's tabs and buttons are no longer clipped by the window's edge.
+
 ## egui_stack 0.25.2 - 2026-11-07
 
 ### Added
