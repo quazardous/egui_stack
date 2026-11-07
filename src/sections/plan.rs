@@ -302,6 +302,66 @@ pub struct Fit {
 /// room gives way after the sections sized by the list and before those set
 /// by hand; it comes back with the room, as they do.
 pub fn fit(asked: &[Asked], room: f32, empty: f32) -> Fit {
+    fit_within(asked, &[], room, empty).0
+}
+
+/// [`fit`] for a stack sized by its content: a section sized by the list,
+/// the last open one included, is never laid out taller than `most`
+/// (its content's height; missing or infinite, no bound) nor shorter than
+/// its least. The others share what is left in turn, and the room none
+/// takes goes under the last band. Heights set by hand are kept as by
+/// [`fit`].
+///
+/// Returns the fit, its [`Fit::empty`] holding that room too, and the
+/// room left by the content alone (not kept in a layout: it changes with
+/// the content).
+pub fn fit_within(asked: &[Asked], most: &[f32], room: f32, empty: f32) -> (Fit, f32) {
+    let mut fit = fit_filled(asked, room, empty);
+    if fit.overflow > 0.0 || most.is_empty() {
+        return (fit, 0.0);
+    }
+    let listed: Vec<usize> = (0..asked.len())
+        .filter(|&i| asked[i].open && !fit.by_hand[i])
+        .collect();
+    let shared: f32 = listed.iter().map(|&i| fit.heights[i]).sum();
+    let bound = |i: usize| {
+        most.get(i)
+            .copied()
+            .filter(|m| m.is_finite())
+            .map_or(f32::INFINITY, |m| m.max(asked[i].least))
+    };
+    let mut left = listed;
+    let mut room = shared;
+    // Equal shares, each between its least and its bound.
+    loop {
+        if left.is_empty() {
+            break;
+        }
+        let each = room / left.len() as f32;
+        if let Some(at) = left.iter().position(|&i| asked[i].least > each) {
+            let i = left.remove(at);
+            fit.heights[i] = asked[i].least;
+            room -= asked[i].least;
+            continue;
+        }
+        if let Some(at) = left.iter().position(|&i| bound(i) < each) {
+            let i = left.remove(at);
+            fit.heights[i] = bound(i);
+            room -= bound(i);
+            continue;
+        }
+        for &i in &left {
+            fit.heights[i] = each;
+        }
+        room = 0.0;
+        break;
+    }
+    let spare = room.max(0.0);
+    fit.empty += spare;
+    (fit, spare)
+}
+
+fn fit_filled(asked: &[Asked], room: f32, empty: f32) -> Fit {
     let room = if room.is_finite() { room.max(0.0) } else { 0.0 };
     let empty = if empty.is_finite() {
         empty.max(0.0)
@@ -405,6 +465,18 @@ fn share_out(asked: &[Asked], sections: &[usize], room: f32, heights: &mut [f32]
 /// height of its own only if the list would otherwise move it. The last
 /// open section and folded ones keep what they had.
 pub fn pin_plan(asked: &[Asked], room: f32, empty: f32, plan: &[f32]) -> Vec<Option<f32>> {
+    pin_plan_within(asked, &[], room, empty, plan)
+}
+
+/// [`pin_plan`] for a stack sized by its content, laid out by
+/// [`fit_within`] with the same `most`.
+pub fn pin_plan_within(
+    asked: &[Asked],
+    most: &[f32],
+    room: f32,
+    empty: f32,
+    plan: &[f32],
+) -> Vec<Option<f32>> {
     let mut asked = asked.to_vec();
     let last = (0..asked.len()).rev().find(|&i| asked[i].open);
     let pinnable: Vec<usize> = (0..asked.len().min(plan.len()))
@@ -416,7 +488,7 @@ pub fn pin_plan(asked: &[Asked], room: f32, empty: f32, plan: &[f32]) -> Vec<Opt
         }
     }
     loop {
-        let shown = fit(&asked, room, empty).heights;
+        let shown = fit_within(&asked, most, room, empty).0.heights;
         let mut changed = false;
         for &i in &pinnable {
             if asked[i].hand.is_none() && (shown[i] - plan[i]).abs() > SAME {
@@ -1035,5 +1107,46 @@ mod tests {
         ];
         let hands = pin_plan(&stack, 100.0, 0.0, &[60.0, 0.0, 40.0]);
         assert_eq!(hands, [Some(60.0), Some(33.0), Some(77.0)]);
+    }
+
+    #[test]
+    fn a_stack_sized_by_its_content_leaves_the_room_under_the_last_band() {
+        let inf = f32::INFINITY;
+        let stack = [asked(20.0, None), asked(20.0, None)];
+        // Both short: each as tall as its content, the rest under them.
+        let (fit, spare) = fit_within(&stack, &[30.0, 50.0], 300.0, 0.0);
+        assert_eq!(fit.heights, [30.0, 50.0]);
+        assert_eq!(spare, 220.0);
+        assert_eq!(fit.empty, 220.0);
+        // A short one keeps its content's height, the long one the rest.
+        let (fit, spare) = fit_within(&stack, &[30.0, 1000.0], 300.0, 0.0);
+        assert_eq!(fit.heights, [30.0, 270.0]);
+        assert_eq!(spare, 0.0);
+        // Two long ones share; an unknown content is no bound.
+        let (fit, _) = fit_within(&stack, &[1000.0, inf], 300.0, 0.0);
+        assert_eq!(fit.heights, [150.0, 150.0]);
+        // Never under the least height, even with less content.
+        let (fit, _) = fit_within(&stack, &[5.0, 5.0], 300.0, 0.0);
+        assert_eq!(fit.heights, [20.0, 20.0]);
+        // A height set by hand is kept, past its content too.
+        let stack = [asked(20.0, Some(100.0)), asked(20.0, None)];
+        let (fit, spare) = fit_within(&stack, &[30.0, 40.0], 300.0, 0.0);
+        assert_eq!(fit.heights, [100.0, 40.0]);
+        assert_eq!(spare, 160.0);
+        // Without bounds, as `fit`.
+        let (fit, spare) = fit_within(&stack, &[], 300.0, 0.0);
+        assert_eq!(fit, super::fit(&stack, 300.0, 0.0));
+        assert_eq!(spare, 0.0);
+        // A pinned plan comes back through the same fit.
+        let stack = [asked(20.0, None), asked(20.0, None), asked(20.0, None)];
+        let most = [30.0, 1000.0, 40.0];
+        let hands = pin_plan_within(&stack, &most, 300.0, 0.0, &[60.0, 200.0, 40.0]);
+        let pinned: Vec<Asked> = stack
+            .iter()
+            .zip(&hands)
+            .map(|(a, &hand)| Asked { hand, ..*a })
+            .collect();
+        let (fit, _) = fit_within(&pinned, &most, 300.0, 0.0);
+        assert_eq!(fit.heights, [60.0, 200.0, 40.0]);
     }
 }

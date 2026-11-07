@@ -1863,3 +1863,118 @@ fn settle(h: &mut Harness<'_>) {
     }
     panic!("never settled");
 }
+
+/// A stack sized by its content: a short section of `short` rows, a
+/// folded one, and one of `long` rows.
+fn by_content(short: usize, long: usize) -> Harness<'static> {
+    Harness::builder()
+        .with_size(egui::vec2(300.0, 600.0))
+        .build_ui(move |ui| {
+            Sections::new(NAME).fill(false).show(ui, |stack| {
+                stack.rows(Section::new("live", "Live"), short, |ui, range| {
+                    for i in range {
+                        ui.label(format!("live {i}"));
+                    }
+                });
+                stack.section(Section::new("idle", "Idle").open(false), |ui| {
+                    ui.label("idle row");
+                });
+                stack.rows(Section::new("shut", "Shut"), long, |ui, range| {
+                    for i in range {
+                        ui.label(format!("shut {i}"));
+                    }
+                });
+            });
+        })
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_stack_sized_by_its_content_keeps_short_sections_short_and_the_room_below() {
+    let mut h = by_content(3, 2);
+    h.run();
+    let laid = laid_out(&h.ctx, NAME);
+    let row = laid[0].window.as_ref().map(|w| w.len()).unwrap_or(0);
+    assert_eq!(row, 3, "every row shown");
+    // Each open section as tall as its rows, the bands right under them.
+    let live = laid[0].body.unwrap();
+    assert_eq!(laid[1].band.top(), live.bottom());
+    let shut = laid[2].body.unwrap();
+    assert!(shut.height() < 100.0, "{shut:?}");
+    assert!(live.height() < 100.0, "{live:?}");
+    // The room left is under the last band, not in a section.
+    assert!(laid[2].empty > 300.0, "{laid:?}");
+    // A long section takes what the short one leaves, and scrolls.
+    let mut h = by_content(1, 5_000);
+    h.run();
+    let laid = laid_out(&h.ctx, NAME);
+    let (live, shut) = (laid[0].body.unwrap(), laid[2].body.unwrap());
+    assert!(live.height() < 60.0, "{live:?}");
+    assert!(shut.bottom() > 550.0, "{shut:?}");
+    assert!(laid[2].empty < 0.5);
+    // Filling, as before: the last open section takes the rest.
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(300.0, 600.0))
+        .build_ui(|ui| {
+            Sections::new(NAME).show(ui, |stack| {
+                stack.rows(Section::new("live", "Live"), 3, |ui, range| {
+                    for i in range {
+                        ui.label(format!("live {i}"));
+                    }
+                });
+            });
+        });
+    h.run();
+    assert!(laid_out(&h.ctx, NAME)[0].body.unwrap().bottom() > 550.0);
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_body_s_bar_takes_the_bar_style_and_the_inset_and_its_content_the_ui_s() {
+    const THUMB: egui::Color32 = egui::Color32::from_rgb(0x4b, 0x4b, 0x4b);
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(300.0, 300.0))
+        .build_ui(|ui| {
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+            let mut bars = (**ui.style()).clone();
+            for w in [
+                &mut bars.visuals.widgets.inactive,
+                &mut bars.visuals.widgets.hovered,
+                &mut bars.visuals.widgets.active,
+            ] {
+                w.bg_fill = THUMB;
+                w.fg_stroke.color = THUMB;
+            }
+            Sections::new(NAME)
+                .bar_style(std::sync::Arc::new(bars))
+                .bar_track_inset(4.0)
+                .show(ui, |stack| {
+                    stack.rows(Section::new("long", "Long"), 500, |ui, range| {
+                        for i in range {
+                            ui.label(format!("row {i}"));
+                        }
+                    });
+                });
+        });
+    h.run();
+    h.run();
+    let body = laid_out(&h.ctx, NAME)[0].body.unwrap();
+    let thumbs: Vec<egui::Rect> = h
+        .output()
+        .shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            egui::Shape::Rect(r) if r.fill == THUMB => Some(r.rect),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(thumbs.len(), 1, "the thumb in the bars' colour: {thumbs:?}");
+    // At the top of the track, 4 points down from the body's top.
+    assert_eq!(thumbs[0].top(), body.top() + 4.0, "{thumbs:?} {body:?}");
+    // The rows keep the Ui's look: no text in the bars' colour.
+    let text_in_thumb = h.output().shapes.iter().any(|c| match &c.shape {
+        egui::Shape::Text(t) => t.fallback_color == THUMB,
+        _ => false,
+    });
+    assert!(!text_in_thumb);
+}
