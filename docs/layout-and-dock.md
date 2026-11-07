@@ -1,6 +1,7 @@
 # Layout and dock: two layers
 
-Status: design note, no code yet. It follows [dock-space.md](dock-space.md), which this
+Status: design note, accepted. Step 2 (the model, its solver and serde) is in
+`src/layout/`; "As built" below lists where it differs from this note. It follows [dock-space.md](dock-space.md), which this
 extends: a `DockSpace` shares one drag between several docks, but where each dock is and how big
 it is stays the application's. This note moves that part into egui_stack too, as a layer of its
 own, and puts the floating windows in it.
@@ -252,7 +253,7 @@ axis every child takes the split's whole breadth.
 1. Folded, lying-over and hidden children take their fixed breadth (strip or zero).
 2. Every other child that does not grow takes its wanted size, clamped to `[min, max]`.
 3. The growing child takes what is left. If that is under its own `min`, the others **give way**,
-   lowest priority first, then the farthest from the last sash dragged; each gives way down to its
+   lowest priority first, then the nearest to the growing child; each gives way down to its
    `min`, never in proportion. This is the rule `sections::plan` already applies to section
    heights, and the solver shares that code. A centre's least size thus wins over the sides'
    wanted sizes and their `max`, never over their `min`.
@@ -426,8 +427,9 @@ one painter value paints both layers and existing painters keep compiling.
 With the `serde` feature:
 
 - `Layout` serialises as one value: the zone tree with each zone's state, the floats, the
-  joints, the flyout widths, and a `version`. Constraints are serialised too but the application
-  re-asserts them from code each frame, so a saved layout never overrides a newer least size.
+  joints, the flyout widths, and a `version`. Constraints are not saved: after loading,
+  `Layout::reconcile(&code)` takes them from the tree the code builds, so a saved layout never
+  overrides a newer least size, and adds or drops the zones the code added or removed.
 - `DockSpace` serialises as today (its `DockState`, docks, rules).
 - `Docked<Tab> { layout: Layout, space: DockSpace<Tab> }`, an optional pair, serialises both in
   one value for an application that keeps them together. `Docked::repair` drops floats and zones
@@ -446,6 +448,31 @@ Migration:
 `WindowState`: nothing changes for it. Once a `DockSpace` is bound to a layout, the layout owns
 the windows' geometry and `WindowState`'s position and size are ignored; they are deprecated once
 every path is on the layout.
+
+## As built (step 2)
+
+Where the `layout` module differs from the sketch above:
+
+- `Layout` holds the zone tree only (`root`); `floats`, `groups` and the flyout widths come with
+  their steps (4, 6, 8). The `version` is not a field: it is written on save
+  (`LAYOUT_VERSION`) and a later version fails to load (`VersionError`).
+- `Constraints` gains `auto_fold: bool`, the opt-in of step 4 of the algorithm (with
+  `Fold::ToStrip`). A zone folded by the solver is reported as `Shown::AutoFolded` and its
+  `state.folded` is not written, so it comes back with the room.
+- Giving way is ordered by priority, then nearest to the growing child (else the last open child)
+  first, as sections give way nearest the boundary; the solver keeps no memory of the last sash
+  dragged. The shared rule is `sections::plan::give_in_turn`.
+- A growing child's `max` holds only while the other children can take the surplus up to their
+  `max`; what is left still goes to it. With no growing child, it is left empty after the last.
+- The solver is `Layout::solve(rect, &Solve) -> Laid`, pure. `Solve` carries the strip breadth
+  and the content sizes asked last frame (for `fit_content`). `Laid` lists `LaidZone { name, rect,
+  shown, strip }`, parents first: a folded zone's `rect` is its strip; a zone lying over has its
+  strip in the flow and its body, towards the growing child, as `rect`; zones under a folded or
+  hidden zone are not laid. Events come with `LayoutArea` (step 3).
+- `reconcile` keeps the loaded tree's shape: a zone the code moved stays where it was saved, a
+  zone only the code has is added after the same sibling, the kept zones under a split the code
+  dropped take its place, and a leaf turned split (or back) takes the code's kind. With another
+  root, the code's layout replaces the loaded one.
 
 ## The minimal contract
 
