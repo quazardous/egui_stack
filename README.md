@@ -20,7 +20,8 @@ from this repository's main branch.
 - Moving tabs between nodes and resizing.
 - Dragging tabs out into new `egui` windows.
 - Several docks sharing one drag (`DockSpace`): side areas and a centre, each drawn where the application puts it,
-  with the same drop zones between them as inside one dock.
+  with the same drop zones between them as inside one dock, and no-drop zones (a toolbar, a status bar) where a released
+  tab goes back instead of floating.
 - Highly customizable look and feel: a `Style`, or a `DockPainter` that paints the tabs, tab bars, separators and drop
   overlay itself.
 - High degree of control over behaviour of the whole dock area and of individual tabs.

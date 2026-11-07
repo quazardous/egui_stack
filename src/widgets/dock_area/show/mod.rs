@@ -11,7 +11,7 @@ use super::{
 };
 use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
-use crate::dock_space::{dock_name, remove_empty_docks};
+use crate::dock_space::{NoDrop, dock_name, remove_empty_docks};
 use crate::dock_state::tree::node::shares;
 use crate::tab_viewer::{DockDrop, DropVerdict, OnCloseResponse};
 use crate::{
@@ -172,6 +172,19 @@ impl<Tab> DockArea<'_, Tab> {
         });
 
         let hover_data = hover_data.or_else(|| self.hover_outside(dock_rect, state, &drag_data));
+        // Where no tab may land, the drag hovers nothing: released, the tab stays where it was.
+        let refused = hover_data
+            .as_ref()
+            .is_some_and(|hover| self.refuses_drop(ui.ctx(), state, hover));
+        let hover_data = if refused {
+            state.dnd = None;
+            None
+        } else {
+            hover_data
+        };
+        if let Some(space) = &mut self.space {
+            *space.no_drop = NoDrop::default();
+        }
 
         if let (Some(source), Some(hover)) = (drag_data, hover_data) {
             let style = self.style.as_ref().unwrap();
@@ -231,6 +244,36 @@ impl<Tab> DockArea<'_, Tab> {
             .iter()
             .find(|dock| dock.surface == surface)
             .map(|dock| dock.rules)
+    }
+
+    /// Whether a drag hovering `hover` may not land there: the pointer is in one of the space's
+    /// no-drop zones, unless over a floating window, or the dock under it refuses drops.
+    fn refuses_drop(&self, ctx: &Context, state: &State, hover: &HoverData) -> bool {
+        let Some(space) = &self.space else {
+            return false;
+        };
+        let surface = hover.dst.surface_address();
+        if !hover.outside && self.dock_state.is_window(surface) {
+            return false;
+        }
+        if !hover.outside && self.dock_rules(surface).is_some_and(|r| !r.accept_drops) {
+            return true;
+        }
+        let Some(pointer) = state.last_hover_pos else {
+            return false;
+        };
+        let widgets = space
+            .no_drop
+            .ids
+            .iter()
+            .filter_map(|&id| ctx.read_response(id).map(|r| r.rect));
+        space
+            .no_drop
+            .rects
+            .iter()
+            .copied()
+            .chain(widgets)
+            .any(|rect| rect.contains(pointer))
     }
 
     /// The name of the space's dock at `surface`, if it is one.

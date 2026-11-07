@@ -90,6 +90,8 @@ struct App {
     /// The docks in the order they are drawn.
     order: Vec<&'static str>,
     previews: &'static Previews,
+    /// The no-drop zones declared every frame.
+    no_drop: Vec<Rect>,
 }
 
 /// Where each dock is drawn on the 900 × 400 screen; below 300 points is outside every dock.
@@ -121,10 +123,12 @@ fn harness_with(space: DockSpace<String>, order: Vec<&'static str>) -> Harness<'
         viewer: Viewer::default(),
         order,
         previews: Box::leak(Box::default()),
+        no_drop: Vec::new(),
     };
     let mut harness = Harness::builder().with_size([900.0, 400.0]).build_ui_state(
         |ui, app: &mut App| {
             app.viewer.tab_rects.clear();
+            app.space.no_drop_zones(app.no_drop.clone());
             for &name in &app.order.clone() {
                 ui.scope_builder(UiBuilder::new().max_rect(dock_rect(name)), |ui| {
                     DockArea::dock(&mut app.space, name)
@@ -710,4 +714,98 @@ fn a_tab_dropped_on_the_tab_bar_of_a_window_over_two_docks_lands_in_the_window()
         strings(&["Notes", "Search"])
     );
     assert!(harness.state().space.dock("right").unwrap().is_empty());
+}
+
+/// Holds `tab` over `target`, then says whether a drop preview showed there, and releases it.
+fn previewed_then_dropped(
+    harness: &mut Harness<'_, App>,
+    tab: &str,
+    target: impl Fn(&Harness<'_, App>) -> Pos2,
+) -> bool {
+    let target = drag_over(harness, tab, target);
+    harness.state().previews.0.lock().unwrap().clear();
+    harness.hover_at(target);
+    harness.step();
+    harness.step();
+    let previewed = !harness.state().previews.0.lock().unwrap().is_empty();
+    harness.drop_at(target);
+    harness.run_steps(5);
+    previewed
+}
+
+fn in_a_window(app: &App, tab: &str) -> bool {
+    let state = app.space.state();
+    let found = state.find_tab(&tab.to_owned()).unwrap();
+    state.get_window_state(found.surface).is_some()
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_tab_released_in_a_no_drop_zone_goes_back_and_does_not_float() {
+    let mut harness = harness();
+    // The status bar under the docks.
+    harness.state_mut().no_drop = vec![Rect::from_min_max(pos2(0.0, 320.0), pos2(900.0, 400.0))];
+    let previewed = previewed_then_dropped(&mut harness, "Files", |_| pos2(450.0, 350.0));
+    assert!(!previewed, "no preview in the zone");
+    assert!(!in_a_window(harness.state(), "Files"));
+    assert_eq!(
+        leaves(harness.state(), "left"),
+        [strings(&["Files", "Search"])]
+    );
+
+    // Out of the zone, the space outside every dock still makes a window.
+    let previewed = previewed_then_dropped(&mut harness, "Files", |_| pos2(450.0, 310.0));
+    assert!(previewed);
+    assert!(in_a_window(harness.state(), "Files"));
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_no_drop_zone_over_a_dock_wins_and_is_forgotten_once_not_declared() {
+    let mut harness = harness();
+    harness.state_mut().no_drop = vec![dock_rect("centre")];
+    let previewed = previewed_then_dropped(&mut harness, "Files", centre_middle);
+    assert!(!previewed);
+    assert_eq!(
+        leaves(harness.state(), "centre"),
+        [strings(&["Editor", "Preview"])]
+    );
+
+    // Declared no more, the zone is gone.
+    harness.state_mut().no_drop.clear();
+    drop_at(&mut harness, "Files", centre_middle);
+    assert_eq!(
+        leaves(harness.state(), "centre"),
+        [strings(&["Editor", "Preview", "Files"])]
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_dock_that_refuses_drops_is_no_target_but_its_tabs_leave_it() {
+    let mut harness = harness_with(
+        space(
+            DockRules::default().accept_drops(false),
+            DockRules::default(),
+        ),
+        vec!["left", "centre", "right"],
+    );
+    let previewed = previewed_then_dropped(&mut harness, "Editor", |h| {
+        let leaf = dock_leaf(h, "left");
+        pos2(leaf.center().x, leaf.center().y + 30.0)
+    });
+    assert!(!previewed, "no preview over the dock");
+    assert!(!in_a_window(harness.state(), "Editor"), "nor a window");
+    assert_eq!(
+        leaves(harness.state(), "centre"),
+        [strings(&["Editor", "Preview"])]
+    );
+
+    // Its own tabs still go out.
+    drop_at(&mut harness, "Files", centre_middle);
+    assert_eq!(leaves(harness.state(), "left"), [strings(&["Search"])]);
+    assert_eq!(
+        leaves(harness.state(), "centre"),
+        [strings(&["Editor", "Preview", "Files"])]
+    );
 }

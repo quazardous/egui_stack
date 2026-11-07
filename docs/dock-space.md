@@ -67,6 +67,7 @@ whole: dropping on it puts the tab in it.
 | `splits` | `AllowedSplits::All` | The splits a drop may make in this dock, on top of `DockArea::allowed_splits`. |
 | `windows` | `true` | Whether a tab dragged out of this dock may become a floating window. |
 | `keep_when_empty` | `true` | Kept as an empty drop target once its last tab leaves; otherwise removed from the space. |
+| `accept_drops` | `true` | Whether a tab may be dropped in this dock. Off, the dock is never a drop target, its own tabs included; they can still be dragged out. |
 
 Where a dock is and how big it is stays the application's: egui_stack only needs each dock's rect
 each frame, which is the `Ui` the dock is drawn in.
@@ -78,6 +79,23 @@ each frame, which is the `Ui` the dock is drawn in.
 floating window) beside the destination; by default it asks `drop_allowed`, so a viewer overrides
 either one. It is asked inside one dock and between docks alike, and a refusal shows on the
 preview with its reason, as today.
+
+### No-drop zones
+
+A tab released outside every dock becomes a floating window where it lands. An application keeps
+parts of its window out of that, its toolbar or its status bar, by declaring them every frame:
+
+```rust,ignore
+space.no_drop_zone(toolbar_rect);
+space.no_drop_zones([status_bar_rect, ruler_rect]);
+space.no_drop_widget(menu_bar_id); // its rect as egui last saw it
+```
+
+A tab released in a zone goes back where it was: it does not float, and no drop preview shows
+there. A zone wins over a dock under it; a floating window over it still takes the tab. The zones
+last one frame: the space forgets them once its docks have read them, so an application declares
+them each frame, before or after the docks. A dock with `accept_drops: false` refuses drops the
+same way, through the same test.
 
 ### Floating windows
 

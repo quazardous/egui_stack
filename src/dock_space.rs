@@ -60,6 +60,17 @@ pub struct DockSpace<Tab> {
         serde(skip, default = "DockSpace::<()>::default_id")
     )]
     id: Id,
+    /// The rects no tab is dropped in, this frame.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    no_drop: NoDrop,
+}
+
+/// What an application declared no tab may be dropped in ([`DockSpace::no_drop_zone`]): rects,
+/// and widgets whose rects egui knows.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct NoDrop {
+    pub(crate) rects: Vec<Rect>,
+    pub(crate) ids: Vec<Id>,
 }
 
 /// A dock of a [`DockSpace`]: its name, its surface and its rules.
@@ -95,6 +106,11 @@ pub struct DockRules {
     /// By default `true`; when `false`, the dock is removed from the space as soon as it is
     /// empty.
     pub keep_when_empty: bool,
+    /// Whether a dragged tab may be dropped in this dock. By default `true`; when `false`, the
+    /// dock is never a drop target, its own tabs included: a tab released over it goes back
+    /// where it was, as over a [no-drop zone](DockSpace::no_drop_zone). Its tabs can still be
+    /// dragged out of it.
+    pub accept_drops: bool,
 }
 
 impl Default for DockRules {
@@ -103,6 +119,7 @@ impl Default for DockRules {
             splits: AllowedSplits::All,
             windows: true,
             keep_when_empty: true,
+            accept_drops: true,
         }
     }
 }
@@ -128,6 +145,13 @@ impl DockRules {
         self.keep_when_empty = keep_when_empty;
         self
     }
+
+    /// Sets [`accept_drops`](Self::accept_drops).
+    #[inline]
+    pub fn accept_drops(mut self, accept_drops: bool) -> Self {
+        self.accept_drops = accept_drops;
+        self
+    }
 }
 
 impl DockSpace<()> {
@@ -151,6 +175,7 @@ impl<Tab> DockSpace<Tab> {
             docks: Vec::new(),
             windows_dock: None,
             id: DockSpace::default_id(),
+            no_drop: NoDrop::default(),
         }
     }
 
@@ -334,6 +359,38 @@ impl<Tab> DockSpace<Tab> {
         }
     }
 
+    /// Declares a rect no dragged tab may be dropped in, for this frame: the application's
+    /// toolbar, its status bar, any part of the window that is not a dock. A tab released there
+    /// goes back where it was: it does not become a floating window, and no drop preview shows
+    /// there. A floating window over the zone still takes the tab.
+    ///
+    /// The zones hold for one frame: declare them every frame, before or after drawing the docks
+    /// (declared after, they take effect a frame later, which a drag does not notice). The space
+    /// forgets them once its docks have read them.
+    ///
+    /// ```
+    /// # use egui_stack::{DockRules, DockSpace};
+    /// # let mut space = DockSpace::<String>::new();
+    /// # let toolbar = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 30.0));
+    /// space.no_drop_zone(toolbar);
+    /// ```
+    pub fn no_drop_zone(&mut self, rect: Rect) {
+        self.no_drop.rects.push(rect);
+    }
+
+    /// Declares several rects no dragged tab may be dropped in, for this frame; see
+    /// [`no_drop_zone`](Self::no_drop_zone).
+    pub fn no_drop_zones(&mut self, rects: impl IntoIterator<Item = Rect>) {
+        self.no_drop.rects.extend(rects);
+    }
+
+    /// Declares a widget, by its [`Id`], no dragged tab may be dropped on, for this frame: its
+    /// rect is the one egui knows for it ([`egui::Context::read_response`]), so a panel or a bar
+    /// that moves needs no rect of the application's. See [`no_drop_zone`](Self::no_drop_zone).
+    pub fn no_drop_widget(&mut self, id: Id) {
+        self.no_drop.ids.push(id);
+    }
+
     /// The dock whose [`DockArea`](crate::DockArea) also draws the floating windows: the one
     /// set with [`set_windows_dock`](Self::set_windows_dock) if the space has it, otherwise the
     /// first dock.
@@ -372,6 +429,7 @@ impl<Tab> DockSpace<Tab> {
             docks: self.docks.clone(),
             windows_dock: self.windows_dock.clone(),
             id: self.id,
+            no_drop: self.no_drop.clone(),
         }
     }
 
@@ -391,12 +449,20 @@ impl<Tab> DockSpace<Tab> {
     pub(crate) fn split_for_area(
         &mut self,
         name: &str,
-    ) -> (&mut DockState<Tab>, &mut Vec<Dock>, Option<usize>, bool, Id) {
+    ) -> (
+        &mut DockState<Tab>,
+        &mut Vec<Dock>,
+        &mut NoDrop,
+        Option<usize>,
+        bool,
+        Id,
+    ) {
         let index = self.dock_index(name);
         let shows_windows = index.is_some() && self.windows_dock() == Some(name);
         (
             &mut self.state,
             &mut self.docks,
+            &mut self.no_drop,
             index,
             shows_windows,
             self.id,

@@ -20,7 +20,8 @@ pub use labels::Labels;
 use tab_removal::TabRemoval;
 
 use crate::{
-    DockPainter, DockSpace, NodePath, Style, StylePainter, TabIndex, TabPath, dock_space::Dock,
+    DockPainter, DockSpace, NodePath, Style, StylePainter, TabIndex, TabPath,
+    dock_space::{Dock, NoDrop},
     dock_state::DockState,
 };
 
@@ -64,6 +65,8 @@ pub struct DockArea<'tree, Tab> {
 /// The dock of a [`DockSpace`](crate::DockSpace) a [`DockArea`] shows, and the space's docks.
 struct SpaceDock<'a> {
     docks: &'a mut Vec<Dock>,
+    /// Where no tab is dropped, this frame.
+    no_drop: &'a mut NoDrop,
     /// The dock shown, as an index in `docks`; `None` if the space has no dock of that name.
     dock: Option<usize>,
     /// Whether this area also shows the floating windows.
@@ -162,10 +165,11 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     ///
     /// [`Ui`]: egui::Ui
     pub fn dock(space: &'tree mut DockSpace<Tab>, dock: &str) -> DockArea<'tree, Tab> {
-        let (dock_state, docks, dock, shows_windows, id) = space.split_for_area(dock);
+        let (dock_state, docks, no_drop, dock, shows_windows, id) = space.split_for_area(dock);
         let mut area = Self::new(dock_state).id(id);
         area.space = Some(SpaceDock {
             docks,
+            no_drop,
             dock,
             shows_windows,
         });
