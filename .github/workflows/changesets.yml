@@ -4,7 +4,7 @@ name: Changesets
 # check again, and only this one (RELEASING.md).
 on:
   pull_request:
-    branches: [ main, 'release-*' ]
+    branches: [ main, next, 'release-*' ]
     types: [ opened, synchronize, reopened, labeled, unlabeled ]
 
 env:
