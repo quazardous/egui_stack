@@ -271,6 +271,8 @@ pub mod dock_space;
 /// The main structure of the library.
 pub mod dock_state;
 
+pub mod layout;
+
 pub mod sections;
 
 /// Look and feel.

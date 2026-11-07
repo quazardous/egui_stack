@@ -144,15 +144,37 @@ fn give(height: &mut f32, least: f32, owed: f32) -> f32 {
     given
 }
 
+/// Takes up to `owed` from the sizes in `order`, in turn, each down to its
+/// least size and never in proportion; says how much they gave. The rule
+/// sections and the layout's solver share (`crate::layout`).
+pub(crate) fn give_in_turn(
+    sizes: &mut [f32],
+    least: impl Fn(usize) -> f32,
+    order: impl IntoIterator<Item = usize>,
+    owed: f32,
+) -> f32 {
+    let mut left = owed;
+    for i in order {
+        if left <= 0.0 {
+            break;
+        }
+        left -= give(&mut sizes[i], least(i), left);
+    }
+    owed - left
+}
+
 fn push_down(placed: &[Placed], above: usize, below: &[usize], asked: f32, plan: &mut DragPlan) {
     let mut owed = asked;
     let (last, between) = match below.split_last() {
         Some((&last, between)) => (Some(last), between),
         None => (None, below),
     };
-    for &i in between {
-        owed -= give(&mut plan.heights[i], placed[i].least, owed);
-    }
+    owed -= give_in_turn(
+        &mut plan.heights,
+        |i| placed[i].least,
+        between.iter().copied(),
+        owed,
+    );
     let into_empty = owed.min(plan.empty);
     plan.empty -= into_empty;
     owed -= into_empty;
@@ -192,11 +214,8 @@ fn pull_up(placed: &[Placed], above: usize, asked: f32, plan: &mut DragPlan) {
 /// Takes up to `asked` from the section `above`, then those above it, the
 /// nearest first; says how much they gave.
 fn give_above(placed: &[Placed], above: usize, asked: f32, plan: &mut DragPlan) -> f32 {
-    let mut owed = asked;
-    for i in (0..=above).rev().filter(|&i| placed[i].open) {
-        owed -= give(&mut plan.heights[i], placed[i].least, owed);
-    }
-    asked - owed
+    let order = (0..=above).rev().filter(|&i| placed[i].open);
+    give_in_turn(&mut plan.heights, |i| placed[i].least, order, asked)
 }
 
 /// The open sections above `section`, with their shown heights: what must
@@ -416,13 +435,13 @@ fn fit_filled(asked: &[Asked], room: f32, empty: f32) -> Fit {
     // way to it, from the bottom up.
     let listed_least: f32 = listed.iter().map(|&i| asked[i].least).sum();
     let kept: f32 = own.iter().map(|&i| heights[i]).sum();
-    let mut owed = kept + listed_least - room;
-    for &i in own.iter().rev() {
-        if owed <= 0.0 {
-            break;
-        }
-        owed -= give(&mut heights[i], asked[i].least, owed);
-    }
+    let owed = kept + listed_least - room;
+    give_in_turn(
+        &mut heights,
+        |i| asked[i].least,
+        own.iter().rev().copied(),
+        owed,
+    );
     let kept: f32 = own.iter().map(|&i| heights[i]).sum();
     share_out(asked, &listed, room - kept, &mut heights);
     Fit {
