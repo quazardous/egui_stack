@@ -430,6 +430,7 @@ impl Body<'_> {
             Body::Rows { count, draw } => {
                 // Rows touch, as a list's: their height is all that places them.
                 ui.spacing_mut().item_spacing.y = 0.0;
+                let content = ui.style().clone();
                 let mut window = None;
                 let out = bars.show(ui, |ui| {
                     area.show_rows(ui, row, count, |ui, range| {
