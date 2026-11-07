@@ -11,6 +11,19 @@ knope is a development tool, not a dependency:
 `cargo install knope --version 0.23.2 --locked`, the version CI pins
 (`KNOPE_VERSION` in `.github/workflows/`).
 
+## The next branch
+
+Pull requests target `next`, a buffer branch between them and `main`.
+Into `next`, CI runs the quick checks only (format, clippy, the tests and
+the docs on Linux, changesets) and the pull request merges once they pass.
+Every push to `next` runs everything (the three systems, Miri, the web
+demo, semver checks); a newer push cancels the running run. Once that
+passes, `promote.yml` fast-forwards `main` to the commit it checked and
+deploys the demo from `main`, so `main` only holds commits that passed
+everything. When `next` fails, the merge that broke it is fixed on `next`
+or reverted. A release pull request goes through `next` like any other;
+publishing and tags happen from `main`.
+
 ## On pull requests
 
 CI's **Changesets** job (`scripts/changeset-check.sh`) fails when a

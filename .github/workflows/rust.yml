@@ -1,10 +1,19 @@
 name: CI
 
+# `next` is the buffer branch (RELEASING.md, "The next branch"): a pull
+# request into it runs the quick checks only (format, clippy, tests and docs
+# on Linux), every push to it runs everything, and `main` fast-forwards to
+# it once that is green (promote.yml).
 on:
   push:
-    branches: [ main, 'release-*' ]
+    branches: [ main, next, 'release-*' ]
   pull_request:
-    branches: [ main, 'release-*' ]
+    branches: [ main, next, 'release-*' ]
+
+# One run per push to `next`: a newer push cancels the running one.
+concurrency:
+  group: ci-${{ github.event_name == 'push' && github.ref == 'refs/heads/next' && 'next' || github.run_id }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,7 +27,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        # Linux alone on a pull request into `next`; every system elsewhere.
+        os: ${{ fromJSON(github.base_ref == 'next' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     # GitHub's macOS arm64 runners are often short: a job waiting for one
     # is cancelled after a while and must not block a merge. Linux and
@@ -54,6 +64,7 @@ jobs:
   # (pages.yml) builds it on main; nothing is deployed here.
   web-demo:
     name: Web demo
+    if: github.base_ref != 'next'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -86,6 +97,7 @@ jobs:
   # major (a new minor before 1.0), fails otherwise (RELEASING.md).
   semver:
     name: Semver checks
+    if: github.base_ref != 'next'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -120,6 +132,7 @@ jobs:
           args: --all -- --check
 
   miri:
+    if: github.base_ref != 'next'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
