@@ -130,6 +130,10 @@ pub(super) struct DragDropState {
     pub pointer: Pos2,
     /// Is some when the pointer is over rect, f64 holds the time when the lock was last active.
     pub locked: Option<f64>,
+    /// Whether the dragged tab comes from a floating window.
+    pub src_in_window: bool,
+    /// Whether the hovered destination is in a floating window.
+    pub dst_in_window: bool,
 }
 
 impl DragDropState {
@@ -243,7 +247,7 @@ impl DragDropState {
             });
         }
         // If windows are not allowed, any hover over a window is immediately disallowed.
-        if !windows_allowed && !self.hover.dst.surface_address().is_main() {
+        if !windows_allowed && self.dst_in_window {
             return None;
         }
         draw_highlight_rect(self.hover.rect, ui, style, painter);
@@ -276,7 +280,7 @@ impl DragDropState {
         windows_allowed: bool,
     ) -> Option<TabDestination> {
         // If windows are not allowed, any hover over a window is immediately disallowed.
-        if !windows_allowed && self.hover.dst.surface_address() != SurfaceIndex::main() {
+        if !windows_allowed && self.dst_in_window {
             return None;
         }
         draw_highlight_rect(self.hover.rect, ui, style, painter);
@@ -364,7 +368,7 @@ impl DragDropState {
                 if target_state == LockState::HardLock {
                     *lock_time = ctx.input(|i| i.time);
                 }
-                let window_hold = if !self.hover.dst.surface_address().is_main() {
+                let window_hold = if self.dst_in_window {
                     ctx.request_repaint();
                     self.is_locked(style, ctx)
                 } else {
@@ -455,7 +459,7 @@ impl DragDropState {
     }
 
     fn window_preview_rect(&self, rect: Rect) -> Rect {
-        if self.drag.src.surface_address() == SurfaceIndex::main() {
+        if !self.src_in_window {
             Rect::from_min_size(rect.min, rect.size() * 0.8)
         } else {
             rect

@@ -14,6 +14,8 @@ pub(super) struct State {
     pub window_fade: Option<(f64, SurfaceIndex)>,
     /// The tab dragged during the last frame, if any.
     pub dragged: Option<DraggedTab>,
+    /// The pass the drag was last resolved in: the docks of a space resolve it once a pass.
+    pub pass: Option<u64>,
 }
 
 impl State {
@@ -25,6 +27,7 @@ impl State {
             dnd: None,
             window_fade: None,
             dragged: None,
+            pass: None,
         })
     }
 
@@ -52,6 +55,8 @@ impl State {
                 drag,
                 pointer: ctx.pointer_hover_pos().unwrap_or(Pos2::ZERO),
                 locked: None,
+                src_in_window: false,
+                dst_in_window: false,
             })
         }
     }

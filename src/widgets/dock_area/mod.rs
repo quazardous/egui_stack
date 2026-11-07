@@ -19,7 +19,10 @@ use egui::{Context, Id, Modifiers, emath::*};
 pub use labels::Labels;
 use tab_removal::TabRemoval;
 
-use crate::{DockPainter, NodePath, Style, StylePainter, TabIndex, TabPath, dock_state::DockState};
+use crate::{
+    DockPainter, DockSpace, NodePath, Style, StylePainter, TabIndex, TabPath, dock_space::Dock,
+    dock_state::DockState,
+};
 
 /// Displays a [`DockState`] in `egui`.
 pub struct DockArea<'tree, Tab> {
@@ -49,10 +52,22 @@ pub struct DockArea<'tree, Tab> {
     allowed_splits: AllowedSplits,
     window_bounds: Option<Rect>,
 
+    /// Set when the area shows one dock of a [`DockSpace`](crate::DockSpace).
+    space: Option<SpaceDock<'tree>>,
+
     to_remove: Vec<TabRemoval>,
     to_detach: Vec<TabPath>,
     new_focused: Option<NodePath>,
     tab_hover_rect: Option<(Rect, TabIndex)>,
+}
+
+/// The dock of a [`DockSpace`](crate::DockSpace) a [`DockArea`] shows, and the space's docks.
+struct SpaceDock<'a> {
+    docks: &'a mut Vec<Dock>,
+    /// The dock shown, as an index in `docks`; `None` if the space has no dock of that name.
+    dock: Option<usize>,
+    /// Whether this area also shows the floating windows.
+    shows_windows: bool,
 }
 
 /// A tab being dragged in a [`DockArea`], from [`DockArea::dragged_tab`].
@@ -119,6 +134,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             hidable_tab_bars: false,
             show_tab_name_on_hover: false,
             allowed_splits: AllowedSplits::default(),
+            space: None,
             to_remove: Vec::new(),
             to_detach: Vec::new(),
             new_focused: None,
@@ -133,6 +149,27 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             secondary_button_on_modifier: true,
             secondary_button_context_menu: true,
         }
+    }
+
+    /// Creates a [`DockArea`] showing the dock named `dock` of `space`, drawn in the [`Ui`] given
+    /// to [`show_inside`](Self::show_inside); if the dock is the space's
+    /// [windows dock](crate::DockSpace::windows_dock), the floating windows too.
+    ///
+    /// Each dock of a space is shown by its own call, in any order and anywhere in the frame;
+    /// a tab is dragged from any of them to any other as inside one dock. The calls share the
+    /// space's [`id`](crate::DockSpace::id): set it on the space, not with [`id`](Self::id). A
+    /// dock the space does not have shows nothing.
+    ///
+    /// [`Ui`]: egui::Ui
+    pub fn dock(space: &'tree mut DockSpace<Tab>, dock: &str) -> DockArea<'tree, Tab> {
+        let (dock_state, docks, dock, shows_windows, id) = space.split_for_area(dock);
+        let mut area = Self::new(dock_state).id(id);
+        area.space = Some(SpaceDock {
+            docks,
+            dock,
+            shows_windows,
+        });
+        area
     }
 
     /// Sets the [`DockArea`] ID. Useful if you have more than one [`DockArea`].

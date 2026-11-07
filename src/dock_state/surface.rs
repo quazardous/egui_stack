@@ -13,7 +13,9 @@ pub enum Surface<Tab> {
     /// An empty surface, with nothing inside (practically, a null surface).
     Empty,
 
-    /// The main surface of a [`DockState`](crate::DockState), only one should exist at surface index 0 at any one time.
+    /// A docked surface, drawn in the [`Ui`](egui::Ui) given to its
+    /// [`DockArea`](crate::DockArea): the main surface of a [`DockState`](crate::DockState), at
+    /// surface index 0, or one of the named docks of a [`DockSpace`](crate::DockSpace).
     Main(Tree<Tab>),
 
     /// A windowed surface with a state.
