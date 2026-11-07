@@ -493,6 +493,7 @@ fn removing_a_dock_gives_its_tree() {
 
 #[cfg(feature = "serde")]
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_space_saves_and_loads_as_one_value() {
     let left = DockRules::default()
         .splits(AllowedSplits::TopBottomOnly)
