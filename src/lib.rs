@@ -151,6 +151,14 @@
 //!
 //! For more details, see: [`DockState`].
 //!
+//! ## Dock spaces
+//!
+//! A [`DockSpace`] holds several named docks (side areas and a centre, say), each with its own
+//! [`Tree`], and the floating windows. Each dock is drawn by its own [`DockArea::dock`] call,
+//! wherever the application lays it out, and the docks share one drag: a tab goes from any of
+//! them to any other with the same drop zones as inside one dock. Each dock has its
+//! [`DockRules`]. See [`DockSpace`].
+//!
 //! ## Trees
 //!
 //! In each [`Surface`] there is a [`Tree`] which actually stores the tabs. Its leaves hold the
@@ -249,6 +257,7 @@
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
 
+pub use dock_space::{DockRules, DockSpace};
 #[allow(deprecated)]
 pub use dock_state::*;
 pub use egui;
@@ -256,6 +265,8 @@ pub use style::*;
 pub use translations::*;
 pub use tree::*;
 pub use widgets::*;
+
+pub mod dock_space;
 
 /// The main structure of the library.
 pub mod dock_state;

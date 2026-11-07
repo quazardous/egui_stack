@@ -108,6 +108,17 @@ pub trait TabViewer {
         DropVerdict::Allow
     }
 
+    /// Whether `tab` may be dropped at `drop.destination`, knowing the docks of a
+    /// [`DockSpace`](crate::DockSpace) it would leave and enter.
+    ///
+    /// Asked as [`drop_allowed`](Self::drop_allowed) is, by every [`DockArea`](crate::DockArea),
+    /// inside one dock and between the docks of a space alike; outside a space, both docks are
+    /// `None`. By default it returns what [`drop_allowed`](Self::drop_allowed) does, so a viewer
+    /// overrides one or the other.
+    fn dock_drop_allowed(&self, tab: &Self::Tab, drop: &DockDrop<'_>) -> DropVerdict {
+        self.drop_allowed(tab, drop.destination)
+    }
+
     /// Whether the tab body will be cleared with the color specified in
     /// [`TabBarStyle::bg_fill`](crate::TabBarStyle::bg_fill).
     fn clear_background(&self, _tab: &Self::Tab) -> bool {
@@ -130,6 +141,20 @@ pub enum DropVerdict {
     Allow,
     /// The tab may not be dropped there. The reason, if any, is shown next to the pointer.
     Refuse(Option<WidgetText>),
+}
+
+/// Where a dragged tab would be dropped, for [`TabViewer::dock_drop_allowed`].
+#[derive(Clone, Copy)]
+#[non_exhaustive]
+pub struct DockDrop<'a> {
+    /// Where the tab would go.
+    pub destination: &'a TabDestination,
+    /// The name of the dock the tab leaves, `None` for a floating window or outside a
+    /// [`DockSpace`](crate::DockSpace).
+    pub from: Option<&'a str>,
+    /// The name of the dock the tab enters, `None` for a floating window (a new one included) or
+    /// outside a [`DockSpace`](crate::DockSpace).
+    pub to: Option<&'a str>,
 }
 
 /// Determines what happens to a tab when a user attempts to close it.

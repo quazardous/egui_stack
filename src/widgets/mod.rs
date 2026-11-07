@@ -14,4 +14,4 @@ pub use painter::{
     TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabMeasure, TabPaint, ToolItemPaint,
     ToolMorePaint, ToolSeparatorPaint,
 };
-pub use tab_viewer::TabViewer;
+pub use tab_viewer::{DockDrop, TabViewer};

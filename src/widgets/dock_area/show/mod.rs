@@ -11,11 +11,13 @@ use super::{
 };
 use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
+use crate::dock_space::{dock_name, remove_empty_docks};
 use crate::dock_state::tree::node::shares;
-use crate::tab_viewer::{DropVerdict, OnCloseResponse};
+use crate::tab_viewer::{DockDrop, DropVerdict, OnCloseResponse};
 use crate::{
-    AllowedSplits, DockArea, DockPainter, LinearDir, Node, NodeIndex, OverlayType, PartState,
-    SeparatorAxis, SeparatorPaint, Style, SurfaceIndex, TabDestination, TabViewer,
+    AllowedSplits, DockArea, DockPainter, DockRules, LinearDir, Node, NodeIndex, OverlayType,
+    PartState, SeparatorAxis, SeparatorPaint, Style, SurfaceIndex, TabDestination, TabPath,
+    TabViewer,
     utils::{expand_to_pixel, fade_dock_style, map_to_pixel},
 };
 
@@ -37,54 +39,21 @@ impl<Tab> DockArea<'_, Tab> {
         self.window_bounds.get_or_insert(ui.ctx().content_rect());
 
         let mut state = State::load(ui.ctx(), self.id);
-        // Set again below while a tab is still dragged.
-        state.dragged = None;
+        // The docks of a space share one state: the first of them shown in a pass resolves the
+        // drag for all of them, the others only draw.
+        let pass = ui.ctx().cumulative_pass_nr();
+        let first_in_pass = state.pass != Some(pass);
+        state.pass = Some(pass);
 
-        // Delay hover position one frame. On touch screens hover_pos() is None when any_released()
-        if !ui.input(|i| i.pointer.any_released()) {
-            state.last_hover_pos = ui.input(|i| i.pointer.hover_pos());
+        let dock_rect = ui.available_rect_before_wrap();
+        if let Some(space) = &mut self.space
+            && let Some(dock) = space.dock
+        {
+            space.docks[dock].rect = Some(dock_rect);
         }
 
-        let (drag_data, hover_data) = ui.memory_mut(|mem| {
-            (
-                mem.data.remove_temp(self.id.with("drag_data")).flatten(),
-                mem.data.remove_temp(self.id.with("hover_data")).flatten(),
-            )
-        });
-
-        let hover_data = hover_data
-            .or_else(|| self.hover_outside(ui.available_rect_before_wrap(), &state, &drag_data));
-
-        if let (Some(source), Some(hover)) = (drag_data, hover_data) {
-            let style = self.style.as_ref().unwrap();
-            state.set_drag_and_drop(source, hover, ui.ctx(), style);
-            let tab_dst = self.show_drag_drop_overlay(ui, &mut state, tab_viewer);
-            if ui.input(|i| i.pointer.primary_released())
-                && let Some(destination) = tab_dst
-            {
-                let source = {
-                    match state.dnd.as_ref().unwrap().drag.src {
-                        TreeComponent::Tab(src) => src,
-                        _ => todo!(
-                            "collections of tabs, like nodes and surfaces can't be docked (yet)"
-                        ),
-                    }
-                };
-                let src_tab_count = self.dock_state[source.node_path()].tabs_count();
-                self.dock_state.move_tab(source, destination);
-                // unhide tab bar on the source leaf when a tab is dragged out
-                if self.hidable_tab_bars
-                    && let Ok(leaf) = self.dock_state.leaf_mut(source.node_path())
-                    && leaf.tabs.len() < src_tab_count
-                    && leaf.tab_bar_hidden
-                {
-                    leaf.tab_bar_hidden = false;
-                }
-            }
-        }
-
-        if ui.input(|i| i.pointer.primary_released()) {
-            state.reset_drag();
+        if first_in_pass {
+            self.resolve_drag(ui, &mut state, tab_viewer, dock_rect);
         }
 
         let style = self.style.as_ref().unwrap();
@@ -98,7 +67,7 @@ impl<Tab> DockArea<'_, Tab> {
             })
         };
 
-        for &surface_index in self.dock_state.valid_surface_indices().iter() {
+        for surface_index in self.surfaces_to_show() {
             self.show_surface_inside(
                 surface_index,
                 ui,
@@ -172,7 +141,117 @@ impl<Tab> DockArea<'_, Tab> {
             self.dock_state.set_focused_node_and_surface(focused);
         }
 
+        if let Some(space) = &mut self.space {
+            remove_empty_docks(self.dock_state, space.docks);
+        }
+
         state.store(ui.ctx(), self.id);
+    }
+
+    /// Reads what the leaves recorded during the last pass: the dragged tab and what it hovers.
+    /// Paints the drop preview and, when the tab is released, moves it.
+    fn resolve_drag(
+        &mut self,
+        ui: &Ui,
+        state: &mut State,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+        dock_rect: Rect,
+    ) {
+        state.dragged = None;
+
+        // Delay hover position one frame. On touch screens hover_pos() is None when any_released()
+        if !ui.input(|i| i.pointer.any_released()) {
+            state.last_hover_pos = ui.input(|i| i.pointer.hover_pos());
+        }
+
+        let (drag_data, hover_data) = ui.memory_mut(|mem| {
+            (
+                mem.data.remove_temp(self.id.with("drag_data")).flatten(),
+                mem.data.remove_temp(self.id.with("hover_data")).flatten(),
+            )
+        });
+
+        let hover_data = hover_data.or_else(|| self.hover_outside(dock_rect, state, &drag_data));
+
+        if let (Some(source), Some(hover)) = (drag_data, hover_data) {
+            let style = self.style.as_ref().unwrap();
+            state.set_drag_and_drop(source, hover, ui.ctx(), style);
+            let tab_dst = self.show_drag_drop_overlay(ui, state, tab_viewer);
+            if ui.input(|i| i.pointer.primary_released())
+                && let Some(destination) = tab_dst
+            {
+                let source = {
+                    match state.dnd.as_ref().unwrap().drag.src {
+                        TreeComponent::Tab(src) => src,
+                        _ => todo!(
+                            "collections of tabs, like nodes and surfaces can't be docked (yet)"
+                        ),
+                    }
+                };
+                let src_tab_count = self.dock_state[source.node_path()].tabs_count();
+                self.dock_state.move_tab(source, destination);
+                // unhide tab bar on the source leaf when a tab is dragged out
+                if self.hidable_tab_bars
+                    && let Ok(leaf) = self.dock_state.leaf_mut(source.node_path())
+                    && leaf.tabs.len() < src_tab_count
+                    && leaf.tab_bar_hidden
+                {
+                    leaf.tab_bar_hidden = false;
+                }
+            }
+        }
+
+        if ui.input(|i| i.pointer.primary_released()) {
+            state.reset_drag();
+        }
+    }
+
+    /// The surfaces this area draws: every surface of its [`DockState`], or its dock of a space,
+    /// with the floating windows if it is the space's windows dock.
+    fn surfaces_to_show(&self) -> Vec<SurfaceIndex> {
+        match &self.space {
+            None => self.dock_state.valid_surface_indices().to_vec(),
+            Some(space) => {
+                let dock = space.dock.map(|dock| space.docks[dock].surface);
+                let windows = self
+                    .dock_state
+                    .valid_surface_indices()
+                    .into_iter()
+                    .filter(|&surface| space.shows_windows && self.dock_state.is_window(surface));
+                dock.into_iter().chain(windows).collect()
+            }
+        }
+    }
+
+    /// The rules of the space's dock at `surface`, if it is one.
+    fn dock_rules(&self, surface: SurfaceIndex) -> Option<DockRules> {
+        let space = self.space.as_ref()?;
+        space
+            .docks
+            .iter()
+            .find(|dock| dock.surface == surface)
+            .map(|dock| dock.rules)
+    }
+
+    /// The name of the space's dock at `surface`, if it is one.
+    fn dock_name(&self, surface: SurfaceIndex) -> Option<&str> {
+        dock_name(self.space.as_ref()?.docks, surface)
+    }
+
+    /// Whether the tab at `path` may become a floating window: the viewer allows it, and the
+    /// dock it is in, if any, too.
+    pub(super) fn may_float(
+        &mut self,
+        path: TabPath,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+    ) -> bool {
+        let dock_allows = self
+            .dock_rules(path.surface)
+            .is_none_or(|rules| rules.windows);
+        let Node::Leaf(leaf) = &mut self.dock_state[path.node_path()] else {
+            unreachable!("tab drags can only come from leaf nodes")
+        };
+        dock_allows && tab_viewer.allowed_in_windows(&mut leaf.tabs[path.tab.0])
     }
 
     /// With [`OverlayType::Zones`], a tab dragged outside the dock, where none of its surfaces
@@ -189,13 +268,21 @@ impl<Tab> DockArea<'_, Tab> {
             return None;
         }
         let pointer = state.last_hover_pos?;
+        let in_a_dock = match &self.space {
+            None => dock_rect.contains(pointer),
+            Some(space) => space
+                .docks
+                .iter()
+                .filter_map(|dock| dock.rect)
+                .any(|rect| rect.contains(pointer)),
+        };
         let over_a_window = self
             .dock_state
             .valid_surface_indices()
             .iter()
             .filter_map(|&surface| self.dock_state.get_window_state(surface))
             .any(|window| window.rect().contains(pointer));
-        (!dock_rect.contains(pointer) && !over_a_window).then_some(HoverData {
+        (!in_a_dock && !over_a_window).then_some(HoverData {
             rect: Rect::NOTHING,
             dst: TreeComponent::Surface(SurfaceIndex::main()),
             tab: None,
@@ -232,7 +319,6 @@ impl<Tab> DockArea<'_, Tab> {
         tab_viewer: &impl TabViewer<Tab = Tab>,
     ) -> Option<TabDestination> {
         let drag_state = state.dnd.as_mut().unwrap();
-        let style = self.style.as_ref().unwrap();
 
         let deserted_node = {
             match (
@@ -254,17 +340,28 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             AllowedSplits::All
         };
-        let allowed_splits = self.allowed_splits & restricted_splits;
+        let (src_surface, dst_surface) = (
+            drag_state.drag.src.surface_address(),
+            drag_state.hover.dst.surface_address(),
+        );
+        // The dock under the pointer may refuse splits.
+        let dock_splits = if drag_state.hover.outside {
+            AllowedSplits::All
+        } else {
+            self.dock_rules(dst_surface)
+                .map_or(AllowedSplits::All, |rules| rules.splits)
+        };
+        let allowed_splits = self.allowed_splits & restricted_splits & dock_splits;
 
         let allowed_in_window = match drag_state.drag.src {
-            TreeComponent::Tab(path) => {
-                let Node::Leaf(leaf) = &mut self.dock_state[path.node_path()] else {
-                    unreachable!("tab drags can only come from leaf nodes")
-                };
-                tab_viewer.allowed_in_windows(&mut leaf.tabs[path.tab.0])
-            }
+            TreeComponent::Tab(path) => self.may_float(path, tab_viewer),
             _ => todo!("collections of tabs, like nodes or surfaces, can't be dragged! (yet)"),
         };
+        let drag_state = state.dnd.as_mut().unwrap();
+        drag_state.src_in_window = self.dock_state.is_window(src_surface);
+        drag_state.dst_in_window =
+            !drag_state.hover.outside && self.dock_state.is_window(dst_surface);
+        let style = self.style.as_ref().unwrap();
 
         if let Some(pointer) = state.last_hover_pos {
             drag_state.pointer = pointer;
@@ -309,7 +406,17 @@ impl<Tab> DockArea<'_, Tab> {
         let tab = &self.dock_state[path.node_path()]
             .tabs()
             .expect("tab drags can only come from leaf nodes")[path.tab.0];
-        let (allowed, refusal) = match tab_viewer.drop_allowed(tab, &destination) {
+        let to = match destination {
+            TabDestination::Node(path, _) => self.dock_name(path.surface),
+            TabDestination::EmptySurface(surface) => self.dock_name(surface),
+            TabDestination::Window(_) => None,
+        };
+        let drop = DockDrop {
+            destination: &destination,
+            from: self.dock_name(path.surface),
+            to,
+        };
+        let (allowed, refusal) = match tab_viewer.dock_drop_allowed(tab, &drop) {
             DropVerdict::Allow => (true, None),
             DropVerdict::Refuse(reason) => (false, Some(reason)),
         };
@@ -334,8 +441,8 @@ impl<Tab> DockArea<'_, Tab> {
         state: &mut State,
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
-        if surf_index.is_main() {
-            self.show_root_surface_inside(ui, tab_viewer, state);
+        if !self.dock_state.is_window(surf_index) {
+            self.show_root_surface_inside(ui, tab_viewer, state, surf_index);
         } else {
             self.show_window_surface(ui, surf_index, tab_viewer, state, fade_style);
         }
@@ -401,7 +508,7 @@ impl<Tab> DockArea<'_, Tab> {
             style.main_surface_border_stroke,
             StrokeKind::Inside,
         );
-        if surface == SurfaceIndex::main() {
+        if !self.dock_state.is_window(surface) {
             rect = rect.expand(-style.main_surface_border_stroke.width / 2.0);
         }
         ui.allocate_rect(rect, Sense::hover());

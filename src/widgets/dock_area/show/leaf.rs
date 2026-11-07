@@ -10,9 +10,9 @@ use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
-    DockArea, DraggedTab, Node, NodeIndex, PartState, Style, SurfaceIndex, TabAddAlign,
-    TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabFocus, TabIndex, TabMeasure, TabPaint,
-    TabStyle, TabViewer,
+    DockArea, DraggedTab, NodeIndex, PartState, Style, SurfaceIndex, TabAddAlign, TabBarPaint,
+    TabBarTailPaint, TabBodyPaint, TabClose, TabFocus, TabIndex, TabMeasure, TabPaint, TabStyle,
+    TabViewer,
     dock_area::{
         drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
         state::State,
@@ -548,6 +548,8 @@ impl<Tab> DockArea<'_, Tab> {
                             .hide_tab_bar_button,
                     );
 
+                    let in_window = self.dock_state.is_window(path.surface);
+                    let may_float = self.may_float((path, tab_index).into(), tab_viewer);
                     response.context_menu(|ui| {
                         let leaf = self.dock_state[path]
                             .get_leaf_mut()
@@ -558,8 +560,8 @@ impl<Tab> DockArea<'_, Tab> {
                         if !self.show_builtin_tab_menu {
                             return;
                         }
-                        if (path.surface.is_main() || !is_lonely_tab)
-                            && tab_viewer.allowed_in_windows(tab)
+                        if (!in_window || !is_lonely_tab)
+                            && may_float
                             && ui.add(eject_button).clicked()
                         {
                             self.to_detach.push((path, tab_index).into());
@@ -840,7 +842,7 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             // Close all tabs in this leaf
             if !disabled {
-                if !path.surface.is_main() && self.secondary_button_context_menu {
+                if self.dock_state.is_window(path.surface) && self.secondary_button_context_menu {
                     response.context_menu(|ui| {
                         ui.add_enabled_ui(!close_window_disabled, |ui| {
                             if ui
@@ -991,7 +993,7 @@ impl<Tab> DockArea<'_, Tab> {
             }
         }
 
-        if !path.surface.is_main() && self.secondary_button_context_menu {
+        if self.dock_state.is_window(path.surface) && self.secondary_button_context_menu {
             response.context_menu(|ui| {
                 if ui
                     .button(&self.dock_state.translations.leaf.minimize_button)
@@ -1009,7 +1011,7 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     fn show_tooltip_hints(&mut self, surface_index: SurfaceIndex, response: Response) -> Response {
-        if !surface_index.is_main()
+        if self.dock_state.is_window(surface_index)
             && self.show_secondary_button_hint
             && (self.secondary_button_context_menu || self.secondary_button_on_modifier)
         {
@@ -1039,7 +1041,7 @@ impl<Tab> DockArea<'_, Tab> {
         ui: &mut Ui,
         response: &Response,
     ) -> bool {
-        !surface_index.is_main()
+        self.dock_state.is_window(surface_index)
             && self.secondary_button_on_modifier
             && ui.input(|i| {
                 i.modifiers
@@ -1500,14 +1502,9 @@ impl<Tab> DockArea<'_, Tab> {
                     ..
                 }) => match *src {
                     TreeComponent::Tab(src_path) => {
-                        if let Node::Leaf(leaf) =
-                            &mut self.dock_state[src_path.surface][src_path.node]
-                        {
-                            tab_viewer.allowed_in_windows(&mut leaf.tabs[src_path.tab.0])
-                                || path.surface == SurfaceIndex::main()
-                        } else {
-                            true
-                        }
+                        !self.dock_state.is_window(path.surface)
+                            || !self.dock_state[src_path.node_path()].is_leaf()
+                            || self.may_float(src_path, tab_viewer)
                     }
                     _ => unreachable!("collections of nodes can't be dragged (yet)"),
                 },

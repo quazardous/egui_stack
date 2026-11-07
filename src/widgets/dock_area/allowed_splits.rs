@@ -1,5 +1,6 @@
 /// What directions can this dock be split in?
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum AllowedSplits {
     #[default]
     /// Allow splits in any direction (horizontal and vertical).

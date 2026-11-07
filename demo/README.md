@@ -7,6 +7,10 @@ windows, save and restore the layout, outline the focused leaf with a custom `Do
 inspect a part of the dock (Ctrl+Shift+F12): a side panel says what it is and which `Style`
 fields drew it, with a Copy button for bug reports.
 
+Its second page, Dock space, shows a `DockSpace`: a dock in a left side panel, one in a right side
+panel and one in the centre, each drawn by its own `DockArea`, with tabs dragged between them into
+the same zones as inside one dock.
+
 It is a separate crate, not published, so that its dependencies (the web ones included) are not
 the library's.
 

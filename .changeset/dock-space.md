@@ -1,0 +1,5 @@
+---
+egui_stack: minor
+---
+
+A `DockSpace` holds several named docks, each with its own tree, and the floating windows, sharing one drag: each dock is drawn by its own `DockArea::dock(&mut space, name)` call, anywhere in the frame (a side panel, the centre), and a tab dragged from any dock to any other gets the same drop zones (the middle of a leaf, its four edge bands, a slot in its tab bar), preview and veto as inside one dock. Each dock has its `DockRules`: the splits a drop may make in it, whether its tabs may become floating windows, and whether it stays as an empty drop target once its last tab leaves. `TabViewer::dock_drop_allowed` asks `drop_allowed` by default and names the docks the tab would leave and enter. A space serialises as one value with the `serde` feature, and `DockSpace::from_states` turns one `DockState` per area into a space. `DockState::retain_tabs` and `filter_map_tabs` now leave an emptied window's surface empty instead of shifting the surfaces after it, as `remove_surface` already did, so every surface keeps its index.

@@ -172,6 +172,46 @@ impl<Tab> DockState<Tab> {
         }
     }
 
+    /// Whether the surface at `surface` is a floating window, as opposed to the main surface or a
+    /// dock of a [`DockSpace`](crate::DockSpace).
+    #[inline]
+    pub(crate) fn is_window(&self, surface: SurfaceIndex) -> bool {
+        matches!(self.surfaces.get(surface.0), Some(Surface::Window(..)))
+    }
+
+    /// Puts `tree` in a docked surface ([`Surface::Main`]): the first empty slot after the main
+    /// surface, or a new one at the end.
+    pub(crate) fn add_docked_surface(&mut self, tree: Tree<Tab>) -> SurfaceIndex {
+        let index = self.find_empty_surface_index();
+        let surface = Surface::Main(tree);
+        if index.0 < self.surfaces.len() {
+            self.surfaces[index.0] = surface;
+        } else {
+            self.surfaces.push(surface);
+        }
+        index
+    }
+
+    /// Takes the surface at `surface` out, leaving it empty: the main surface keeps an empty
+    /// tree, any other becomes [`Surface::Empty`]. The focus leaves it.
+    pub(crate) fn take_surface(&mut self, surface: SurfaceIndex) -> Option<Surface<Tab>> {
+        let empty = if surface.is_main() {
+            Surface::Main(Tree::new(vec![]))
+        } else {
+            Surface::Empty
+        };
+        let taken = std::mem::replace(self.surfaces.get_mut(surface.0)?, empty);
+        if self.focused_surface == Some(surface) {
+            self.focused_surface = None;
+        }
+        Some(taken)
+    }
+
+    /// The surfaces, by value.
+    pub(crate) fn into_surfaces(self) -> Vec<Surface<Tab>> {
+        self.surfaces
+    }
+
     /// Returns the viewport [`Rect`] and the `Tab` inside the focused leaf node or `None` if no node is in focus.
     #[inline]
     pub fn find_active_focused(&mut self) -> Option<(Rect, &mut Tab)> {
@@ -336,7 +376,7 @@ impl<Tab> DockState<Tab> {
         if self[src.node_path()].is_leaf() && self[src.node_path()].tabs_count() == 0 {
             self[src.surface].remove_leaf(src.node);
         }
-        if self[src.surface].is_empty() && !src.surface.is_main() {
+        if self[src.surface].is_empty() && self.is_window(src.surface) {
             self.remove_surface(src.surface);
         }
     }
@@ -410,9 +450,10 @@ impl<Tab> DockState<Tab> {
         let surface_index = self.add_window(vec![tab]);
 
         // Set the window size and position to match `window_rect`.
+        let from_dock = !self.is_window(src.surface);
         let state = self.get_window_state_mut(surface_index).unwrap();
         state.set_position(window_rect.min);
-        if src.surface.is_main() {
+        if from_dock {
             state.set_size(window_rect.size() * 0.8);
         } else {
             state.set_size(window_rect.size());
@@ -422,7 +463,7 @@ impl<Tab> DockState<Tab> {
         if self[src.node_path()].is_leaf() && self[src.node_path()].tabs_count() == 0 {
             self[src.surface].remove_leaf(src.node);
         }
-        if self[src.surface].is_empty() && !src.surface.is_main() {
+        if self[src.surface].is_empty() && self.is_window(src.surface) {
             self.remove_surface(src.surface);
         }
         surface_index
@@ -442,7 +483,7 @@ impl<Tab> DockState<Tab> {
     /// This method will yield the removed tab, or `None` if it doesn't exist.
     pub fn remove_tab(&mut self, path: TabPath) -> Option<Tab> {
         let removed_tab = self[path.surface].remove_tab((path.node, path.tab));
-        if !path.surface.is_main() && self[path.surface].is_empty() {
+        if self.is_window(path.surface) && self[path.surface].is_empty() {
             self.remove_surface(path.surface);
         }
         removed_tab
@@ -451,7 +492,7 @@ impl<Tab> DockState<Tab> {
     /// Removes a leaf at the specified `path`.
     pub fn remove_leaf(&mut self, path: NodePath) {
         self[path.surface].remove_leaf(path.node);
-        if !path.surface.is_main() && self[path.surface].is_empty() {
+        if self.is_window(path.surface) && self[path.surface].is_empty() {
             self.remove_surface(path.surface);
         }
     }
@@ -669,7 +710,8 @@ impl<Tab> DockState<Tab> {
     }
 
     /// Returns a new [`DockState`] while mapping and filtering the tab type.
-    /// Any remaining empty [`Node`]s and [`Surface`]s are removed.
+    /// Any remaining empty [`Node`]s are removed, and windows left empty become
+    /// [`Surface::Empty`], so that every surface keeps its index.
     ///
     /// ```
     /// # use egui_stack::{DockState, Node};
@@ -688,16 +730,19 @@ impl<Tab> DockState<Tab> {
             focused_surface,
             translations,
         } = self;
-        let surfaces = surfaces
+        // Emptied windows leave a hole, so that the surfaces after them keep their index.
+        let mut surfaces: Vec<_> = surfaces
             .iter()
-            .filter_map(|surface| {
-                let surface = surface.filter_map_tabs(&mut function);
-                (!surface.is_empty()).then_some(surface)
-            })
+            .map(|surface| surface.filter_map_tabs(&mut function))
             .collect();
+        while surfaces.len() > 1 && surfaces.last().is_some_and(Surface::is_empty) {
+            surfaces.pop();
+        }
+        let focused_surface = focused_surface
+            .filter(|focused| surfaces.get(focused.0).is_some_and(|s| !s.is_empty()));
         DockState {
             surfaces,
-            focused_surface: *focused_surface,
+            focused_surface,
             translations: translations.clone(),
         }
     }
@@ -739,7 +784,8 @@ impl<Tab> DockState<Tab> {
     }
 
     /// Removes all tabs for which `predicate` returns `false`.
-    /// Any remaining empty [`Node`]s and [`Surface`]s are also removed.
+    /// Any remaining empty [`Node`]s are also removed, and windows left empty become
+    /// [`Surface::Empty`], so that every surface keeps its index.
     ///
     /// ```
     /// # use egui_stack::{DockState, Node};
@@ -753,11 +799,22 @@ impl<Tab> DockState<Tab> {
     where
         F: FnMut(&mut Tab) -> bool,
     {
-        let mut main_surface = true;
-        self.surfaces.retain_mut(|surface| {
-            surface.retain_tabs(&mut predicate);
-            std::mem::take(&mut main_surface) || !surface.is_empty()
-        });
+        // Docked surfaces keep their (maybe empty) tree; emptied windows leave a hole, so that
+        // the surfaces after them keep their index.
+        for surface in &mut self.surfaces {
+            match surface {
+                Surface::Main(tree) => tree.retain_tabs(&mut predicate),
+                surface => surface.retain_tabs(&mut predicate),
+            }
+        }
+        while self.surfaces.len() > 1 && self.surfaces.last().is_some_and(Surface::is_empty) {
+            self.surfaces.pop();
+        }
+        if let Some(focused) = self.focused_surface
+            && !self.is_surface_valid(focused)
+        {
+            self.focused_surface = None;
+        }
     }
 
     /// Find a tab based on the conditions of a function.
