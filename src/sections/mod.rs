@@ -8,7 +8,9 @@
 //! - A section's height is set by hand, in points, or sized by the list: those never set by
 //!   hand share what the others leave, and the last open section always takes what is left. Each
 //!   keeps a least height (two rows by default, [`Section::min_height`]) and scrolls its own
-//!   body.
+//!   body. One may have a greatest height too ([`Section::max_height`], [`Section::max_share`]):
+//!   sized by the list or by hand, it never grows past it, the others taking the room it
+//!   leaves.
 //! - The line above a band, between two open sections, is a boundary (the first open section
 //!   above is the one it resizes, past any folded ones). It follows the pointer when dragged, or
 //!   moves by a row with Up and Down while it has the keyboard. Sections give way in turn, the
@@ -306,8 +308,27 @@ pub struct Section {
     title: String,
     count: Option<u64>,
     min_height: Option<f32>,
+    max_height: Option<Most>,
     row_height: Option<f32>,
     open: bool,
+}
+
+/// The most a section's body takes ([`Section::max_height`], [`Section::max_share`]).
+#[derive(Clone, Copy, Debug)]
+enum Most {
+    Points(f32),
+    Share(f32),
+}
+
+impl Most {
+    /// In points, for a stack `stack` points tall (infinite: no bound).
+    fn points(self, stack: f32) -> f32 {
+        match self {
+            Most::Points(points) => points,
+            Most::Share(share) if stack.is_finite() => share * stack,
+            Most::Share(_) => f32::INFINITY,
+        }
+    }
 }
 
 impl Section {
@@ -318,6 +339,7 @@ impl Section {
             title: title.into(),
             count: None,
             min_height: None,
+            max_height: None,
             row_height: None,
             open: true,
         }
@@ -334,6 +356,22 @@ impl Section {
     /// section ([`Stack::rows`]), two rows, or all of them when it has fewer.
     pub fn min_height(mut self, points: f32) -> Self {
         self.min_height = Some(points.max(0.0));
+        self
+    }
+
+    /// Its body's greatest height, in points (no bound by default). Sized by the list, it never
+    /// grows past it, and the room it leaves goes to the other sections, or stays empty under the
+    /// last band when none can take it; a drag on its boundary stops there. Never below its least
+    /// height ([`Section::min_height`]): the least wins.
+    pub fn max_height(mut self, points: f32) -> Self {
+        self.max_height = (!points.is_nan()).then_some(Most::Points(points.max(0.0)));
+        self
+    }
+
+    /// [`Section::max_height`] as a share of the stack's height (its bands included): `0.5`, at
+    /// most half of it. Never below its least height either.
+    pub fn max_share(mut self, share: f32) -> Self {
+        self.max_height = share.is_finite().then_some(Most::Share(share.max(0.0)));
         self
     }
 
@@ -808,24 +846,35 @@ impl<'a> Sections<'a> {
                 height: None,
             });
         }
+        let room = ui.available_rect_before_wrap();
+        let finite = room.height().is_finite();
+        // Each section's greatest height, never under its least (infinite: no bound).
+        let mut bounds: Vec<f32> = Vec::with_capacity(sections.len());
         let asked: Vec<Asked> = sections
             .iter()
             .map(|(s, body)| {
                 let remembered = layout.sections[&s.key];
+                let least = s
+                    .min_height
+                    .unwrap_or_else(|| body.least(ui, s.row_height.unwrap_or(row)));
+                let bound = s
+                    .max_height
+                    .map_or(f32::INFINITY, |m| m.points(room.height()).max(least));
+                bounds.push(bound);
                 Asked {
                     open: remembered.open,
-                    least: s
-                        .min_height
-                        .unwrap_or_else(|| body.least(ui, s.row_height.unwrap_or(row))),
-                    hand: remembered.height.filter(|h| h.is_finite()),
+                    least,
+                    // A height set by hand past the bound (kept from before it) is the bound.
+                    hand: remembered
+                        .height
+                        .filter(|h| h.is_finite())
+                        .map(|h| h.min(bound)),
                 }
             })
             .collect();
         let keys: Vec<String> = sections.iter().map(|(s, _)| s.key.clone()).collect();
         let open: Vec<bool> = asked.iter().map(|a| a.open).collect();
 
-        let room = ui.available_rect_before_wrap();
-        let finite = room.height().is_finite();
         let bands = sections.len() as f32 * band_h;
         let space = if finite {
             (room.height() - bands).max(0.0)
@@ -835,11 +884,18 @@ impl<'a> Sections<'a> {
         // Sized by the content: each section's content height on the last pass.
         let content: BTreeMap<String, f32> =
             get_temp(&ctx, &self.name, CONTENT).unwrap_or_default();
+        // The most each section sized by the list takes: its bound, and in a stack sized by its
+        // content, its content too.
         let most: Vec<f32> = if self.fill {
-            Vec::new()
+            if bounds.iter().all(|b| b.is_infinite()) {
+                Vec::new()
+            } else {
+                bounds.clone()
+            }
         } else {
             keys.iter()
-                .map(|k| content.get(k).copied().unwrap_or(f32::INFINITY))
+                .zip(&bounds)
+                .map(|(k, &bound)| content.get(k).copied().unwrap_or(f32::INFINITY).min(bound))
                 .collect()
         };
         let (fit, spare) = plan::fit_within(&asked, &most, space, layout.empty);
@@ -850,6 +906,7 @@ impl<'a> Sections<'a> {
             asked: &asked,
             heights: &fit.heights,
             most: &most,
+            bounds: &bounds,
             space,
             // What the content leaves is not the layout's: a drag keeps the empty room asked.
             empty: fit.empty - spare,
@@ -1285,6 +1342,8 @@ struct Shown<'a> {
     heights: &'a [f32],
     /// What each section's content asks, in a stack sized by its content ([`plan::fit_within`]).
     most: &'a [f32],
+    /// Each section's greatest height ([`Section::max_height`]; infinite: no bound).
+    bounds: &'a [f32],
     /// The height the open sections divide.
     space: f32,
     /// The empty room shown under the last section.
@@ -1317,6 +1376,7 @@ impl Shown<'_> {
         mode: DragMode,
     ) -> bool {
         let placed = self.placed(self.heights);
+        let delta = self.bounded(above, delta, mode);
         let plan = plan::plan_drag(&placed, above, delta, self.empty, mode);
         let pinned = plan::pin_plan_within(
             &hands.asked(self),
@@ -1331,6 +1391,20 @@ impl Shown<'_> {
         layout.empty = plan.empty;
         let moved = |(a, b): (&f32, &f32)| (a - b).abs() > 0.01;
         (plan.empty - self.empty).abs() > 0.01 || plan.heights.iter().zip(self.heights).any(moved)
+    }
+
+    /// `delta` on the boundary under `above`, cut so that no section grows past its bound:
+    /// down, the section above grows; up and pushing, the first open one below does.
+    fn bounded(&self, above: usize, delta: f32, mode: DragMode) -> f32 {
+        let room = |i: usize| (self.bounds[i] - self.heights[i]).max(0.0);
+        if delta > 0.0 {
+            delta.min(room(above))
+        } else if delta < 0.0 && mode == DragMode::Push {
+            let below = (above + 1..self.asked.len()).find(|&i| self.asked[i].open);
+            below.map_or(delta, |i| delta.max(-room(i)))
+        } else {
+            delta
+        }
     }
 
     /// The heights kept by hand as shown: what a drag or a key press pins its plans against.
@@ -1369,8 +1443,8 @@ impl Shown<'_> {
         let placed = self.placed(self.heights);
         let plan = |delta| plan::plan_drag(&placed, above, delta, self.empty, DragMode::Push);
         (
-            plan(-self.step).moved < 0.0,
-            plan(self.space).heights[above],
+            self.bounded(above, -self.step, DragMode::Push) < 0.0 && plan(-self.step).moved < 0.0,
+            plan(self.space).heights[above].min(self.bounds[above]),
         )
     }
 }

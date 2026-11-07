@@ -1978,3 +1978,117 @@ fn a_body_s_bar_takes_the_bar_style_and_the_inset_and_its_content_the_ui_s() {
     });
     assert!(!text_in_thumb);
 }
+
+fn bounded(height: f32, fill: bool, a: Section) -> Harness<'static> {
+    Harness::builder()
+        .with_size(egui::vec2(300.0, height))
+        .build_ui(move |ui| {
+            let a = a.clone();
+            Sections::new(NAME).fill(fill).show(ui, |stack| {
+                stack.section(a, |ui| {
+                    ui.label("Aa row");
+                });
+                for (key, title) in [("b", "Bb"), ("c", "Cc")] {
+                    stack.section(Section::new(key, title).min_height(40.0), move |ui| {
+                        ui.label(format!("{title} row"));
+                    });
+                }
+            });
+        })
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_section_never_grows_past_its_max_and_the_others_take_the_room() {
+    let a = Section::new("a", "Aa").min_height(40.0).max_height(60.0);
+    let mut h = bounded(600.0, true, a);
+    h.run();
+    let shown = heights(&h);
+    assert!((shown[0] - 60.0).abs() < 0.1, "{shown:?}");
+    assert!((shown[1] - shown[2]).abs() < 1.0, "{shown:?}");
+    assert!(
+        shown[1] > 150.0,
+        "the others share what it leaves: {shown:?}"
+    );
+    // A drag stops at the max.
+    drag(&mut h, "Resize Aa", 100.0);
+    let shown = heights(&h);
+    assert!((shown[0] - 60.0).abs() < 0.1, "{shown:?}");
+    // A height kept by hand past it is shown at the max.
+    let mut layout = Layout::default();
+    layout.set_height("a", Some(300.0));
+    set_layout(&mut h, &layout);
+    assert!((heights(&h)[0] - 60.0).abs() < 0.1, "{:?}", heights(&h));
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn the_last_section_stops_at_its_max_too_and_the_room_stays_empty_without_fill() {
+    // The last open section, bounded, leaves its room to those above.
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(300.0, 600.0))
+        .build_ui(|ui| {
+            Sections::new(NAME).show(ui, |stack| {
+                stack.section(Section::new("a", "Aa").min_height(40.0), |ui| {
+                    ui.label("row");
+                });
+                stack.section(
+                    Section::new("b", "Bb").min_height(40.0).max_height(80.0),
+                    |ui| {
+                        ui.label("row");
+                    },
+                );
+            });
+        });
+    h.run();
+    let shown = heights(&h);
+    assert!((shown[1] - 80.0).abs() < 0.1, "{shown:?}");
+    assert!(shown[0] > 300.0, "{shown:?}");
+    // Pushing the line up would grow it past its max: the drag stops.
+    drag(&mut h, "Resize Aa", -50.0);
+    assert!(close(&heights(&h), &shown), "{:?}", heights(&h));
+
+    // Without fill and every section bounded, the room stays empty.
+    let all = |ui: &mut egui::Ui| {
+        Sections::new(NAME).fill(false).show(ui, |stack| {
+            for key in ["a", "b"] {
+                stack.bare(
+                    Section::new(key, key).min_height(40.0).max_height(70.0),
+                    |ui| {
+                        ui.allocate_space(egui::vec2(10.0, 500.0));
+                    },
+                );
+            }
+        });
+    };
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(300.0, 600.0))
+        .build_ui(all);
+    h.run();
+    h.run();
+    let shown = heights(&h);
+    assert!(close(&shown, &[70.0, 70.0]), "{shown:?}");
+    assert!(empty(&h) > 300.0, "{}", empty(&h));
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_max_under_the_least_is_the_least_and_a_share_follows_the_stack() {
+    let a = Section::new("a", "Aa").min_height(90.0).max_height(30.0);
+    let mut h = bounded(600.0, true, a);
+    h.run();
+    assert!((heights(&h)[0] - 90.0).abs() < 0.1, "{:?}", heights(&h));
+
+    let a = Section::new("a", "Aa").min_height(20.0).max_share(0.25);
+    let mut h = bounded(600.0, true, a);
+    h.run();
+    let stack = h.ctx.content_rect().height();
+    let laid = laid_out(&h.ctx, NAME);
+    let room = laid[2].body.unwrap().bottom() - laid[0].band.top();
+    assert!(room <= stack);
+    assert!(
+        (heights(&h)[0] - room * 0.25).abs() < 1.0,
+        "{:?} of {room}",
+        heights(&h)
+    );
+}
