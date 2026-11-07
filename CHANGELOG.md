@@ -1,5 +1,12 @@
 # egui_stack changelog
 
+## egui_stack 0.25.2 - 2026-11-07
+
+### Added
+
+- `Sections::bar_style` gives the scroll bars of a stack's bodies and of the stack itself a style of their own (their colours: egui paints a bar from the visuals of the `Ui` its scroll area is shown in), the content keeping the `Ui`'s, and `Sections::bar_track_inset` keeps the thumb that many points from both ends of the track.
+- `Sections::fill(false)` sizes a stack by its content: an open section sized by the list is never taller than what its body laid out, the long ones share what is left, the folded bands follow right under the last open section and the room left stays empty under the last band; sections set by hand, resizing, least heights and scrolling are as before. `sections::plan::fit_within` and `pin_plan_within` are its arithmetic.
+
 ## egui_stack 0.25.1 - 2026-11-07
 
 ### Added
