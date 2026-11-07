@@ -1,6 +1,6 @@
 use egui::{
-    Align, Color32, CornerRadius, CursorIcon, Frame, Layout, Rect, Response, RichText, Sense,
-    Shape, Stroke, Ui, UiBuilder, Vec2, WidgetText, vec2,
+    Align, Color32, CornerRadius, CursorIcon, Frame, Id, LayerId, Layout, Order, Rect, Response,
+    RichText, Sense, Shape, Stroke, Ui, UiBuilder, Vec2, WidgetText, vec2,
 };
 
 use crate::{
@@ -9,6 +9,12 @@ use crate::{
     utils::{fade_visuals, rect_set_size_centered},
     widgets::painter::{Attached, corners_within},
 };
+
+/// The layer of the floating window showing `surf_index`: an [`egui::Window`] is an area of
+/// [`Order::Middle`].
+pub(super) fn window_layer_id(surf_index: SurfaceIndex) -> LayerId {
+    LayerId::new(Order::Middle, Id::unique(format!("window {surf_index:?}")))
+}
 
 impl<Tab> DockArea<'_, Tab> {
     pub(super) fn show_window_surface(
@@ -20,7 +26,7 @@ impl<Tab> DockArea<'_, Tab> {
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
         // Construct egui window
-        let id = egui::Id::unique(format!("window {surf_index:?}"));
+        let id = window_layer_id(surf_index).id;
         let bounds = self.window_bounds.unwrap();
         let open = true;
         let window = self

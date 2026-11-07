@@ -10,8 +10,8 @@ use egui::{Id, Pos2, Rect, Shape, Ui, UiBuilder, WidgetText, pos2, vec2};
 use egui_kittest::Harness;
 use egui_stack::{
     AllowedSplits, DockArea, DockDrop, DockPainter, DockRules, DockSpace, DockState, DropPaint,
-    NodeIndex, NodePath, Split, StylePainter, TabDestination, TabInsert, TabViewer, Tree,
-    tab_viewer::DropVerdict,
+    NodeIndex, NodePath, Split, StylePainter, SurfaceIndex, TabDestination, TabInsert, TabViewer,
+    Tree, tab_viewer::DropVerdict,
 };
 
 #[derive(Default)]
@@ -636,4 +636,78 @@ fn check(scene: &str, harness: &Harness<'_, App>) {
         std::fs::write(&new, &actual).unwrap();
         panic!("{scene}: the shapes differ (see {new})");
     }
+}
+
+/// The tabs of the floating window `surface`.
+fn window_tabs(app: &App, surface: SurfaceIndex) -> Vec<String> {
+    app.space.state()[surface]
+        .iter()
+        .filter_map(|node| node.tabs().map(<[String]>::to_vec))
+        .flatten()
+        .collect()
+}
+
+/// The space, with a floating window holding `Notes` at `rect`; the window is drawn by the
+/// first dock, before the docks under it.
+fn harness_with_window(rect: Rect) -> (Harness<'static, App>, SurfaceIndex) {
+    let mut space = space(DockRules::default(), DockRules::default());
+    let window = space.state_mut().add_window(vec!["Notes".to_owned()]);
+    let mut harness = harness_with(space, vec!["left", "centre", "right"]);
+    harness
+        .state_mut()
+        .space
+        .state_mut()
+        .get_window_state_mut(window)
+        .unwrap()
+        .set_position(rect.min)
+        .set_size(rect.size());
+    harness.run_steps(3);
+    (harness, window)
+}
+
+/// The rect of the floating window's root leaf.
+fn window_leaf(harness: &Harness<'_, App>, window: SurfaceIndex) -> Rect {
+    harness.state().space.state()[window][NodeIndex::root()]
+        .rect()
+        .unwrap()
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_tab_dropped_on_a_floating_window_over_a_dock_lands_in_the_window() {
+    let (mut harness, window) =
+        harness_with_window(Rect::from_min_size(pos2(350.0, 60.0), vec2(200.0, 160.0)));
+    drop_at(&mut harness, "Search", |harness| {
+        let leaf = window_leaf(harness, window);
+        pos2(leaf.center().x, leaf.center().y + 20.0)
+    });
+    assert_eq!(
+        window_tabs(harness.state(), window),
+        strings(&["Notes", "Search"])
+    );
+    assert_eq!(
+        leaves(harness.state(), "centre"),
+        [strings(&["Editor", "Preview"])]
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_tab_dropped_on_the_tab_bar_of_a_window_over_two_docks_lands_in_the_window() {
+    // The window straddles the edge between the centre and the right dock, at x = 700.
+    let (mut harness, window) =
+        harness_with_window(Rect::from_min_size(pos2(600.0, 60.0), vec2(250.0, 160.0)));
+    let leaf = window_leaf(&harness, window);
+    assert!(
+        leaf.x_range().contains(700.0) && leaf.right() > 760.0,
+        "{leaf:?}"
+    );
+    drop_at(&mut harness, "Search", |harness| {
+        pos2(750.0, window_leaf(harness, window).top() + 10.0)
+    });
+    assert_eq!(
+        window_tabs(harness.state(), window),
+        strings(&["Notes", "Search"])
+    );
+    assert!(harness.state().space.dock("right").unwrap().is_empty());
 }

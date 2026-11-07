@@ -23,7 +23,11 @@ impl<Tab> DockArea<'_, Tab> {
             // The dragged tab, on a layer of its own, may cover the surface: test the pointer.
             let hovered_by_drag = state.drag_start.is_some()
                 && state.last_hover_pos.is_some_and(|pos| rect.contains(pos));
-            if response.contains_pointer() || hovered_by_drag {
+            // A floating window over the surface takes the hover.
+            let covered = state
+                .last_hover_pos
+                .is_some_and(|pos| self.covered_by_window(ui, pos));
+            if (response.contains_pointer() || hovered_by_drag) && !covered {
                 ui.memory_mut(|mem| {
                     mem.data.insert_temp(
                         self.id.with("hover_data"),

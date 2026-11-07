@@ -1513,7 +1513,11 @@ impl<Tab> DockArea<'_, Tab> {
 
             // Use rect.contains instead of response.hovered as the dragged tab covers
             // the underlying responses.
-            if state.drag_start.is_some() && rect.contains(pointer) && is_dragged_valid {
+            if state.drag_start.is_some()
+                && rect.contains(pointer)
+                && is_dragged_valid
+                && !self.covered_by_window(ui, pointer)
+            {
                 let on_title_bar = tabbar_rect.contains(pointer);
                 let (dst, tab) = {
                     match self.tab_hover_rect {
