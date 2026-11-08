@@ -1,5 +1,18 @@
 # egui_stack changelog
 
+## egui_stack 0.25.4 - 2026-11-08
+
+### Added
+
+- `DockSpace::bind` puts a dock space on a layout: called each frame with the `Laid` a `LayoutArea` returned, it makes no-drop zones of the zones with `Drops::Refuse`, the zones holding no dock (`Content::App`, or a dock the space has not) and the folded zones' strips, so a tab released there goes back where it was; a `Content::Empty` zone that accepts drops stays outside every dock, where a tab becomes a floating window. Each dock is drawn in its zone by the `ZoneViewer`, with `DockArea::dock`.
+- `layout::LayoutArea` draws a `Layout` in a `Ui`: each leaf zone's content through a `ZoneViewer`, as a pane named after the zone, and a sash between neighbouring zones that resizes the zone away from the one that grows, by drag, by the arrow keys (Shift for a larger step) or through assistive technology (a splitter whose value is the zone's size), within the zone's least and largest sizes and the growing zone's least size; Enter or a double click gives the zone back its default size. Zones with `fit_content` measure their content for the next frame. A `LayoutPainter` trait (with `DefaultLayoutPainter`) and a `LayoutStyle` let the host style the sashes; `Laid` lists the user's changes as `LayoutEvent`s, and each `LaidZone` its bounds, content and drop rule.
+- A `LayoutArea` folds zones: a folded zone keeps a strip in the flow, painted by `LayoutPainter::strip` with a grip that unfolds it, and the application's icons from `ZoneViewer::strip`; a sash dragged under half a `Fold::ToStrip` zone's least size folds it on release. A zone may lie over its neighbour (`Layout::set_over`), next to its strip and without taking room, until Escape or a click outside folds it back. `LayoutArea::flyout` shows one `Flyout` of a folded zone over its neighbour (`ZoneViewer::flyout`), closing on Escape, a click outside or the grip (`LayoutEvent::FlyoutClosed`), with a free edge that resizes it; the breadths are kept per key in `Layout::flyouts`, saved with the layout as the zones' states are. `Layout::set_folded` and `set_over` change a zone's state from code.
+- A new `layout` module models a window's whole space as a tree of zones (`Layout`, `Zone`, `Content`), with constraints set from code (least, largest and default sizes in points or shares, a zone that grows, priorities, folding) and the user's state, and solves it into rects (`Layout::solve`, `Laid`): the sides give way to the centre's least size, lowest priority and nearest first, never in proportion, and zones that opt in fold to a strip when even the least sizes do not fit. With `serde`, a layout saves its tree and state, versioned; `Layout::reconcile` re-asserts the code's constraints after loading and adds or drops the zones the code added or removed.
+
+### Fixed
+
+- A floating window gets back the height it had once it is unfolded (or restored from minimized): its least size no longer overrode the height kept when it was folded, so it stayed as short as its folded bands. A split window whose every leaf is folded collapses to its bands and, once a leaf is unfolded, gets back its height and its splits' shares; the height kept is saved with the layout.
+
 ## egui_stack 0.25.3 - 2026-11-07
 
 ### Added
