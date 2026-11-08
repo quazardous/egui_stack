@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use egui::{Pos2, Rect, pos2};
 
-use super::{Dir, Fold, Layout, Zone, ZoneKind, ZoneName};
+use super::{Content, Dir, Drops, Fold, Layout, Zone, ZoneKind, ZoneName};
 use crate::sections::plan::give_in_turn;
 
 /// What the solver needs besides the layout.
@@ -61,14 +61,57 @@ pub struct LaidZone {
     pub shown: Shown,
     /// Its strip, when folded or over.
     pub strip: Option<Rect>,
+    /// Its least size along its parent's axis, as solved (0 at the root).
+    pub least: f32,
+    /// Its largest size along its parent's axis, as solved (infinite when
+    /// unbounded, and at the root).
+    pub most: f32,
+    /// Its content, for a leaf; `None` for a split.
+    pub content: Option<Content>,
+    /// Whether a dragged item may be dropped in it.
+    pub drops: Drops,
+}
+
+impl LaidZone {
+    /// The dock it shows, for a leaf holding [`Content::Dock`].
+    pub fn dock(&self) -> Option<&str> {
+        match &self.content {
+            Some(Content::Dock(name)) => Some(name),
+            _ => None,
+        }
+    }
+}
+
+/// What changed in a layout while a [`LayoutArea`](super::LayoutArea) drew
+/// it: the user's acts, each already applied to the [`Layout`].
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum LayoutEvent {
+    /// A sash, or the keyboard, gave the zone this size in points.
+    Resized {
+        /// The zone.
+        zone: ZoneName,
+        /// Its new [`ZoneState::size`](super::ZoneState::size).
+        size: f32,
+    },
+    /// The zone went back to its default size (a sash's double click or
+    /// Enter).
+    Reset {
+        /// The zone.
+        zone: ZoneName,
+    },
 }
 
 /// Where every zone goes: the solver's output, parents first. Zones under a
 /// folded or hidden zone are not laid.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub struct Laid {
     /// The zones, parents first.
     pub zones: Vec<LaidZone>,
+    /// What the user changed this frame, when drawn by a
+    /// [`LayoutArea`](super::LayoutArea); empty from [`Layout::solve`].
+    pub events: Vec<LayoutEvent>,
 }
 
 impl Laid {
@@ -94,6 +137,10 @@ impl Layout {
             rect,
             shown: Shown::Open,
             strip: None,
+            least: 0.0,
+            most: f32::INFINITY,
+            content: leaf_content(&self.root),
+            drops: self.root.constraints.drops,
         });
         lay_children(&self.root, rect, solve, &mut laid);
         laid
@@ -147,6 +194,10 @@ fn lay_children(zone: &Zone, rect: Rect, solve: &Solve, laid: &mut Laid) {
             rect: child_rect,
             shown: s.shown,
             strip,
+            least: s.least,
+            most: s.most,
+            content: leaf_content(child),
+            drops: child.constraints.drops,
         });
         if matches!(s.shown, Shown::Open | Shown::Over) {
             lay_children(child, child_rect, solve, laid);
@@ -303,7 +354,14 @@ fn fit(
     (sized, short)
 }
 
-fn along(dir: Dir, v: egui::Vec2) -> f32 {
+fn leaf_content(zone: &Zone) -> Option<Content> {
+    match &zone.kind {
+        ZoneKind::Leaf { content } => Some(content.clone()),
+        ZoneKind::Split { .. } => None,
+    }
+}
+
+pub(super) fn along(dir: Dir, v: egui::Vec2) -> f32 {
     match dir {
         Dir::Horizontal => v.x,
         Dir::Vertical => v.y,
@@ -311,7 +369,7 @@ fn along(dir: Dir, v: egui::Vec2) -> f32 {
 }
 
 /// The part of `rect` between `a` and `b` along `dir`.
-fn span(dir: Dir, rect: Rect, a: f32, b: f32) -> Rect {
+pub(super) fn span(dir: Dir, rect: Rect, a: f32, b: f32) -> Rect {
     let (min, max): (Pos2, Pos2) = match dir {
         Dir::Horizontal => (pos2(a, rect.min.y), pos2(b, rect.max.y)),
         Dir::Vertical => (pos2(rect.min.x, a), pos2(rect.max.x, b)),

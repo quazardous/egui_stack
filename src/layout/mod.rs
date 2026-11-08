@@ -6,7 +6,9 @@
 //! This module is the model only: the tree ([`Layout`], [`Zone`]), the
 //! constraints set from code ([`Constraints`]), what the user changed
 //! ([`ZoneState`]), and the solver that turns them into rects
-//! ([`Layout::solve`], [`Laid`]). Nothing is drawn yet.
+//! ([`Layout::solve`], [`Laid`]). [`LayoutArea`] draws it: each zone's
+//! content through a [`ZoneViewer`], and sashes between zones that resize
+//! them, painted by a [`LayoutPainter`].
 //!
 //! The solver works one split at a time along the split's axis. Folded,
 //! lying-over and hidden zones take their fixed breadth first; the others
@@ -41,13 +43,18 @@
 //! assert_eq!(laid.rect("centre").unwrap().width(), 300.0);
 //! ```
 
+mod area;
 #[cfg(feature = "serde")]
 mod saved;
 mod solve;
 
+pub use area::{
+    DefaultLayoutPainter, LayoutArea, LayoutPainter, LayoutStyle, SashPaint, ZoneViewer,
+};
+
 #[cfg(feature = "serde")]
 pub use saved::{LAYOUT_VERSION, VersionError};
-pub use solve::{Laid, LaidZone, Shown, Solve};
+pub use solve::{Laid, LaidZone, LayoutEvent, Shown, Solve};
 
 use std::fmt;
 
