@@ -1,7 +1,7 @@
 # Layout and dock: two layers
 
-Status: design note, accepted. Step 2 (the model, its solver and serde) is in
-`src/layout/`; "As built" below lists where it differs from this note. It follows [dock-space.md](dock-space.md), which this
+Status: design note, accepted. Steps 2 to 5 (the model, its solver and serde; `LayoutArea`;
+folding; `DockSpace::bind`) are in `src/layout/` and `src/dock_space.rs`; "As built" below lists where it differs from this note. It follows [dock-space.md](dock-space.md), which this
 extends: a `DockSpace` shares one drag between several docks, but where each dock is and how big
 it is stays the application's. This note moves that part into egui_stack too, as a layer of its
 own, and puts the floating windows in it.
@@ -505,6 +505,14 @@ Where the `layout` module differs from the sketch above:
   close through `LayoutEvent::FlyoutClosed`; the application owns the `Option<Flyout>`. Its free
   edge is a splitter ("Resize <key>").
 - Dragging a strip to unfold, and the guide line of the fold threshold, are not built yet.
+
+## As built (step 5)
+
+- `DockSpace::bind(&mut self, laid: &Laid)` as sketched: `LaidZone` carries each leaf's content
+  and drop rule, so the `Laid` alone is enough. A folded zone's strip is a no-drop zone for now
+  (open question 7 is not settled); a zone lying over that refuses drops refuses over its body.
+- Not built yet in this step: `Docked` with its repair, `Layout::from_space`, the demo on the
+  layout, and the strips as drop targets.
 
 ## The minimal contract
 
