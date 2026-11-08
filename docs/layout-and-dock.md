@@ -491,6 +491,21 @@ Where the `layout` module differs from the sketch above:
 - Each leaf zone is a pane named after the zone; each sash a splitter named "Resize <zone>",
   whose value is the zone's size, with increment, decrement and set-value actions.
 
+## As built (step 4)
+
+- A strip's grip is a button ("Unfold left" for a folded zone, "Fold left" for one lying
+  over) at the strip's start; the rest of the strip is `ZoneViewer::strip`'s. An auto-folded
+  zone's grip does nothing: the room decides.
+- A zone lying over (`ZoneState::over`) is drawn in a foreground `egui::Area` over its
+  neighbour, framed by `LayoutPainter::flyout_frame`, and folds back on Escape or a press
+  outside it and its strip, as JetBrains' unpinned tool windows do. It is opened from code
+  (`Layout::set_over`), for example from the application's strip icons.
+- The flyout is drawn the same way, over the parent split towards its far side, its breadth
+  taken from `Layout::flyouts`, else the zone's size, else `LayoutStyle::flyout_size`. It asks to
+  close through `LayoutEvent::FlyoutClosed`; the application owns the `Option<Flyout>`. Its free
+  edge is a splitter ("Resize <key>").
+- Dragging a strip to unfold, and the guide line of the fold threshold, are not built yet.
+
 ## The minimal contract
 
 What a consumer such as egui-pop should depend on, and nothing else:

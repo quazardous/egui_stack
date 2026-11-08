@@ -100,6 +100,33 @@ pub enum LayoutEvent {
         /// The zone.
         zone: ZoneName,
     },
+    /// The zone folded to its strip: a sash dragged it under half its
+    /// least size, its grip was clicked while it lay over, or it lay over
+    /// and Escape or a click outside closed it.
+    Folded {
+        /// The zone.
+        zone: ZoneName,
+    },
+    /// The zone unfolded, back in the flow: its strip's grip was clicked.
+    Unfolded {
+        /// The zone.
+        zone: ZoneName,
+    },
+    /// The flyout asked to close (Escape, a click outside it, its strip's
+    /// grip, its zone unfolded): the application stops giving it to
+    /// [`LayoutArea::flyout`](super::LayoutArea::flyout).
+    FlyoutClosed {
+        /// The flyout's key.
+        key: String,
+    },
+    /// The flyout's free edge gave it this breadth, kept in
+    /// [`Layout::flyouts`].
+    FlyoutResized {
+        /// The flyout's key.
+        key: String,
+        /// Its breadth, in points.
+        size: f32,
+    },
 }
 
 /// Where every zone goes: the solver's output, parents first. Zones under a
@@ -112,6 +139,8 @@ pub struct Laid {
     /// What the user changed this frame, when drawn by a
     /// [`LayoutArea`](super::LayoutArea); empty from [`Layout::solve`].
     pub events: Vec<LayoutEvent>,
+    /// The flyout's rect, when one was drawn.
+    pub flyout: Option<Rect>,
 }
 
 impl Laid {

@@ -4,13 +4,16 @@
 use std::collections::HashMap;
 
 use egui::{
-    Color32, CornerRadius, CursorIcon, EventFilter, Id, Key, Painter, Rect, Response, Sense, Ui,
-    UiBuilder, WidgetInfo,
+    Color32, CornerRadius, CursorIcon, EventFilter, Id, Key, Painter, Rect, Response, Sense,
+    Shadow, Stroke, StrokeKind, Ui, UiBuilder, WidgetInfo,
     accesskit::{Action, ActionData, Orientation, Role},
 };
 
+use super::fold::{self, Flyout, FlyoutPaint, StripPaint};
 use super::solve::{along, span};
-use super::{Dir, Laid, LaidZone, Layout, LayoutEvent, Shown, Solve, Zone, ZoneKind, ZoneName};
+use super::{
+    Dir, Fold, Laid, LaidZone, Layout, LayoutEvent, Shown, Solve, Zone, ZoneKind, ZoneName,
+};
 use crate::{PartState, SeparatorAxis};
 
 /// How a [`LayoutArea`] looks and moves: sizes and colours its
@@ -35,6 +38,22 @@ pub struct LayoutStyle {
     pub key_step: f32,
     /// What an arrow key with Shift moves a focused sash by. By default 48.
     pub large_key_step: f32,
+    /// A strip's background.
+    pub strip_fill: Color32,
+    /// The line between a strip and its neighbours.
+    pub strip_stroke: Stroke,
+    /// A strip's grip, the button that unfolds or folds its zone.
+    pub grip: Color32,
+    /// A strip's grip hovered.
+    pub grip_hovered: Color32,
+    /// The background of a zone lying over its neighbour, and of a flyout.
+    pub flyout_fill: Color32,
+    /// Their border.
+    pub flyout_stroke: Stroke,
+    /// Their shadow.
+    pub flyout_shadow: Shadow,
+    /// A flyout's breadth before the user resizes it. By default 240.
+    pub flyout_size: f32,
 }
 
 impl Default for LayoutStyle {
@@ -56,6 +75,14 @@ impl LayoutStyle {
             sash_dragged: widgets.active.bg_stroke.color,
             key_step: 16.0,
             large_key_step: 48.0,
+            strip_fill: style.visuals.faint_bg_color,
+            strip_stroke: widgets.noninteractive.bg_stroke,
+            grip: widgets.noninteractive.fg_stroke.color,
+            grip_hovered: widgets.hovered.fg_stroke.color,
+            flyout_fill: style.visuals.panel_fill,
+            flyout_stroke: style.visuals.window_stroke,
+            flyout_shadow: style.visuals.popup_shadow,
+            flyout_size: 240.0,
         }
     }
 }
@@ -92,6 +119,51 @@ pub trait LayoutPainter {
         };
         painter.rect_filled(sash.rect, CornerRadius::ZERO, color);
     }
+
+    /// A folded zone's strip, with its grip (painted before the
+    /// [`ZoneViewer::strip`] content).
+    fn strip(&self, painter: &Painter, strip: &StripPaint<'_>) {
+        let style = strip.style;
+        painter.rect_filled(strip.rect, CornerRadius::ZERO, style.strip_fill);
+        painter.rect_stroke(
+            strip.rect,
+            CornerRadius::ZERO,
+            style.strip_stroke,
+            StrokeKind::Inside,
+        );
+        let color = if strip.grip_state.contains(PartState::HOVERED)
+            || strip.grip_state.contains(PartState::FOCUSED)
+        {
+            style.grip_hovered
+        } else {
+            style.grip
+        };
+        // Three dots across the strip.
+        let centre = strip.grip.center();
+        let gap = egui::vec2(4.0, 0.0);
+        let gap = if strip.axis == SeparatorAxis::Vertical {
+            gap.yx()
+        } else {
+            gap
+        };
+        for offset in [-1.0, 0.0, 1.0] {
+            painter.circle_filled(centre + gap * offset, 1.5, color);
+        }
+    }
+
+    /// The frame of a zone lying over its neighbour, or of a flyout: shadow,
+    /// background and border, painted before its content.
+    fn flyout_frame(&self, painter: &Painter, frame: &FlyoutPaint<'_>) {
+        let style = frame.style;
+        painter.add(style.flyout_shadow.as_shape(frame.rect, CornerRadius::ZERO));
+        painter.rect(
+            frame.rect,
+            CornerRadius::ZERO,
+            style.flyout_fill,
+            style.flyout_stroke,
+            StrokeKind::Inside,
+        );
+    }
 }
 
 /// The painter a [`LayoutArea`] uses unless given one: every default of
@@ -103,8 +175,22 @@ impl LayoutPainter for DefaultLayoutPainter {}
 
 /// What the application draws in a [`LayoutArea`].
 pub trait ZoneViewer {
-    /// A leaf zone's content, in its rect.
+    /// A leaf zone's content, in its rect; also while it lies over its
+    /// neighbour.
     fn ui(&mut self, ui: &mut Ui, zone: &ZoneName);
+
+    /// A folded zone's strip, after the painter's background and grip: the
+    /// application's icons, say. The `Ui` is the strip less its grip. By
+    /// default nothing.
+    fn strip(&mut self, ui: &mut Ui, zone: &ZoneName) {
+        let _ = (ui, zone);
+    }
+
+    /// The content of the [`Flyout`] given to [`LayoutArea::flyout`]. By
+    /// default nothing.
+    fn flyout(&mut self, ui: &mut Ui, flyout: &Flyout) {
+        let _ = (ui, flyout);
+    }
 }
 
 /// Draws a [`Layout`] in a [`Ui`]: solves it in the `Ui`'s rect, calls the
@@ -151,6 +237,7 @@ pub struct LayoutArea<'a> {
     id: Id,
     style: Option<LayoutStyle>,
     painter: &'a dyn LayoutPainter,
+    flyout: Option<Flyout>,
 }
 
 impl<'a> LayoutArea<'a> {
@@ -161,6 +248,7 @@ impl<'a> LayoutArea<'a> {
             id: Id::unique("egui_stack::LayoutArea"),
             style: None,
             painter: &DefaultLayoutPainter,
+            flyout: None,
         }
     }
 
@@ -183,6 +271,17 @@ impl<'a> LayoutArea<'a> {
     #[inline]
     pub fn painter(mut self, painter: &'a dyn LayoutPainter) -> Self {
         self.painter = painter;
+        self
+    }
+
+    /// Shows a flyout: an item of a folded zone ([`Flyout::zone`]) over its
+    /// neighbour, next to the zone's strip, drawn by
+    /// [`ZoneViewer::flyout`]. The application keeps it open by giving it
+    /// every frame, and drops it on [`LayoutEvent::FlyoutClosed`] (Escape, a
+    /// click outside it, the strip's grip, or the zone unfolding).
+    #[inline]
+    pub fn flyout(mut self, flyout: Option<Flyout>) -> Self {
+        self.flyout = flyout;
         self
     }
 
@@ -218,6 +317,41 @@ impl<'a> LayoutArea<'a> {
         ui.ctx().data_mut(|d| d.insert_temp(content_id, asked));
 
         let mut events = Vec::new();
+        let painter = self.painter;
+        fold::strips(
+            ui,
+            self.id,
+            self.layout,
+            &laid,
+            &style,
+            painter,
+            viewer,
+            self.flyout.as_ref(),
+            &mut events,
+        );
+        fold::overs(
+            ui,
+            self.id,
+            self.layout,
+            &laid,
+            &style,
+            painter,
+            viewer,
+            &mut events,
+        );
+        let flyout_rect = self.flyout.as_ref().and_then(|flyout| {
+            fold::flyout(
+                ui,
+                self.id,
+                self.layout,
+                &laid,
+                flyout,
+                &style,
+                painter,
+                viewer,
+                &mut events,
+            )
+        });
         let sashes = sashes(&self.layout.root, &laid);
         for sash in sashes {
             sash_ui(
@@ -238,6 +372,7 @@ impl<'a> LayoutArea<'a> {
             self.layout.solve(rect, &solve)
         };
         laid.events = events;
+        laid.flyout = flyout_rect;
         laid
     }
 }
@@ -278,6 +413,28 @@ fn draw_zones(
 
 /// Draws one zone's content in its rect, as a pane named after it; returns
 /// the size its content took.
+pub(super) fn zone_ui_at(
+    ui: &mut Ui,
+    id: Id,
+    zone: &Zone,
+    laid: &Laid,
+    viewer: &mut dyn ZoneViewer,
+) {
+    let mut asked = HashMap::new();
+    match &zone.kind {
+        ZoneKind::Leaf { .. } => {
+            if let Some(at) = laid.get(&zone.name.0) {
+                zone_ui(ui, id, at, viewer);
+            }
+        }
+        ZoneKind::Split { dir, children } => {
+            for child in children {
+                draw_zones(ui, id, child, Some(*dir), laid, viewer, &mut asked);
+            }
+        }
+    }
+}
+
 pub(super) fn zone_ui(
     ui: &mut Ui,
     id: Id,
@@ -415,9 +572,34 @@ fn sash_ui(
         target = total;
         moved = true;
     }
+    // Where the drag would have put the zone, unbounded.
+    let mut dragged_to = moved.then_some(target);
+    let mut size_before = sash.size;
     if !response.dragged() {
-        ui.ctx()
-            .data_mut(|d| d.remove::<(f32, f32)>(sash_id.with("start")));
+        let start = ui
+            .ctx()
+            .data_mut(|d| d.remove_temp::<(f32, f32)>(sash_id.with("start")));
+        if let Some((size, total)) = start {
+            dragged_to = Some(size + sign * total);
+            size_before = size;
+        }
+    }
+    // Dragged under half its least size, a zone that folds folds on
+    // release.
+    let folds = layout
+        .zone(&sash.zone.0)
+        .is_some_and(|zone| zone.constraints.fold == Fold::ToStrip);
+    let fold_below = sash.least * 0.5;
+    if folds && response.drag_stopped() && dragged_to.is_some_and(|to| to < fold_below) {
+        // It unfolds at the size it had before the drag.
+        if let Some(zone) = layout.zone_mut(&sash.zone.0) {
+            zone.state.size = Some(size_before);
+        }
+        layout.set_folded(&sash.zone.0, true);
+        events.push(LayoutEvent::Folded {
+            zone: sash.zone.clone(),
+        });
+        return;
     }
     let mut reset = response.double_clicked();
     if response.has_focus() {
