@@ -124,16 +124,19 @@ impl WindowState {
         self.minimized
     }
 
-    //the 'static in this case means that the `open` field is always `None`
+    /// Builds the window, and returns with it the outer height it gets back this frame, if it
+    /// is unfolded or restored: the caller sets it as both its least and largest height after
+    /// its own size constraints, which would otherwise override it.
     ///
-    /// `chrome` is the height the window's frame adds to its content: egui sizes a window by
-    /// its outer size, and the expanded height kept is the content's.
+    /// The `'static` means the `open` field is always `None`. `chrome` is the height the
+    /// window's frame adds to its content: egui sizes a window by its outer size, and the
+    /// expanded height kept is the content's.
     pub(crate) fn create_window(
         &mut self,
         id: Id,
         bounds: Rect,
         chrome: f32,
-    ) -> egui::Window<'static> {
+    ) -> (egui::Window<'static>, Option<f32>) {
         let new = self.new;
         let mut window_constructor = egui::Window::new("")
             .id(id)
@@ -146,12 +149,13 @@ impl WindowState {
         if let Some(size) = self.next_size() {
             window_constructor = window_constructor.fixed_size(size);
         }
-        // Reset the height of the window if it is now expanded
-        if new && let Some(height) = self.expanded_height() {
-            let height = height + chrome;
-            window_constructor = window_constructor.max_height(height).min_height(height);
-        }
+        // The height the window had before it was folded or minimized, now it is open again.
+        let restored_height = if new {
+            self.expanded_height().map(|height| height + chrome)
+        } else {
+            None
+        };
         self.new = false;
-        window_constructor
+        (window_constructor, restored_height)
     }
 }

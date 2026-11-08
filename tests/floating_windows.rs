@@ -37,6 +37,11 @@ fn harness(tabs: &[&str]) -> (Harness<'static, DockState<String>>, SurfaceIndex)
         .unwrap()
         .set_position(Pos2::new(200.0, 100.0))
         .set_size(vec2(400.0, 200.0));
+    (harness_of(dock_state), window)
+}
+
+/// Shows `dock_state` in a new harness.
+fn harness_of(dock_state: DockState<String>) -> Harness<'static, DockState<String>> {
     let mut harness = Harness::builder().with_size([800.0, 500.0]).build_ui_state(
         |ui, dock_state: &mut DockState<String>| {
             DockArea::new(dock_state)
@@ -48,7 +53,7 @@ fn harness(tabs: &[&str]) -> (Harness<'static, DockState<String>>, SurfaceIndex)
         dock_state,
     );
     harness.run_steps(3);
-    (harness, window)
+    harness
 }
 
 fn window_rect(harness: &Harness<'_, DockState<String>>, window: SurfaceIndex) -> Rect {
@@ -191,4 +196,135 @@ fn a_folded_window_is_tall_enough_for_its_band() {
 
     click_window_button(&mut harness, "Collapse");
     assert!(window_rect(&harness, window).height() > folded.height());
+}
+
+/// Clicks the `index`th `label` button of the window, counted from the top.
+fn click_nth_window_button(
+    harness: &mut Harness<'_, DockState<String>>,
+    label: &str,
+    index: usize,
+) {
+    let mut rects: Vec<Rect> = harness
+        .query_all_by_label(label)
+        .map(|node| node.rect())
+        .filter(|rect| rect.top() > 50.0)
+        .collect();
+    rects.sort_by(|a, b| a.top().total_cmp(&b.top()));
+    let rect = rects[index];
+    harness.hover_at(rect.center());
+    harness.step();
+    harness.drag_at(rect.center());
+    harness.step();
+    harness.drop_at(rect.center());
+    harness.run_steps(4);
+}
+
+/// The heights of the window's leaves, from the top.
+fn leaf_heights(harness: &Harness<'_, DockState<String>>, window: SurfaceIndex) -> Vec<f32> {
+    let tree = &harness.state()[window];
+    let mut rects: Vec<Rect> = tree
+        .iter()
+        .filter(|node| node.is_leaf())
+        .filter_map(|node| node.rect())
+        .collect();
+    rects.sort_by(|a, b| a.top().total_cmp(&b.top()));
+    rects.iter().map(Rect::height).collect()
+}
+
+fn assert_close(actual: f32, expected: f32, what: &str) {
+    assert!(
+        (actual - expected).abs() <= 1.0,
+        "{what}: {actual}, expected {expected}"
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn an_unfolded_window_gets_back_its_height() {
+    let (mut harness, window) = harness(&["First tab", "Second tab"]);
+    let rect = window_rect(&harness, window);
+
+    click_window_button(&mut harness, "Collapse");
+    assert!(window_rect(&harness, window).height() < rect.height());
+
+    click_window_button(&mut harness, "Collapse");
+    harness.run_steps(3);
+    let unfolded = window_rect(&harness, window);
+    assert_close(unfolded.height(), rect.height(), "the window's height");
+    assert_bands_inside(&harness, window);
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_split_window_with_every_leaf_folded_unfolds_to_its_former_heights() {
+    let (mut harness, window) = harness(&["First tab", "Second tab"]);
+    harness.state_mut()[window].split_below(NodeIndex::root(), 0.3, vec!["Third".to_owned()]);
+    harness.run_steps(3);
+    let rect = window_rect(&harness, window);
+    let heights = leaf_heights(&harness, window);
+    assert_eq!(heights.len(), 2);
+
+    // Fold the bottom leaf, then the top one: the window collapses to its two bands.
+    click_nth_window_button(&mut harness, "Collapse", 1);
+    click_nth_window_button(&mut harness, "Collapse", 0);
+    harness.run_steps(3);
+    let folded = window_rect(&harness, window);
+    assert!(folded.height() < rect.height() / 2.0, "{folded:?}");
+    assert_bands_inside(&harness, window);
+    let folded_heights = leaf_heights(&harness, window);
+    assert_close(folded_heights[0], folded_heights[1], "the folded bands");
+
+    // Unfolding one leaf gives the window back its height, the open leaf taking the rest.
+    click_nth_window_button(&mut harness, "Collapse", 0);
+    harness.run_steps(3);
+    let one_open = window_rect(&harness, window);
+    assert_close(one_open.height(), rect.height(), "the window's height");
+    assert_bands_inside(&harness, window);
+    let one_open_heights = leaf_heights(&harness, window);
+    assert!(
+        one_open_heights[0] > one_open_heights[1],
+        "{one_open_heights:?}"
+    );
+
+    // Unfolding the other gives back the heights from before.
+    click_nth_window_button(&mut harness, "Collapse", 1);
+    harness.run_steps(3);
+    assert_close(
+        window_rect(&harness, window).height(),
+        rect.height(),
+        "the window's height",
+    );
+    let restored = leaf_heights(&harness, window);
+    for (restored, before) in restored.iter().zip(&heights) {
+        assert_close(*restored, *before, "a leaf's height");
+    }
+    assert_bands_inside(&harness, window);
+}
+
+#[cfg(feature = "serde")]
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_window_saved_folded_unfolds_to_its_height_once_loaded() {
+    let (mut harness, window) = harness(&["First tab", "Second tab"]);
+    let rect = window_rect(&harness, window);
+    click_window_button(&mut harness, "Collapse");
+    assert!(window_rect(&harness, window).height() < rect.height());
+
+    let saved = serde_json::to_string(harness.state()).unwrap();
+    let mut loaded: DockState<String> = serde_json::from_str(&saved).unwrap();
+    // A new egui context places windows anew: put it back where it was.
+    loaded
+        .get_window_state_mut(window)
+        .unwrap()
+        .set_position(rect.min);
+    let mut harness = harness_of(loaded);
+    assert!(window_rect(&harness, window).height() < rect.height());
+
+    click_window_button(&mut harness, "Collapse");
+    harness.run_steps(3);
+    assert_close(
+        window_rect(&harness, window).height(),
+        rect.height(),
+        "the window's height",
+    );
 }
