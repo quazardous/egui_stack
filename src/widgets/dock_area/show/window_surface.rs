@@ -32,7 +32,7 @@ impl<Tab> DockArea<'_, Tab> {
         // egui sizes a window by its outer size: the frame's margins and stroke come on top of
         // what the content takes.
         let chrome = Frame::window(ui.style()).total_margin().sum();
-        let window = self
+        let (window, restored_height) = self
             .dock_state
             .get_window_state_mut(surf_index)
             .unwrap()
@@ -107,6 +107,14 @@ impl<Tab> DockArea<'_, Tab> {
                 .resizable([true, false])
                 .max_height(height)
                 .min_height(height)
+        } else if let Some(height) = restored_height {
+            // Unfolded or restored: the window gets back the height it had, set after its least
+            // size so that does not override it; egui keeps it from the next frame on.
+            let height = height.max(min_size.y);
+            window
+                .min_size(min_size)
+                .min_height(height)
+                .max_height(height)
         } else {
             window.min_size(min_size)
         }
