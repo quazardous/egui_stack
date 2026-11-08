@@ -2,6 +2,7 @@
 
 use egui::{Id, Rect};
 
+use crate::layout::{Content, Drops, Laid, Shown};
 use crate::{AllowedSplits, DockState, Surface, SurfaceIndex, Tree};
 
 /// Several named docks, each with its own tree, and floating windows, sharing one drag: a tab
@@ -389,6 +390,72 @@ impl<Tab> DockSpace<Tab> {
     /// that moves needs no rect of the application's. See [`no_drop_zone`](Self::no_drop_zone).
     pub fn no_drop_widget(&mut self, id: Id) {
         self.no_drop.ids.push(id);
+    }
+
+    /// Reads where a [`LayoutArea`](crate::layout::LayoutArea) put its zones this frame, and
+    /// makes no-drop zones ([`no_drop_zone`](Self::no_drop_zone)) of those no tab may land in:
+    /// a zone with [`Drops::Refuse`], a zone holding no dock ([`Content::App`], or a
+    /// [`Content::Dock`] this space has not), and a folded zone's strip. A zone with
+    /// [`Content::Empty`] that accepts drops stays outside every dock: a tab released there
+    /// becomes a floating window.
+    ///
+    /// Call it every frame, after the layout is drawn: its zones take effect for the docks drawn
+    /// next, a frame later for those already drawn, which a drag does not notice.
+    ///
+    /// ```
+    /// # use egui_stack::{DockArea, DockSpace, DockRules, TabViewer};
+    /// # use egui_stack::layout::{Content, Dir, Drops, Layout, LayoutArea, Zone, ZoneName, ZoneViewer};
+    /// # struct Tabs;
+    /// # impl TabViewer for Tabs {
+    /// #     type Tab = String;
+    /// #     fn id(&mut self, tab: &mut String) -> egui::Id { egui::Id::unique(tab.as_str()) }
+    /// #     fn title(&mut self, tab: &mut String) -> egui::WidgetText { tab.as_str().into() }
+    /// #     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut String) { ui.label(tab.as_str()); }
+    /// # }
+    /// struct Viewer<'a> {
+    ///     space: &'a mut DockSpace<String>,
+    /// }
+    ///
+    /// impl ZoneViewer for Viewer<'_> {
+    ///     fn ui(&mut self, ui: &mut egui::Ui, zone: &ZoneName) {
+    ///         match zone.0.as_str() {
+    ///             "toolbar" => { ui.label("Toolbar"); }
+    ///             dock => { DockArea::dock(self.space, dock).show_inside(ui, &mut Tabs); }
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// let mut space = DockSpace::new();
+    /// space.add_dock("centre", DockRules::default(), vec!["Editor".to_owned()]);
+    /// let mut layout = Layout::new(Zone::split("root", Dir::Vertical, vec![
+    ///     Zone::leaf("toolbar", Content::App),
+    ///     Zone::leaf("centre", Content::Dock("centre".into())).with(|c| c.grow = true),
+    /// ]));
+    /// # egui::__run_test_ui(|ui| {
+    /// let laid = LayoutArea::new(&mut layout).show_inside(ui, &mut Viewer { space: &mut space });
+    /// space.bind(&laid);
+    /// # });
+    /// ```
+    pub fn bind(&mut self, laid: &Laid) {
+        for zone in &laid.zones {
+            let Some(content) = &zone.content else {
+                continue;
+            };
+            if let Some(strip) = zone.strip {
+                self.no_drop.rects.push(strip);
+            }
+            if !matches!(zone.shown, Shown::Open | Shown::Over) {
+                continue;
+            }
+            let no_dock = match content {
+                Content::Dock(name) => !self.has_dock(name),
+                Content::App => true,
+                Content::Empty => false,
+            };
+            if no_dock || zone.drops == Drops::Refuse {
+                self.no_drop.rects.push(zone.rect);
+            }
+        }
     }
 
     /// The dock whose [`DockArea`](crate::DockArea) also draws the floating windows: the one
