@@ -1,6 +1,8 @@
 //! A layout as saved: the tree and each zone's state, versioned; never the
 //! constraints, which the code re-asserts ([`Layout::reconcile`]).
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::{Constraints, Content, Dir, Layout, Zone, ZoneKind, ZoneName, ZoneState};
@@ -21,6 +23,8 @@ pub struct VersionError {
 pub(super) struct SavedLayout {
     version: u32,
     root: SavedZone,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    flyouts: BTreeMap<String, f32>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -44,6 +48,7 @@ impl From<Layout> for SavedLayout {
         Self {
             version: LAYOUT_VERSION,
             root: layout.root.into(),
+            flyouts: layout.flyouts,
         }
     }
 }
@@ -73,7 +78,9 @@ impl TryFrom<SavedLayout> for Layout {
                 found: saved.version,
             });
         }
-        Ok(Self::new(saved.root.into()))
+        let mut layout = Self::new(saved.root.into());
+        layout.flyouts = saved.flyouts;
+        Ok(layout)
     }
 }
 

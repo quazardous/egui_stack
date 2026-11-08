@@ -44,6 +44,7 @@
 //! ```
 
 mod area;
+mod fold;
 #[cfg(feature = "serde")]
 mod saved;
 mod solve;
@@ -51,11 +52,13 @@ mod solve;
 pub use area::{
     DefaultLayoutPainter, LayoutArea, LayoutPainter, LayoutStyle, SashPaint, ZoneViewer,
 };
+pub use fold::{Flyout, FlyoutPaint, StripPaint};
 
 #[cfg(feature = "serde")]
 pub use saved::{LAYOUT_VERSION, VersionError};
 pub use solve::{Laid, LaidZone, LayoutEvent, Shown, Solve};
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 /// A zone's name: stable, saved, chosen by the application ("left",
@@ -107,6 +110,9 @@ impl PartialEq<str> for ZoneName {
 pub struct Layout {
     /// The zone holding all others; it takes the whole rect it is solved in.
     pub root: Zone,
+    /// Each flyout's breadth, by its key ([`Flyout::key`]), once the user
+    /// resized it.
+    pub flyouts: BTreeMap<String, f32>,
 }
 
 /// One zone of the tree: a split of zones, or a leaf with content.
@@ -361,7 +367,34 @@ impl Zone {
 impl Layout {
     /// A layout of `root`.
     pub fn new(root: Zone) -> Self {
-        Self { root }
+        Self {
+            root,
+            flyouts: BTreeMap::new(),
+        }
+    }
+
+    /// Folds the zone named `name` to its strip, or unfolds it; either way
+    /// it no longer lies over its neighbour. Says whether the zone exists.
+    /// The zone that grows never folds: the solver ignores its state.
+    pub fn set_folded(&mut self, name: &str, folded: bool) -> bool {
+        self.zone_mut(name)
+            .map(|zone| {
+                zone.state.folded = folded;
+                zone.state.over = false;
+            })
+            .is_some()
+    }
+
+    /// Opens the zone named `name` over its neighbour, next to its strip,
+    /// without taking room (`over`), or folds it back to its strip. Says
+    /// whether the zone exists.
+    pub fn set_over(&mut self, name: &str, over: bool) -> bool {
+        self.zone_mut(name)
+            .map(|zone| {
+                zone.state.over = over;
+                zone.state.folded = !over;
+            })
+            .is_some()
     }
 
     /// A layout of one leaf, `name`, holding the dock of the same name.
