@@ -474,6 +474,23 @@ Where the `layout` module differs from the sketch above:
   dropped take its place, and a leaf turned split (or back) takes the code's kind. With another
   root, the code's layout replaces the loaded one.
 
+## As built (step 3)
+
+- `LayoutArea::new(&mut layout).id(..).style(..).painter(..).show_inside(ui, viewer)` returns
+  the solver's `Laid` with `events` (`LayoutEvent::Resized`, `Reset`); each `LaidZone` also
+  carries its solved `least` and `most`, its `content` and its `drops`.
+- A sash resizes one zone: the one on its side away from the zone that takes the rest (the
+  growing one, else the last open one), bounded by that zone's `min` and `max` and by what the
+  taker has above its own `min`. The neighbours further away do not give way during a drag: the
+  solver does that when the window shrinks. Snapping and its guide (`snap_guide`), and Alt, are
+  not built yet.
+- `LayoutPainter` is a trait of its own with defaults drawn from `LayoutStyle`
+  (`DefaultLayoutPainter`), not a supertrait of `DockPainter`: that would break every painter
+  outside the crate. A host implements both on one type.
+- `LayoutStyle` is its own value (`LayoutStyle::from_egui`), not a field of the dock's `Style`.
+- Each leaf zone is a pane named after the zone; each sash a splitter named "Resize <zone>",
+  whose value is the zone's size, with increment, decrement and set-value actions.
+
 ## The minimal contract
 
 What a consumer such as egui-pop should depend on, and nothing else:
