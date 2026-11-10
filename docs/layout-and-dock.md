@@ -528,7 +528,7 @@ Where the `layout` module differs from the sketch above:
   folding. Only a drag snaps; the keyboard and assistive technology do not.
 - Drag to unfold: the strip's edge facing the neighbour is a drag-only handle (not a focus stop:
   the grip is the keyboard's way). Released past half the zone's least size, the zone unfolds at
-  the size dragged to; a guide shows where meanwhile.
+  the size dragged to; a guide shows where meanwhile. `LayoutStyle::strip_drag` turns it off.
 - Strips as drop targets (open question 7, the proposed answer, opt-in): with
   `Constraints::strip_drops`, `bind` makes a folded zone's strip a target for its dock; a tab
   released there joins the dock's focused leaf (else its first, else the empty dock), the zone
