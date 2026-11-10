@@ -173,14 +173,19 @@ fn a_dragged_sash_snaps_to_its_default_size_with_a_guide() {
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn snapping_off_or_alt_held_leaves_the_sash_where_dragged() {
     let mut harness = harness(row());
+    // Drags in steps past egui's drag threshold, from 240 back near the
+    // default, 200.
     harness.state_mut().snap = 0.0;
-    drag(&mut harness, "Size of The left area", 4.0);
+    drag(&mut harness, "Size of The left area", 40.0);
+    drag(&mut harness, "Size of The left area", -36.0);
     assert_eq!(size(&harness, "left"), Some(204.0));
 
     harness.state_mut().snap = 8.0;
+    drag(&mut harness, "Size of The left area", 36.0);
+    assert_eq!(size(&harness, "left"), Some(240.0));
     harness.event(egui::Event::ModifiersChanged(Modifiers::ALT));
     harness.state_mut().guides.clear();
-    drag(&mut harness, "Size of The left area", 2.0);
+    drag(&mut harness, "Size of The left area", -34.0);
     harness.event(egui::Event::ModifiersChanged(Modifiers::NONE));
     assert_eq!(size(&harness, "left"), Some(206.0));
     assert!(harness.state().guides.is_empty());
