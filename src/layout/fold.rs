@@ -171,6 +171,7 @@ pub(super) fn strips(
         viewer.strip(&mut child, &at.name);
 
         if at.shown == Shown::Folded
+            && style.strip_drag
             && drag_out(ui, id, layout, laid, at, strip, dir, style, painter)
         {
             events.push(LayoutEvent::Unfolded {

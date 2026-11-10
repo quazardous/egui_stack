@@ -60,6 +60,9 @@ pub struct LayoutStyle {
     pub snap: f32,
     /// The guide line showing what a dragged sash caught.
     pub snap_guide: Stroke,
+    /// Whether a folded zone's strip edge facing its neighbour drags the
+    /// zone out of its strip. By default `true`.
+    pub strip_drag: bool,
 }
 
 impl Default for LayoutStyle {
@@ -91,6 +94,7 @@ impl LayoutStyle {
             flyout_size: 240.0,
             snap: 8.0,
             snap_guide: Stroke::new(1.0, style.visuals.selection.stroke.color),
+            strip_drag: true,
         }
     }
 }
