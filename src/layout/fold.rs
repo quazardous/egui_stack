@@ -1,7 +1,10 @@
 //! Folded zones: their strips, the zones lying over their neighbour, and
 //! the flyout.
 
-use egui::{CursorIcon, Id, Key, Order, Rect, Sense, Ui, UiBuilder, WidgetInfo, accesskit::Role};
+use egui::{
+    CursorIcon, Id, Key, LayerId, Order, Pos2, Rect, Sense, Ui, UiBuilder, WidgetInfo,
+    accesskit::Role,
+};
 
 use super::area::{
     LayoutPainter, LayoutStyle, Names, SnapGuidePaint, SnapKind, ZoneViewer, paint_guide,
@@ -94,14 +97,78 @@ fn parent_name(root: &Zone, name: &str) -> Option<ZoneName> {
     found
 }
 
-/// Whether a press this frame fell outside every rect of `inside`.
-fn pressed_outside(ui: &Ui, inside: &[Rect]) -> bool {
-    ui.input(|i| {
-        i.pointer.any_pressed()
-            && i.pointer
-                .press_origin()
-                .is_some_and(|pos| !inside.iter().any(|rect| rect.contains(pos)))
-    })
+/// What dismisses a flyout ([`LayoutArea::flyout_dismiss`]), or folds
+/// back a zone lying over its neighbour ([`LayoutArea::over_dismiss`]).
+/// By default both: [`Dismiss::ANY`].
+///
+/// [`LayoutArea::flyout_dismiss`]: super::LayoutArea::flyout_dismiss
+/// [`LayoutArea::over_dismiss`]: super::LayoutArea::over_dismiss
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Dismiss {
+    /// A press outside it and its strip, unless the host counts the press
+    /// as inside ([`LayoutArea::inside`](super::LayoutArea::inside)).
+    pub outside_press: bool,
+    /// Escape. A host that closes its own overlays first consumes the
+    /// key before the area is drawn (`egui::InputState::consume_key`), or
+    /// turns this off while one is open.
+    pub escape: bool,
+}
+
+impl Dismiss {
+    /// A press outside, or Escape.
+    pub const ANY: Self = Self {
+        outside_press: true,
+        escape: true,
+    };
+    /// Neither: only its strip's grip, or the application, closes it.
+    pub const NEVER: Self = Self {
+        outside_press: false,
+        escape: false,
+    };
+    /// A press outside only.
+    pub const OUTSIDE_PRESS: Self = Self {
+        outside_press: true,
+        escape: false,
+    };
+    /// Escape only.
+    pub const ESCAPE: Self = Self {
+        outside_press: false,
+        escape: true,
+    };
+}
+
+impl Default for Dismiss {
+    fn default() -> Self {
+        Self::ANY
+    }
+}
+
+/// The host's say on whether a press counts as inside a flyout or a zone
+/// lying over: given the press and the egui layer on top there.
+pub type Inside<'a> = &'a dyn Fn(Pos2, Option<LayerId>) -> bool;
+
+/// Whether `dismiss` closes this frame: Escape, or a press outside every
+/// rect of `inside` that the host does not count as inside.
+fn dismissed(ui: &Ui, dismiss: Dismiss, inside: &[Rect], host: Option<Inside<'_>>) -> bool {
+    if dismiss.escape && ui.input(|i| i.key_pressed(Key::Escape)) {
+        return true;
+    }
+    if !dismiss.outside_press {
+        return false;
+    }
+    let press = ui.input(|i| {
+        i.pointer
+            .any_pressed()
+            .then(|| i.pointer.press_origin())
+            .flatten()
+    });
+    let Some(pos) = press else {
+        return false;
+    };
+    if inside.iter().any(|rect| rect.contains(pos)) {
+        return false;
+    }
+    host.is_none_or(|host| !host(pos, ui.ctx().layer_id_at(pos)))
 }
 
 #[expect(
@@ -205,8 +272,9 @@ pub(super) fn strips(
     }
 }
 
-/// Draws the zones lying over their neighbour, in front of the others; a
-/// press outside one, or Escape, folds it back.
+/// Draws the zones lying over their neighbour, in front of the others;
+/// what `dismiss` says (by default a press outside one, or Escape) folds
+/// it back.
 #[expect(
     clippy::too_many_arguments,
     reason = "the area's parts, borrowed apart"
@@ -220,6 +288,7 @@ pub(super) fn overs(
     painter: &dyn LayoutPainter,
     viewer: &mut dyn ZoneViewer,
     names: &Names<'_>,
+    (dismiss, host): (Dismiss, Option<Inside<'_>>),
     events: &mut Vec<LayoutEvent>,
 ) {
     for at in laid.zones.iter().filter(|at| at.shown == Shown::Over) {
@@ -247,8 +316,7 @@ pub(super) fn overs(
                 zone_ui_at(ui, id, &zone, laid, names, viewer);
             });
         let inside = [rect, at.strip.unwrap_or(Rect::NOTHING)];
-        let escape = ui.input(|i| i.key_pressed(Key::Escape));
-        if escape || pressed_outside(ui, &inside) {
+        if dismissed(ui, dismiss, &inside, host) {
             layout.set_folded(&at.name.0, true);
             events.push(LayoutEvent::Folded {
                 zone: at.name.clone(),
@@ -258,8 +326,9 @@ pub(super) fn overs(
 }
 
 /// Draws the flyout next to its zone's strip, in front of the others, with
-/// its free edge that resizes it; returns its rect. A press outside it,
-/// Escape, or its zone no longer folded asks to close it.
+/// its free edge that resizes it; returns its rect. What `dismiss` says
+/// (by default a press outside it, or Escape), or its zone no longer
+/// folded, asks to close it.
 #[expect(
     clippy::too_many_arguments,
     reason = "the area's parts, borrowed apart"
@@ -274,6 +343,7 @@ pub(super) fn flyout(
     painter: &dyn LayoutPainter,
     viewer: &mut dyn ZoneViewer,
     names: &Names<'_>,
+    (dismiss, host): (Dismiss, Option<Inside<'_>>),
     events: &mut Vec<LayoutEvent>,
 ) -> Option<Rect> {
     let closed = || LayoutEvent::FlyoutClosed {
@@ -376,8 +446,7 @@ pub(super) fn flyout(
             size,
         });
     }
-    let escape = ui.input(|i| i.key_pressed(Key::Escape));
-    if escape || pressed_outside(ui, &[rect, strip, edge]) {
+    if dismissed(ui, dismiss, &[rect, strip, edge], host) {
         events.push(closed());
     }
     Some(rect)

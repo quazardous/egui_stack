@@ -9,7 +9,7 @@ use egui::{
     accesskit::{Action, ActionData, Orientation, Role},
 };
 
-use super::fold::{self, Flyout, FlyoutPaint, StripPaint};
+use super::fold::{self, Dismiss, Flyout, FlyoutPaint, Inside, StripPaint};
 use super::solve::{along, span};
 use super::{
     Dir, Fold, Laid, LaidZone, Layout, LayoutEvent, Shown, Solve, Zone, ZoneKind, ZoneName,
@@ -351,6 +351,9 @@ pub struct LayoutArea<'a> {
     style: Option<LayoutStyle>,
     painter: &'a dyn LayoutPainter,
     flyout: Option<Flyout>,
+    flyout_dismiss: Dismiss,
+    over_dismiss: Dismiss,
+    inside: Option<Inside<'a>>,
     labels: Labels,
 }
 
@@ -363,6 +366,9 @@ impl<'a> LayoutArea<'a> {
             style: None,
             painter: &DefaultLayoutPainter,
             flyout: None,
+            flyout_dismiss: Dismiss::ANY,
+            over_dismiss: Dismiss::ANY,
+            inside: None,
             labels: Labels::ENGLISH,
         }
     }
@@ -404,10 +410,41 @@ impl<'a> LayoutArea<'a> {
     /// neighbour, next to the zone's strip, drawn by
     /// [`ZoneViewer::flyout`]. The application keeps it open by giving it
     /// every frame, and drops it on [`LayoutEvent::FlyoutClosed`] (Escape, a
-    /// click outside it, the strip's grip, or the zone unfolding).
+    /// click outside it, the strip's grip, or the zone unfolding; the first
+    /// two as [`Self::flyout_dismiss`] says).
     #[inline]
     pub fn flyout(mut self, flyout: Option<Flyout>) -> Self {
         self.flyout = flyout;
+        self
+    }
+
+    /// Sets what closes the flyout besides its strip's grip and its zone
+    /// unfolding; by default [`Dismiss::ANY`], a press outside it or
+    /// Escape.
+    #[inline]
+    pub fn flyout_dismiss(mut self, dismiss: Dismiss) -> Self {
+        self.flyout_dismiss = dismiss;
+        self
+    }
+
+    /// Sets what folds back a zone lying over its neighbour
+    /// ([`ZoneState::over`](super::ZoneState::over)) besides its strip's
+    /// grip; by default [`Dismiss::ANY`], a press outside it or Escape.
+    /// [`Dismiss::NEVER`] makes lying over a lasting placement.
+    #[inline]
+    pub fn over_dismiss(mut self, dismiss: Dismiss) -> Self {
+        self.over_dismiss = dismiss;
+        self
+    }
+
+    /// Lets the host count a press outside the flyout's or a lying-over
+    /// zone's rect as inside it: `inside` gets the press and the egui
+    /// layer on top there, and says whether it is inside. A combo box's
+    /// list or a context menu opened from the flyout, or the host's own
+    /// overlays, are such layers. By default no press outside is inside.
+    #[inline]
+    pub fn inside(mut self, inside: Inside<'a>) -> Self {
+        self.inside = Some(inside);
         self
     }
 
@@ -467,6 +504,7 @@ impl<'a> LayoutArea<'a> {
             painter,
             viewer,
             &names,
+            (self.over_dismiss, self.inside),
             &mut events,
         );
         let flyout_rect = self.flyout.as_ref().and_then(|flyout| {
@@ -480,6 +518,7 @@ impl<'a> LayoutArea<'a> {
                 painter,
                 viewer,
                 &names,
+                (self.flyout_dismiss, self.inside),
                 &mut events,
             )
         });
