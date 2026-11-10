@@ -1,5 +1,16 @@
 # egui_stack changelog
 
+## egui_stack 0.25.5 - 2026-11-10
+
+### Added
+
+- `Docked<Tab>` keeps a `Layout` and its `DockSpace` as one value (saved together with the `serde` feature), and `Docked::repair` makes them agree: zones showing a dock the space lost go, docks no zone shows get a hidden zone. `Layout::from_space` builds a layout for a `DockSpace` placed by egui panels, from a tree shape the application gives.
+- A folded zone's strip edge facing its neighbour drags the zone out: past half its least size, it unfolds on release at the size dragged to, with a guide line meanwhile; `LayoutStyle::strip_drag` turns it off.
+- A layout zone whose least size is its largest has no sash: nothing to resize, and no keyboard stop.
+- A `LayoutArea`'s zones are named after their title, `ZoneViewer::title` (by default the zone's name), and its sashes, grips and flyout edge after `Labels::resize_zone`, `unfold_zone`, `fold_zone` and `resize_flyout`, set with `LayoutArea::labels`, so an application translates them and its zones' names never clash with its own labels. `ZoneViewer::flyout_title` names a flyout.
+- A dragged layout sash snaps to its zone's default size and to the line of another sash running the same way, within `LayoutStyle::snap` (8 points; 0 turns it off), with a guide line painted by `LayoutPainter::snap_guide` (`SnapGuidePaint`, `SnapKind`); Alt suspends it. A guide also shows where a zone will fold on release.
+- `Constraints::strip_drops`: a folded zone's strip takes a dragged tab for the dock it holds, which joins that dock's focused leaf (else its first), through `DockSpace::bind`. Off by default: strips still refuse drops.
+
 ## egui_stack 0.25.4 - 2026-11-08
 
 ### Added
