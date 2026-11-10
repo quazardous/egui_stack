@@ -171,7 +171,12 @@ impl<Tab> DockArea<'_, Tab> {
             )
         });
 
-        let hover_data = hover_data.or_else(|| self.hover_outside(dock_rect, state, &drag_data));
+        // A folded zone's strip taking drops wins over whatever lies under it.
+        let hover_data = drag_data
+            .as_ref()
+            .and_then(|_| self.hover_strip(state))
+            .or(hover_data)
+            .or_else(|| self.hover_outside(dock_rect, state, &drag_data));
         // Where no tab may land, the drag hovers nothing: released, the tab stays where it was.
         let refused = hover_data
             .as_ref()
@@ -313,6 +318,46 @@ impl<Tab> DockArea<'_, Tab> {
                     self.dock_state.is_window(surface)
                         && window_surface::window_layer_id(surface) == top
                 })
+    }
+
+    /// A strip of a folded zone that takes drops for one of the space's docks
+    /// ([`DockSpace::bind`](crate::DockSpace::bind)), under the pointer and under no floating
+    /// window: hovered as that dock's tab bar, so a tab released there joins the dock's focused
+    /// leaf, else its first, or the dock itself when empty.
+    fn hover_strip(&self, state: &State) -> Option<HoverData> {
+        let space = self.space.as_ref()?;
+        let pointer = state.last_hover_pos?;
+        let (strip, name) = space
+            .no_drop
+            .strips
+            .iter()
+            .find(|(strip, _)| strip.contains(pointer))?;
+        let over_a_window = self
+            .dock_state
+            .valid_surface_indices()
+            .iter()
+            .filter_map(|&surface| self.dock_state.get_window_state(surface))
+            .any(|window| window.rect().contains(pointer));
+        if over_a_window {
+            return None;
+        }
+        let surface = space.docks.iter().find(|dock| &dock.name == name)?.surface;
+        let tree = self.dock_state.get_surface(surface)?.node_tree()?;
+        let leaf = tree
+            .focused_leaf()
+            .filter(|&node| tree.iter().nth(node.0).is_some_and(Node::is_leaf))
+            .or_else(|| tree.iter().position(Node::is_leaf).map(NodeIndex));
+        let dst = match leaf {
+            Some(node) => TreeComponent::Node(NodePath::new(surface, node)),
+            None => TreeComponent::Surface(surface),
+        };
+        Some(HoverData {
+            rect: *strip,
+            dst,
+            // As a tab bar: the tab joins the leaf, with no split.
+            tab: Some(*strip),
+            outside: false,
+        })
     }
 
     /// With [`OverlayType::Zones`], a tab dragged outside the dock, where none of its surfaces

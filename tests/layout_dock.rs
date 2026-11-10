@@ -4,7 +4,7 @@
 use egui::{Pos2, Ui, WidgetText, vec2};
 use egui_kittest::{Harness, kittest::Queryable as _};
 use egui_stack::layout::{
-    Content, Dir, Drops, Layout, LayoutArea, Size, Zone, ZoneName, ZoneViewer,
+    Content, Dir, Drops, Fold, Layout, LayoutArea, Size, Zone, ZoneName, ZoneViewer,
 };
 use egui_stack::{DockArea, DockRules, DockSpace, TabViewer};
 
@@ -167,6 +167,47 @@ fn a_tab_released_over_a_zone_without_a_dock_goes_back() {
     let status = harness.get_by_label("Status").rect();
     drop_at(&mut harness, "Preview", status.center() + vec2(300.0, 0.0));
     // Not a floating window: back in its dock.
+    assert_eq!(
+        dock_of(harness.state(), "Preview").as_deref(),
+        Some("centre")
+    );
+}
+
+/// The left zone folded to its strip, taking drops there with
+/// `strip_drops`; returns the strip's centre.
+fn fold_left(harness: &mut Harness<'_, App>, strip_drops: bool) -> Pos2 {
+    let layout = &mut harness.state_mut().layout;
+    layout.constrain("left", |c| {
+        c.drops = Drops::Accept;
+        c.fold = Fold::ToStrip;
+        c.strip_drops = strip_drops;
+    });
+    layout.set_folded("left", true);
+    harness.run();
+    let laid = harness.state().layout.solve(
+        egui::Rect::from_min_size(Pos2::new(8.0, 8.0), vec2(884.0, 384.0)),
+        &Default::default(),
+    );
+    laid.get("left").unwrap().strip.unwrap().center() + vec2(0.0, 60.0)
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_strip_taking_drops_adds_the_tab_to_its_folded_dock() {
+    let mut harness = harness();
+    let strip = fold_left(&mut harness, true);
+    drop_at(&mut harness, "Preview", strip);
+    assert_eq!(dock_of(harness.state(), "Preview").as_deref(), Some("left"));
+    // Still folded: the tab waits in its dock.
+    assert!(harness.state().layout.zone("left").unwrap().state.folded);
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_strip_refuses_drops_by_default() {
+    let mut harness = harness();
+    let strip = fold_left(&mut harness, false);
+    drop_at(&mut harness, "Preview", strip);
     assert_eq!(
         dock_of(harness.state(), "Preview").as_deref(),
         Some("centre")

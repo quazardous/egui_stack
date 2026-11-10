@@ -212,3 +212,66 @@ fn zone_states_and_flyout_breadths_save_and_load() {
     let state = loaded.zone("left").unwrap().state;
     assert!(state.folded && !state.over);
 }
+
+/// Drags from `from` by `dx` points.
+fn drag_by(harness: &mut Harness<'_, App>, from: Pos2, dx: f32) {
+    harness.hover_at(from);
+    harness.step();
+    harness.drag_at(from);
+    harness.step();
+    for step in 1..=4 {
+        harness.hover_at(from + vec2(dx * step as f32 / 4.0, 0.0));
+        harness.step();
+    }
+    harness.drop_at(from + vec2(dx, 0.0));
+    harness.run();
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_strip_dragged_out_unfolds_its_zone_at_the_size_dragged_to() {
+    let mut folded = layout();
+    folded.set_folded("left", true);
+    let mut harness = harness(folded);
+    // The strip's edge facing the centre, below the grip.
+    let edge = pos2(8.0 + 24.0, 200.0);
+
+    // Under half the least size (50): it stays folded.
+    drag_by(&mut harness, edge, 10.0);
+    assert_eq!(state(&harness), (true, false));
+
+    drag_by(&mut harness, edge, 150.0);
+    assert_eq!(state(&harness), (false, false));
+    let size = harness.state().layout.zone("left").unwrap().state.size;
+    assert_eq!(size, Some(174.0));
+    assert_eq!(harness.get_by_label("left").rect().width(), 174.0);
+    assert!(
+        harness
+            .state()
+            .events
+            .iter()
+            .any(|e| matches!(e, LayoutEvent::Unfolded { .. }))
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn the_grips_take_the_translated_labels() {
+    let mut folded = layout();
+    folded.set_folded("left", true);
+    let mut labels = egui_stack::Labels::default();
+    labels.unfold_zone = "Déplier {zone}".into();
+    let mut harness = Harness::builder().with_size([800.0, 400.0]).build_ui_state(
+        move |ui, layout: &mut Layout| {
+            LayoutArea::new(layout)
+                .labels(labels.clone())
+                .show_inside(ui, &mut Viewer);
+        },
+        folded,
+    );
+    harness.run();
+    assert_eq!(
+        harness.get_by_label("Déplier left").accesskit_node().role(),
+        Role::Button
+    );
+}

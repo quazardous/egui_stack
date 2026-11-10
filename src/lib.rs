@@ -260,6 +260,7 @@
 pub use dock_space::{DockRules, DockSpace};
 #[allow(deprecated)]
 pub use dock_state::*;
+pub use docked::{Docked, DockedRepair};
 pub use egui;
 pub use style::*;
 pub use translations::*;
@@ -267,6 +268,8 @@ pub use tree::*;
 pub use widgets::*;
 
 pub mod dock_space;
+
+pub mod docked;
 
 /// The main structure of the library.
 pub mod dock_state;

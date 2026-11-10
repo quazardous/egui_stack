@@ -50,7 +50,8 @@ mod saved;
 mod solve;
 
 pub use area::{
-    DefaultLayoutPainter, LayoutArea, LayoutPainter, LayoutStyle, SashPaint, ZoneViewer,
+    DefaultLayoutPainter, LayoutArea, LayoutPainter, LayoutStyle, SashPaint, SnapGuidePaint,
+    SnapKind, ZoneViewer,
 };
 pub use fold::{Flyout, FlyoutPaint, StripPaint};
 
@@ -260,6 +261,11 @@ pub struct Constraints {
     pub auto_fold: bool,
     /// Whether a dragged item may be dropped here.
     pub drops: Drops,
+    /// While the zone is folded, a tab dropped on its strip joins the dock
+    /// it holds ([`Content::Dock`]), if [`drops`](Self::drops) and the dock
+    /// accept it ([`DockSpace::bind`](crate::DockSpace::bind)). Off by
+    /// default: the strip refuses drops.
+    pub strip_drops: bool,
 }
 
 /// What the user changed; saved with the layout.
