@@ -272,8 +272,8 @@ pub(super) fn strips(
     }
 }
 
-/// Draws the zones lying over their neighbour, in front of the others;
-/// what `dismiss` says (by default a press outside one, or Escape) folds
+/// Draws the zones lying over their neighbour, in front of the others,
+/// each with its free edge that resizes it; what `dismiss` says (by default a press outside one, or Escape) folds
 /// it back.
 #[expect(
     clippy::too_many_arguments,
@@ -296,7 +296,29 @@ pub(super) fn overs(
             continue;
         };
         let rect = at.rect;
+        let strip = at.strip.unwrap_or(Rect::NOTHING);
+        let dir = parent_dir(&layout.root, &at.name.0).unwrap_or_default();
+        let towards_end =
+            along(dir, rect.center().to_vec2()) > along(dir, strip.center().to_vec2());
+        let free_edge = if towards_end {
+            along(dir, rect.max.to_vec2())
+        } else {
+            along(dir, rect.min.to_vec2())
+        };
+        let edge = span(
+            dir,
+            rect,
+            free_edge - style.sash_grab * 0.5,
+            free_edge + style.sash_grab * 0.5,
+        );
+        let size = along(dir, rect.size());
+        let parent = parent_name(&layout.root, &at.name.0)
+            .and_then(|name| laid.rect(&name.0))
+            .unwrap_or_else(|| ui.max_rect());
+        let room = along(dir, parent.size()) - along(dir, strip.size());
+        let label = names.resize(&at.name);
         let area_id = id.with(("over", &at.name.0));
+        let mut resized = None;
         egui::Area::new(area_id)
             .order(Order::Foreground)
             .fixed_pos(rect.min)
@@ -314,8 +336,40 @@ pub(super) fn overs(
                     },
                 );
                 zone_ui_at(ui, id, &zone, laid, names, viewer);
+
+                // Its free edge resizes it, within its least and largest
+                // sizes and the room past its strip.
+                if at.least >= at.most {
+                    return;
+                }
+                let cursor = match dir {
+                    Dir::Horizontal => egui::CursorIcon::ResizeHorizontal,
+                    Dir::Vertical => egui::CursorIcon::ResizeVertical,
+                };
+                let response = ui
+                    .interact(edge, area_id.with("edge"), Sense::drag())
+                    .on_hover_and_drag_cursor(cursor);
+                response.widget_info(|| WidgetInfo::labeled(Role::Splitter, true, &label));
+                let delta = along(dir, response.drag_delta());
+                if delta != 0.0 {
+                    let sign = if towards_end { 1.0 } else { -1.0 };
+                    let most = at.most.min(room).max(at.least);
+                    let new = (size + sign * delta).clamp(at.least, most);
+                    if new != size {
+                        resized = Some(new);
+                    }
+                }
             });
-        let inside = [rect, at.strip.unwrap_or(Rect::NOTHING)];
+        if let Some(size) = resized
+            && let Some(zone) = layout.zone_mut(&at.name.0)
+        {
+            zone.state.size = Some(size);
+            events.push(LayoutEvent::Resized {
+                zone: at.name.clone(),
+                size,
+            });
+        }
+        let inside = [rect, strip, edge];
         if dismissed(ui, dismiss, &inside, host) {
             layout.set_folded(&at.name.0, true);
             events.push(LayoutEvent::Folded {

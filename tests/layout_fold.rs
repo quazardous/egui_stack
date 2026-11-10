@@ -418,3 +418,30 @@ fn by_default_a_press_on_another_layer_still_closes_the_flyout() {
     click(&mut harness, pos2(650.0, 40.0));
     assert!(harness.state().flyout.is_none());
 }
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_zone_lying_over_resizes_from_its_free_edge() {
+    let mut over = layout();
+    over.set_over("left", true);
+    let mut harness = harness(over);
+    let edge = harness.get_by_label("Resize left");
+    assert_eq!(edge.accesskit_node().role(), Role::Splitter);
+    let from = edge.rect().center();
+    drag_by(&mut harness, from, 60.0);
+    assert_eq!(state(&harness), (false, true));
+    let size = harness.state().layout.zone("left").unwrap().state.size;
+    assert_eq!(size, Some(260.0));
+    assert!(
+        harness
+            .state()
+            .events
+            .iter()
+            .any(|e| matches!(e, LayoutEvent::Resized { size, .. } if *size == 260.0))
+    );
+    // Not under its least size.
+    let from = harness.get_by_label("Resize left").rect().center();
+    drag_by(&mut harness, from, -250.0);
+    let size = harness.state().layout.zone("left").unwrap().state.size;
+    assert_eq!(size, Some(100.0));
+}
