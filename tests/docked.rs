@@ -51,10 +51,16 @@ fn a_dock_no_zone_shows_gets_a_hidden_zone() {
 #[cfg(feature = "serde")]
 #[test]
 fn the_pair_saves_and_loads_as_one_value() {
-    let mut saved = docked();
+    // Empty docks: a leaf never shown has no rect, which JSON cannot hold.
+    let mut space = DockSpace::<String>::new();
+    space.add_dock("left", DockRules::default(), vec![]);
+    space.add_dock("centre", DockRules::default(), vec![]);
+    let mut saved = Docked::new(docked().layout, space);
     saved.layout.zone_mut("left").unwrap().state.size = Some(180.0);
     let json = serde_json::to_string(&saved).unwrap();
-    let loaded: Docked<String> = serde_json::from_str(&json).unwrap();
+    let mut loaded: Docked<String> = serde_json::from_str(&json).unwrap();
+    // Constraints are the code's, not saved.
+    loaded.layout.reconcile(&docked().layout);
     assert_eq!(loaded.layout, saved.layout);
     assert_eq!(
         loaded.space.dock_names().collect::<Vec<_>>(),
