@@ -512,7 +512,34 @@ Where the `layout` module differs from the sketch above:
   and drop rule, so the `Laid` alone is enough. A folded zone's strip is a no-drop zone for now
   (open question 7 is not settled); a zone lying over that refuses drops refuses over its body.
 - Not built yet in this step: `Docked` with its repair, `Layout::from_space`, the demo on the
-  layout, and the strips as drop targets.
+  layout, and the strips as drop targets (the first, second and last came with the polish, below).
+
+## As built (polish, 0.25.5)
+
+- Names: each leaf's pane is named after `ZoneViewer::title` (by default the zone's name); the
+  sashes, grips and flyout edge after `Labels::resize_zone`, `unfold_zone`, `fold_zone` and
+  `resize_flyout` (`LayoutArea::labels`), with `{zone}` the title and `{flyout}`
+  `ZoneViewer::flyout_title`. An application translates both.
+- A zone whose least size equals its largest has no sash (no splitter, no focus stop), so a fixed
+  bar (an activity bar) is a plain `Content::App` zone.
+- Sash snapping as sketched: the zone's `default`, another sash running the same way (any
+  split), within `LayoutStyle::snap` (8 points, 0 turns it off); `snap_guide` paints the line
+  (`SnapGuidePaint`, `SnapKind`), also for the fold to come on release. Alt suspends snapping, not
+  folding. Only a drag snaps; the keyboard and assistive technology do not.
+- Drag to unfold: the strip's edge facing the neighbour is a drag-only handle (not a focus stop:
+  the grip is the keyboard's way). Released past half the zone's least size, the zone unfolds at
+  the size dragged to; a guide shows where meanwhile.
+- Strips as drop targets (open question 7, the proposed answer, opt-in): with
+  `Constraints::strip_drops`, `bind` makes a folded zone's strip a target for its dock; a tab
+  released there joins the dock's focused leaf (else its first, else the empty dock), the zone
+  staying folded. Without it, strips refuse drops as before. A zone lying over keeps its strip
+  refusing.
+- `Docked<Tab> { layout, space }` with `repair` as sketched, without floats (not built yet): a
+  zone whose dock is gone is dropped (a leaf root is emptied instead); a dock no zone shows gets a
+  hidden leaf named after it, last under the root (not when the root is a leaf, or the name is
+  taken).
+- `Layout::from_space(&space, shape)`: `shape` is a `Zone` tree; the docks it does not show get a
+  visible leaf each, last under the root.
 
 ## The minimal contract
 

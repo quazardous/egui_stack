@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use egui::{
-    Color32, CornerRadius, CursorIcon, EventFilter, Id, Key, Painter, Rect, Response, Sense,
-    Shadow, Stroke, StrokeKind, Ui, UiBuilder, WidgetInfo,
+    Color32, CornerRadius, CursorIcon, EventFilter, Id, Key, LayerId, Order, Painter, Pos2, Rect,
+    Response, Sense, Shadow, Stroke, StrokeKind, Ui, UiBuilder, WidgetInfo,
     accesskit::{Action, ActionData, Orientation, Role},
 };
 
@@ -14,7 +14,7 @@ use super::solve::{along, span};
 use super::{
     Dir, Fold, Laid, LaidZone, Layout, LayoutEvent, Shown, Solve, Zone, ZoneKind, ZoneName,
 };
-use crate::{PartState, SeparatorAxis};
+use crate::{Labels, PartState, SeparatorAxis};
 
 /// How a [`LayoutArea`] looks and moves: sizes and colours its
 /// [`LayoutPainter`] reads, and the keyboard steps of its sashes.
@@ -54,6 +54,12 @@ pub struct LayoutStyle {
     pub flyout_shadow: Shadow,
     /// A flyout's breadth before the user resizes it. By default 240.
     pub flyout_size: f32,
+    /// How near, in points, a dragged sash catches a snap target: its
+    /// zone's default size, or another sash's line. By default 8; 0 turns
+    /// snapping off. Alt (Option on macOS) suspends it during a drag.
+    pub snap: f32,
+    /// The guide line showing what a dragged sash caught.
+    pub snap_guide: Stroke,
 }
 
 impl Default for LayoutStyle {
@@ -83,6 +89,8 @@ impl LayoutStyle {
             flyout_stroke: style.visuals.window_stroke,
             flyout_shadow: style.visuals.popup_shadow,
             flyout_size: 240.0,
+            snap: 8.0,
+            snap_guide: Stroke::new(1.0, style.visuals.selection.stroke.color),
         }
     }
 }
@@ -98,6 +106,37 @@ pub struct SashPaint<'a> {
     /// Its state: hovered, focused, dragged.
     pub state: PartState,
     /// The zone it resizes.
+    pub zone: &'a ZoneName,
+    /// The layout's style.
+    pub style: &'a LayoutStyle,
+}
+
+/// What a dragged sash, or a strip's edge, caught: the reason a guide line
+/// shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum SnapKind {
+    /// The zone's default size.
+    Default,
+    /// The line of another sash running the same way.
+    Sash,
+    /// The zone folds to its strip on release.
+    Fold,
+    /// The folded zone unfolds on release, at the guide.
+    Unfold,
+}
+
+/// A guide line to paint while a sash is dragged.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct SnapGuidePaint<'a> {
+    /// The line's two ends.
+    pub line: [Pos2; 2],
+    /// Which way it runs.
+    pub axis: SeparatorAxis,
+    /// What was caught.
+    pub kind: SnapKind,
+    /// The zone being resized.
     pub zone: &'a ZoneName,
     /// The layout's style.
     pub style: &'a LayoutStyle,
@@ -151,6 +190,12 @@ pub trait LayoutPainter {
         }
     }
 
+    /// The guide line of a dragged sash that caught a snap target, or of a
+    /// fold or unfold to come on release; painted above everything.
+    fn snap_guide(&self, painter: &Painter, guide: &SnapGuidePaint<'_>) {
+        painter.line_segment(guide.line, guide.style.snap_guide);
+    }
+
     /// The frame of a zone lying over its neighbour, or of a flyout: shadow,
     /// background and border, painted before its content.
     fn flyout_frame(&self, painter: &Painter, frame: &FlyoutPaint<'_>) {
@@ -191,6 +236,63 @@ pub trait ZoneViewer {
     fn flyout(&mut self, ui: &mut Ui, flyout: &Flyout) {
         let _ = (ui, flyout);
     }
+
+    /// A zone's title, as screen readers and tests name it: its leaf's
+    /// pane, and `{zone}` in the [`Labels`] of its sash and grip
+    /// ([`LayoutArea::labels`]). Translate it here. By default the zone's
+    /// name.
+    fn title(&mut self, zone: &ZoneName) -> String {
+        zone.0.clone()
+    }
+
+    /// A flyout's title: `{flyout}` in [`Labels::resize_flyout`]. By
+    /// default its key.
+    fn flyout_title(&mut self, flyout: &Flyout) -> String {
+        flyout.key.clone()
+    }
+}
+
+/// The accessible names of a layout's parts this frame: the [`Labels`]
+/// with each zone's title.
+pub(super) struct Names<'a> {
+    labels: &'a Labels,
+    titles: HashMap<ZoneName, String>,
+}
+
+impl<'a> Names<'a> {
+    fn new(labels: &'a Labels, laid: &Laid, viewer: &mut dyn ZoneViewer) -> Self {
+        let titles = laid
+            .zones
+            .iter()
+            .map(|zone| (zone.name.clone(), viewer.title(&zone.name)))
+            .collect();
+        Self { labels, titles }
+    }
+
+    /// The zone's title.
+    pub(super) fn title<'s>(&'s self, zone: &'s ZoneName) -> &'s str {
+        self.titles.get(zone).map_or(&zone.0, String::as_str)
+    }
+
+    fn with_zone(&self, template: &str, zone: &ZoneName) -> String {
+        template.replace("{zone}", self.title(zone))
+    }
+
+    pub(super) fn resize(&self, zone: &ZoneName) -> String {
+        self.with_zone(&self.labels.resize_zone, zone)
+    }
+
+    pub(super) fn fold(&self, zone: &ZoneName) -> String {
+        self.with_zone(&self.labels.fold_zone, zone)
+    }
+
+    pub(super) fn unfold(&self, zone: &ZoneName) -> String {
+        self.with_zone(&self.labels.unfold_zone, zone)
+    }
+
+    pub(super) fn resize_flyout(&self, title: &str) -> String {
+        self.labels.resize_flyout.replace("{flyout}", title)
+    }
 }
 
 /// Draws a [`Layout`] in a [`Ui`]: solves it in the `Ui`'s rect, calls the
@@ -204,7 +306,14 @@ pub trait ZoneViewer {
 /// of the zone that takes the rest. Enter or a double click gives the zone
 /// back its default size. Each sash is a splitter for assistive technology
 /// ("Resize left"), whose value is the zone's size, and each leaf zone a
-/// pane named after it.
+/// pane named after it. The names are the zones' titles
+/// ([`ZoneViewer::title`]) in the [`Labels`] given to [`LayoutArea::labels`].
+///
+/// A dragged sash snaps to its zone's default size and to the line of
+/// another sash running the same way, within [`LayoutStyle::snap`], with a
+/// guide line ([`LayoutPainter::snap_guide`]); Alt suspends it. A zone whose
+/// least size is its largest has no sash. A folded zone's strip edge facing
+/// its neighbour drags the zone out of its strip.
 ///
 /// The user's changes are written to the layout's [`ZoneState`](super::ZoneState)
 /// at once and listed in the returned [`Laid::events`].
@@ -238,6 +347,7 @@ pub struct LayoutArea<'a> {
     style: Option<LayoutStyle>,
     painter: &'a dyn LayoutPainter,
     flyout: Option<Flyout>,
+    labels: Labels,
 }
 
 impl<'a> LayoutArea<'a> {
@@ -249,6 +359,7 @@ impl<'a> LayoutArea<'a> {
             style: None,
             painter: &DefaultLayoutPainter,
             flyout: None,
+            labels: Labels::ENGLISH,
         }
     }
 
@@ -271,6 +382,17 @@ impl<'a> LayoutArea<'a> {
     #[inline]
     pub fn painter(mut self, painter: &'a dyn LayoutPainter) -> Self {
         self.painter = painter;
+        self
+    }
+
+    /// Sets the accessible names of the sashes, grips and flyout edge
+    /// ([`Labels::resize_zone`], [`unfold_zone`](Labels::unfold_zone),
+    /// [`fold_zone`](Labels::fold_zone),
+    /// [`resize_flyout`](Labels::resize_flyout)), to translate them. By
+    /// default [`Labels::ENGLISH`].
+    #[inline]
+    pub fn labels(mut self, labels: Labels) -> Self {
+        self.labels = labels;
         self
     }
 
@@ -302,6 +424,7 @@ impl<'a> LayoutArea<'a> {
             content,
         };
         let laid = self.layout.solve(rect, &solve);
+        let names = Names::new(&self.labels, &laid, viewer);
 
         // The zones' contents, then the sashes over them.
         let mut asked = HashMap::new();
@@ -311,6 +434,7 @@ impl<'a> LayoutArea<'a> {
             &self.layout.root,
             None,
             &laid,
+            &names,
             viewer,
             &mut asked,
         );
@@ -326,6 +450,7 @@ impl<'a> LayoutArea<'a> {
             &style,
             painter,
             viewer,
+            &names,
             self.flyout.as_ref(),
             &mut events,
         );
@@ -337,6 +462,7 @@ impl<'a> LayoutArea<'a> {
             &style,
             painter,
             viewer,
+            &names,
             &mut events,
         );
         let flyout_rect = self.flyout.as_ref().and_then(|flyout| {
@@ -349,18 +475,21 @@ impl<'a> LayoutArea<'a> {
                 &style,
                 painter,
                 viewer,
+                &names,
                 &mut events,
             )
         });
         let sashes = sashes(&self.layout.root, &laid);
-        for sash in sashes {
+        for sash in &sashes {
             sash_ui(
                 ui,
                 self.id,
                 self.layout,
-                &sash,
+                sash,
+                &sashes,
                 &style,
                 self.painter,
+                &names,
                 &mut events,
             );
         }
@@ -378,12 +507,17 @@ impl<'a> LayoutArea<'a> {
 }
 
 /// Draws the leaf zones under `zone` that are laid and open.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the area's parts, borrowed apart"
+)]
 fn draw_zones(
     ui: &mut Ui,
     id: Id,
     zone: &Zone,
     parent: Option<Dir>,
     laid: &Laid,
+    names: &Names<'_>,
     viewer: &mut dyn ZoneViewer,
     asked: &mut HashMap<ZoneName, f32>,
 ) {
@@ -394,13 +528,13 @@ fn draw_zones(
         ZoneKind::Split { dir, children } => {
             if at.shown == Shown::Open {
                 for child in children {
-                    draw_zones(ui, id, child, Some(*dir), laid, viewer, asked);
+                    draw_zones(ui, id, child, Some(*dir), laid, names, viewer, asked);
                 }
             }
         }
         ZoneKind::Leaf { .. } => {
             if at.shown == Shown::Open {
-                let size = zone_ui(ui, id, at, viewer);
+                let size = zone_ui(ui, id, at, names, viewer);
                 if zone.constraints.fit_content
                     && let Some(dir) = parent
                 {
@@ -411,39 +545,43 @@ fn draw_zones(
     }
 }
 
-/// Draws one zone's content in its rect, as a pane named after it; returns
-/// the size its content took.
+/// Draws one zone's content in its rect, leaves as panes named after their
+/// title.
 pub(super) fn zone_ui_at(
     ui: &mut Ui,
     id: Id,
     zone: &Zone,
     laid: &Laid,
+    names: &Names<'_>,
     viewer: &mut dyn ZoneViewer,
 ) {
     let mut asked = HashMap::new();
     match &zone.kind {
         ZoneKind::Leaf { .. } => {
             if let Some(at) = laid.get(&zone.name.0) {
-                zone_ui(ui, id, at, viewer);
+                zone_ui(ui, id, at, names, viewer);
             }
         }
         ZoneKind::Split { dir, children } => {
             for child in children {
-                draw_zones(ui, id, child, Some(*dir), laid, viewer, &mut asked);
+                draw_zones(ui, id, child, Some(*dir), laid, names, viewer, &mut asked);
             }
         }
     }
 }
 
+/// Draws one leaf zone's content in its rect, as a pane named after its
+/// title; returns the size its content took.
 pub(super) fn zone_ui(
     ui: &mut Ui,
     id: Id,
     at: &LaidZone,
+    names: &Names<'_>,
     viewer: &mut dyn ZoneViewer,
 ) -> egui::Vec2 {
     let zone_id = id.with(("zone", &at.name.0));
     let response = ui.interact(at.rect, zone_id, Sense::hover());
-    let label = at.name.0.clone();
+    let label = names.title(&at.name).to_owned();
     response.widget_info(|| WidgetInfo::labeled(Role::Pane, true, &label));
     let mut child = ui.new_child(
         UiBuilder::new()
@@ -457,7 +595,7 @@ pub(super) fn zone_ui(
 }
 
 /// A sash between two neighbouring open zones of a split.
-struct Sash {
+pub(super) struct Sash {
     dir: Dir,
     /// The boundary, across the split's breadth.
     rect: Rect,
@@ -470,35 +608,54 @@ struct Sash {
     size: f32,
     least: f32,
     most: f32,
+    /// The zone's default size in points, within its bounds.
+    default: Option<f32>,
 }
 
-/// The sashes of every split laid open under `zone`.
+impl Sash {
+    /// The boundary's position along the split's axis.
+    fn boundary(&self) -> f32 {
+        along(self.dir, self.rect.min.to_vec2())
+    }
+
+    /// The boundary where it would be with the zone at `size`.
+    fn line_at(&self, size: f32) -> Rect {
+        let sign = if self.before { 1.0 } else { -1.0 };
+        let shift = sign * (size - self.size);
+        match self.dir {
+            Dir::Horizontal => self.rect.translate(egui::vec2(shift, 0.0)),
+            Dir::Vertical => self.rect.translate(egui::vec2(0.0, shift)),
+        }
+    }
+
+    /// The zone's size with the boundary at `boundary`.
+    fn size_at(&self, boundary: f32) -> f32 {
+        let sign = if self.before { 1.0 } else { -1.0 };
+        self.size + sign * (boundary - self.boundary())
+    }
+}
+
+/// The sashes of every split laid open under `zone`. A zone whose least
+/// size is its largest has none: nothing to resize.
 fn sashes(zone: &Zone, laid: &Laid) -> Vec<Sash> {
     let mut out = Vec::new();
     zone.visit(&mut |zone| {
         let ZoneKind::Split { dir, children } = &zone.kind else {
             return;
         };
-        if laid
-            .get(&zone.name.0)
-            .is_none_or(|at| at.shown != Shown::Open)
-        {
+        let Some(parent) = laid.get(&zone.name.0).filter(|at| at.shown == Shown::Open) else {
             return;
-        }
+        };
+        let length = along(*dir, parent.rect.size());
         let shown: Vec<&LaidZone> = children
             .iter()
             .filter_map(|child| laid.get(&child.name.0))
             .filter(|at| at.shown != Shown::Hidden)
             .collect();
-        let grows = |at: &LaidZone| {
-            children
-                .iter()
-                .find(|c| c.name == at.name)
-                .is_some_and(|c| c.constraints.grow)
-        };
+        let child = |at: &LaidZone| children.iter().find(|c| c.name == at.name);
         let taker = shown
             .iter()
-            .position(|at| grows(at))
+            .position(|at| child(at).is_some_and(|c| c.constraints.grow))
             .or_else(|| shown.iter().rposition(|at| at.shown == Shown::Open));
         let Some(taker) = taker else {
             return;
@@ -513,10 +670,17 @@ fn sashes(zone: &Zone, laid: &Laid) -> Vec<Sash> {
                 continue;
             }
             let (resized, before) = if taker > i { (a, true) } else { (b, false) };
+            if resized.least >= resized.most {
+                // A fixed size: no sash, no focus stop.
+                continue;
+            }
             let size = along(*dir, resized.rect.size());
             let boundary = along(*dir, a.rect.max.to_vec2());
             let rect = span(*dir, a.rect.union(b.rect), boundary, boundary);
             let most = resized.most.min(size + taker_slack).max(resized.least);
+            let default = child(resized)
+                .and_then(|c| c.constraints.default)
+                .map(|d| d.points(length).clamp(resized.least, resized.most));
             out.push(Sash {
                 dir: *dir,
                 rect,
@@ -525,19 +689,64 @@ fn sashes(zone: &Zone, laid: &Laid) -> Vec<Sash> {
                 size,
                 least: resized.least,
                 most,
+                default,
             });
         }
     });
     out
 }
 
+/// What a sash dragged to `at` (its zone's size) catches within `magnet`:
+/// its zone's default size, or the line of another sash running the same
+/// way; the nearest wins. Returns the size and the guide line.
+fn snap(sash: &Sash, all: &[Sash], at: f32, magnet: f32) -> Option<(f32, SnapKind, Rect)> {
+    let mut best: Option<(f32, f32, SnapKind, Rect)> = None;
+    let mut consider = |size: f32, kind: SnapKind, line: Rect| {
+        let distance = (size - at).abs();
+        let within = sash.least <= size && size <= sash.most && distance <= magnet;
+        if within && best.is_none_or(|(d, ..)| distance < d) {
+            best = Some((distance, size, kind, line));
+        }
+    };
+    if let Some(default) = sash.default {
+        consider(default, SnapKind::Default, sash.line_at(default));
+    }
+    for other in all
+        .iter()
+        .filter(|other| other.dir == sash.dir && other.zone != sash.zone)
+    {
+        let size = sash.size_at(other.boundary());
+        consider(size, SnapKind::Sash, sash.line_at(size).union(other.rect));
+    }
+    best.map(|(_, size, kind, line)| (size, kind, line))
+}
+
+/// Paints a guide line above everything.
+pub(super) fn paint_guide(
+    ui: &Ui,
+    id: Id,
+    painter: &dyn LayoutPainter,
+    guide: &SnapGuidePaint<'_>,
+) {
+    let layer = ui
+        .ctx()
+        .layer_painter(LayerId::new(Order::Foreground, id.with("guide")));
+    painter.snap_guide(&layer, guide);
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the area's parts, borrowed apart"
+)]
 fn sash_ui(
     ui: &mut Ui,
     id: Id,
     layout: &mut Layout,
     sash: &Sash,
+    all: &[Sash],
     style: &LayoutStyle,
     painter: &dyn LayoutPainter,
+    names: &Names<'_>,
     events: &mut Vec<LayoutEvent>,
 ) {
     let horizontal = sash.dir == Dir::Horizontal;
@@ -554,6 +763,11 @@ fn sash_ui(
     let response = ui
         .interact(thick(style.sash_grab), sash_id, Sense::click_and_drag())
         .on_hover_and_drag_cursor(cursor);
+    let axis = if horizontal {
+        SeparatorAxis::Vertical
+    } else {
+        SeparatorAxis::Horizontal
+    };
 
     // Moving the sash by `delta` (right or down) changes the zone by
     // `delta` before it, by `-delta` after it.
@@ -561,27 +775,24 @@ fn sash_ui(
     let mut target = sash.size;
     let mut moved = false;
     let delta = along(sash.dir, response.drag_delta());
-    if delta != 0.0 {
-        let start_id = sash_id.with("start");
+    let start_id = sash_id.with("start");
+    // Where the drag puts the zone, unbounded and before snapping.
+    let mut dragged_to = None;
+    if response.dragged() || delta != 0.0 {
         // The drag's total, so a pointer past a bound comes back in step.
         let total: f32 = ui.ctx().data_mut(|d| {
             let start = d.get_temp_mut_or_insert_with(start_id, || (sash.size, 0.0_f32));
             start.1 += delta;
             start.0 + sign * start.1
         });
-        target = total;
-        moved = true;
+        dragged_to = Some(total);
     }
-    // Where the drag would have put the zone, unbounded.
-    let mut dragged_to = moved.then_some(target);
     let mut size_before = sash.size;
     if !response.dragged() {
-        let start = ui
-            .ctx()
-            .data_mut(|d| d.remove_temp::<(f32, f32)>(sash_id.with("start")));
+        let start = ui.ctx().data_mut(|d| d.remove_temp::<(f32, f32)>(start_id));
         if let Some((size, total)) = start {
-            dragged_to = Some(size + sign * total);
             size_before = size;
+            dragged_to = Some(size + sign * total);
         }
     }
     // Dragged under half its least size, a zone that folds folds on
@@ -590,7 +801,8 @@ fn sash_ui(
         .zone(&sash.zone.0)
         .is_some_and(|zone| zone.constraints.fold == Fold::ToStrip);
     let fold_below = sash.least * 0.5;
-    if folds && response.drag_stopped() && dragged_to.is_some_and(|to| to < fold_below) {
+    let folding = folds && dragged_to.is_some_and(|to| to < fold_below);
+    if folding && response.drag_stopped() {
         // It unfolds at the size it had before the drag.
         if let Some(zone) = layout.zone_mut(&sash.zone.0) {
             zone.state.size = Some(size_before);
@@ -600,6 +812,22 @@ fn sash_ui(
             zone: sash.zone.clone(),
         });
         return;
+    }
+    let mut guide = None;
+    if let Some(to) = dragged_to {
+        target = to;
+        moved = true;
+        let alt = ui.input(|i| i.modifiers.alt);
+        if folding {
+            guide = Some((SnapKind::Fold, sash.line_at(style.strip)));
+        } else if style.snap > 0.0
+            && !alt
+            && let Some((size, kind, line)) =
+                snap(sash, all, to.clamp(sash.least, sash.most), style.snap)
+        {
+            target = size;
+            guide = response.dragged().then_some((kind, line));
+        }
     }
     let mut reset = response.double_clicked();
     if response.has_focus() {
@@ -679,12 +907,7 @@ fn sash_ui(
     }
 
     // Painted where it is after this frame's move.
-    let mut drawn = sash.rect;
-    let shift = sign * (size - sash.size);
-    match sash.dir {
-        Dir::Horizontal => drawn = drawn.translate(egui::vec2(shift, 0.0)),
-        Dir::Vertical => drawn = drawn.translate(egui::vec2(0.0, shift)),
-    }
+    let drawn = sash.line_at(size);
     let mid = along(sash.dir, drawn.min.to_vec2());
     let drawn = span(
         sash.dir,
@@ -696,11 +919,7 @@ fn sash_ui(
         ui.painter(),
         &SashPaint {
             rect: drawn,
-            axis: if horizontal {
-                SeparatorAxis::Vertical
-            } else {
-                SeparatorAxis::Horizontal
-            },
+            axis,
             state: PartState::NONE
                 .with(PartState::HOVERED, response.hovered())
                 .with(PartState::PRESSED, response.is_pointer_button_down_on())
@@ -710,12 +929,26 @@ fn sash_ui(
             style,
         },
     );
-    describe_sash(ui, &response, sash, size);
+    if let Some((kind, line)) = guide {
+        paint_guide(
+            ui,
+            id,
+            painter,
+            &SnapGuidePaint {
+                line: [line.min, line.max],
+                axis,
+                kind,
+                zone: &sash.zone,
+                style,
+            },
+        );
+    }
+    describe_sash(ui, &response, sash, size, names);
 }
 
 /// The sash as a splitter whose value is its zone's size.
-fn describe_sash(ui: &Ui, response: &Response, sash: &Sash, size: f32) {
-    let label = format!("Resize {}", sash.zone);
+fn describe_sash(ui: &Ui, response: &Response, sash: &Sash, size: f32, names: &Names<'_>) {
+    let label = names.resize(&sash.zone);
     let enabled = ui.is_enabled();
     response.widget_info(|| {
         let mut info = WidgetInfo::labeled(Role::Splitter, enabled, &label);

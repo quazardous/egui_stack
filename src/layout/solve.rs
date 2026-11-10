@@ -70,6 +70,9 @@ pub struct LaidZone {
     pub content: Option<Content>,
     /// Whether a dragged item may be dropped in it.
     pub drops: Drops,
+    /// Whether a tab dropped on its strip, while folded, joins its dock
+    /// ([`Constraints::strip_drops`](super::Constraints::strip_drops)).
+    pub strip_drops: bool,
 }
 
 impl LaidZone {
@@ -170,6 +173,7 @@ impl Layout {
             most: f32::INFINITY,
             content: leaf_content(&self.root),
             drops: self.root.constraints.drops,
+            strip_drops: false,
         });
         lay_children(&self.root, rect, solve, &mut laid);
         laid
@@ -227,6 +231,7 @@ fn lay_children(zone: &Zone, rect: Rect, solve: &Solve, laid: &mut Laid) {
             most: s.most,
             content: leaf_content(child),
             drops: child.constraints.drops,
+            strip_drops: child.constraints.strip_drops,
         });
         if matches!(s.shown, Shown::Open | Shown::Over) {
             lay_children(child, child_rect, solve, laid);

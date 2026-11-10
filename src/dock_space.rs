@@ -72,6 +72,9 @@ pub struct DockSpace<Tab> {
 pub(crate) struct NoDrop {
     pub(crate) rects: Vec<Rect>,
     pub(crate) ids: Vec<Id>,
+    /// Folded zones' strips taking drops for a dock ([`DockSpace::bind`]): the strip, and the
+    /// dock's name.
+    pub(crate) strips: Vec<(Rect, String)>,
 }
 
 /// A dock of a [`DockSpace`]: its name, its surface and its rules.
@@ -399,6 +402,11 @@ impl<Tab> DockSpace<Tab> {
     /// [`Content::Empty`] that accepts drops stays outside every dock: a tab released there
     /// becomes a floating window.
     ///
+    /// A folded zone with [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops)
+    /// that accepts drops, holding a dock of this space, takes them on its strip instead: a tab
+    /// released there joins that dock (its focused leaf, else its first), the strip highlighted
+    /// meanwhile, unless the dock's rules or the viewer's veto refuse it.
+    ///
     /// Call it every frame, after the layout is drawn: its zones take effect for the docks drawn
     /// next, a frame later for those already drawn, which a drag does not notice.
     ///
@@ -442,7 +450,21 @@ impl<Tab> DockSpace<Tab> {
                 continue;
             };
             if let Some(strip) = zone.strip {
-                self.no_drop.rects.push(strip);
+                let takes = match content {
+                    Content::Dock(name) => {
+                        zone.strip_drops
+                            && zone.drops == Drops::Accept
+                            && matches!(zone.shown, Shown::Folded | Shown::AutoFolded)
+                            && self.rules(name).is_some_and(|rules| rules.accept_drops)
+                    }
+                    _ => false,
+                };
+                match content {
+                    Content::Dock(name) if takes => {
+                        self.no_drop.strips.push((strip, name.clone()));
+                    }
+                    _ => self.no_drop.rects.push(strip),
+                }
             }
             if !matches!(zone.shown, Shown::Open | Shown::Over) {
                 continue;

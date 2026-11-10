@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 
 /// Accessible names of the [`DockArea`](crate::DockArea)'s buttons and separators, of the
-/// boundaries of a [`Sections`](crate::sections::Sections) stack, and of the More button of a
-/// [`ToolRow`](crate::toolbar::ToolRow).
+/// boundaries of a [`Sections`](crate::sections::Sections) stack, of the More button of a
+/// [`ToolRow`](crate::toolbar::ToolRow), and of the sashes and strip grips of a
+/// [`LayoutArea`](crate::layout::LayoutArea).
 ///
 /// Screen readers and test harnesses (through AccessKit) find these controls by their names. The
 /// defaults are English; set your own with [`DockArea::labels`](crate::DockArea::labels) to
@@ -51,6 +52,17 @@ pub struct Labels {
     /// The same button in a row with a title ([`ToolRow::title`](crate::toolbar::ToolRow::title)):
     /// `{toolbar}` is replaced by it, so two rows never have two controls of one name.
     pub more_tools_in: Cow<'static, str>,
+    /// A sash of a [`LayoutArea`](crate::layout::LayoutArea), which resizes a zone: `{zone}`
+    /// is replaced by the zone's title ([`ZoneViewer::title`](crate::layout::ZoneViewer::title)).
+    pub resize_zone: Cow<'static, str>,
+    /// A folded zone's grip, which unfolds it: `{zone}` is replaced by the zone's title.
+    pub unfold_zone: Cow<'static, str>,
+    /// The grip of a zone lying over its neighbour, which folds it back: `{zone}` is replaced
+    /// by the zone's title.
+    pub fold_zone: Cow<'static, str>,
+    /// A flyout's free edge, which resizes it: `{flyout}` is replaced by the flyout's title
+    /// ([`ZoneViewer::flyout_title`](crate::layout::ZoneViewer::flyout_title)).
+    pub resize_flyout: Cow<'static, str>,
 }
 
 impl Labels {
@@ -68,6 +80,10 @@ impl Labels {
         resize_section: Cow::Borrowed("Resize {section}"),
         more_tools: Cow::Borrowed("More tools"),
         more_tools_in: Cow::Borrowed("More tools: {toolbar}"),
+        resize_zone: Cow::Borrowed("Resize {zone}"),
+        unfold_zone: Cow::Borrowed("Unfold {zone}"),
+        fold_zone: Cow::Borrowed("Fold {zone}"),
+        resize_flyout: Cow::Borrowed("Resize {flyout}"),
     };
 }
 
