@@ -8,7 +8,8 @@ use egui_kittest::{
     kittest::{NodeT as _, Queryable as _},
 };
 use egui_stack::layout::{
-    Content, Dir, Flyout, Fold, Layout, LayoutArea, LayoutEvent, Size, Zone, ZoneName, ZoneViewer,
+    Content, Dir, Dismiss, Flyout, Fold, Layout, LayoutArea, LayoutEvent, Size, Zone, ZoneName,
+    ZoneViewer,
 };
 
 struct Viewer;
@@ -274,4 +275,146 @@ fn the_grips_take_the_translated_labels() {
         harness.get_by_label("Déplier left").accesskit_node().role(),
         Role::Button
     );
+}
+
+/// The app's dismiss settings, and an overlay of its own (an egui area at
+/// the window's top right) whose presses count as inside.
+struct Hosted {
+    app: App,
+    flyout_dismiss: Dismiss,
+    over_dismiss: Dismiss,
+}
+
+const OVERLAY: &str = "host overlay";
+
+fn hosted(layout: Layout, flyout: Dismiss, over: Dismiss) -> Harness<'static, Hosted> {
+    let mut harness = Harness::builder().with_size([800.0, 400.0]).build_ui_state(
+        |ui, host: &mut Hosted| {
+            egui::Area::new(egui::Id::unique(OVERLAY))
+                .order(egui::Order::Foreground)
+                .fixed_pos(pos2(600.0, 20.0))
+                .show(ui.ctx(), |ui| {
+                    ui.allocate_exact_size(vec2(150.0, 60.0), egui::Sense::click());
+                    ui.label(OVERLAY);
+                });
+            let inside = |_pos: Pos2, layer: Option<egui::LayerId>| {
+                layer.is_some_and(|l| l.id == egui::Id::unique(OVERLAY))
+            };
+            let app = &mut host.app;
+            let laid = LayoutArea::new(&mut app.layout)
+                .flyout(app.flyout.clone())
+                .flyout_dismiss(host.flyout_dismiss)
+                .over_dismiss(host.over_dismiss)
+                .inside(&inside)
+                .show_inside(ui, &mut Viewer);
+            for event in laid.events {
+                if matches!(event, LayoutEvent::FlyoutClosed { .. }) {
+                    app.flyout = None;
+                }
+                app.events.push(event);
+            }
+        },
+        Hosted {
+            app: App {
+                layout,
+                flyout: None,
+                events: Vec::new(),
+            },
+            flyout_dismiss: flyout,
+            over_dismiss: over,
+        },
+    );
+    harness.run();
+    harness
+}
+
+fn hosted_click(harness: &mut Harness<'_, Hosted>, pos: Pos2) {
+    harness.hover_at(pos);
+    harness.step();
+    harness.drag_at(pos);
+    harness.step();
+    harness.drop_at(pos);
+    harness.run();
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_zone_lying_over_set_never_dismissed_stays_until_its_grip_folds_it() {
+    let mut over = layout();
+    over.set_over("left", true);
+    let mut harness = hosted(over, Dismiss::ANY, Dismiss::NEVER);
+    harness.key_press(Key::Escape);
+    harness.run();
+    let state = |h: &Harness<'_, Hosted>| {
+        let s = h.state().app.layout.zone("left").unwrap().state;
+        (s.folded, s.over)
+    };
+    assert_eq!(state(&harness), (false, true));
+    hosted_click(&mut harness, pos2(500.0, 300.0));
+    assert_eq!(state(&harness), (false, true));
+    assert!(harness.query_by_label("Body of left").is_some());
+
+    harness.get_by_label("Fold left").click();
+    harness.run();
+    assert_eq!(state(&harness), (true, false));
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_flyout_keeps_open_on_the_hosts_layers_and_leaves_escape_to_it() {
+    let mut folded = layout();
+    folded.set_folded("left", true);
+    let mut harness = hosted(folded, Dismiss::OUTSIDE_PRESS, Dismiss::ANY);
+    harness.state_mut().app.flyout = Some(Flyout::new("files", "left"));
+    harness.run();
+    assert!(harness.query_by_label("Flyout files").is_some());
+
+    // Escape is the host's.
+    harness.key_press(Key::Escape);
+    harness.run();
+    assert!(harness.state().app.flyout.is_some());
+
+    // A press on the host's overlay is inside.
+    hosted_click(&mut harness, pos2(650.0, 40.0));
+    assert!(harness.state().app.flyout.is_some());
+
+    // Elsewhere outside, it closes.
+    hosted_click(&mut harness, pos2(500.0, 300.0));
+    assert!(harness.state().app.flyout.is_none());
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn by_default_a_press_on_another_layer_still_closes_the_flyout() {
+    let mut folded = layout();
+    folded.set_folded("left", true);
+    let mut harness = Harness::builder().with_size([800.0, 400.0]).build_ui_state(
+        |ui, app: &mut App| {
+            egui::Area::new(egui::Id::unique(OVERLAY))
+                .order(egui::Order::Foreground)
+                .fixed_pos(pos2(600.0, 20.0))
+                .show(ui.ctx(), |ui| {
+                    ui.allocate_exact_size(vec2(150.0, 60.0), egui::Sense::click());
+                });
+            let laid = LayoutArea::new(&mut app.layout)
+                .flyout(app.flyout.clone())
+                .show_inside(ui, &mut Viewer);
+            if laid
+                .events
+                .iter()
+                .any(|e| matches!(e, LayoutEvent::FlyoutClosed { .. }))
+            {
+                app.flyout = None;
+            }
+        },
+        App {
+            layout: folded,
+            flyout: Some(Flyout::new("files", "left")),
+            events: Vec::new(),
+        },
+    );
+    harness.run();
+    assert!(harness.state().flyout.is_some());
+    click(&mut harness, pos2(650.0, 40.0));
+    assert!(harness.state().flyout.is_none());
 }
