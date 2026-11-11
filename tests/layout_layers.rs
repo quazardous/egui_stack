@@ -46,11 +46,11 @@ struct Host {
 /// The host's base layer for the zones lying over; it never moves, so it
 /// stays under everything shown after it in the foreground.
 fn base() -> LayerId {
-    LayerId::new(Order::Foreground, Id::new("host.base"))
+    LayerId::new(Order::Foreground, Id::unique("host.base"))
 }
 
 fn overlay() -> LayerId {
-    LayerId::new(Order::Foreground, Id::new("host.card"))
+    LayerId::new(Order::Foreground, Id::unique("host.card"))
 }
 
 fn harness(pinned: bool) -> Harness<'static, Host> {
@@ -58,8 +58,10 @@ fn harness(pinned: bool) -> Harness<'static, Host> {
         |ui, host: &mut Host| {
             // The base goes into egui's order on the first pass, before any
             // other foreground layer (a placeholder child keeps it there).
-            ui.ctx()
-                .set_sublayer(base(), LayerId::new(Order::Foreground, Id::new("host.ph")));
+            ui.ctx().set_sublayer(
+                base(),
+                LayerId::new(Order::Foreground, Id::unique("host.ph")),
+            );
             // The host's card, at the window's bottom left, over where the
             // zone lies.
             egui::Area::new(overlay().id)
