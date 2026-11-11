@@ -289,6 +289,7 @@ pub(super) fn overs(
     viewer: &mut dyn ZoneViewer,
     names: &Names<'_>,
     (dismiss, host): (Dismiss, Option<Inside<'_>>),
+    sublayer_of: Option<LayerId>,
     events: &mut Vec<LayoutEvent>,
 ) {
     for at in laid.zones.iter().filter(|at| at.shown == Shown::Over) {
@@ -318,6 +319,7 @@ pub(super) fn overs(
         let room = along(dir, parent.size()) - along(dir, strip.size());
         let label = names.resize(&at.name);
         let area_id = id.with(("over", &at.name.0));
+        pin(ui, sublayer_of, area_id);
         let mut resized = None;
         egui::Area::new(area_id)
             .order(Order::Foreground)
@@ -379,6 +381,15 @@ pub(super) fn overs(
     }
 }
 
+/// Makes the area `area_id`'s layer a sublayer of `parent`, when the host
+/// gave one ([`LayoutArea::sublayer_of`](super::LayoutArea::sublayer_of)).
+fn pin(ui: &Ui, parent: Option<LayerId>, area_id: Id) {
+    if let Some(parent) = parent {
+        ui.ctx()
+            .set_sublayer(parent, LayerId::new(Order::Foreground, area_id));
+    }
+}
+
 /// Draws the flyout next to its zone's strip, in front of the others, with
 /// its free edge that resizes it; returns its rect. What `dismiss` says
 /// (by default a press outside it, or Escape), or its zone no longer
@@ -398,6 +409,7 @@ pub(super) fn flyout(
     viewer: &mut dyn ZoneViewer,
     names: &Names<'_>,
     (dismiss, host): (Dismiss, Option<Inside<'_>>),
+    sublayer_of: Option<LayerId>,
     events: &mut Vec<LayoutEvent>,
 ) -> Option<Rect> {
     let closed = || LayoutEvent::FlyoutClosed {
@@ -449,6 +461,7 @@ pub(super) fn flyout(
         free_edge + style.sash_grab * 0.5,
     );
     let area_id = id.with(("flyout", &flyout.key));
+    pin(ui, sublayer_of, area_id);
     let label = names.resize_flyout(&viewer.flyout_title(flyout));
     let mut resized = None;
     egui::Area::new(area_id)

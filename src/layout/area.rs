@@ -355,6 +355,7 @@ pub struct LayoutArea<'a> {
     over_dismiss: Dismiss,
     inside: Option<Inside<'a>>,
     labels: Labels,
+    sublayer_of: Option<LayerId>,
 }
 
 impl<'a> LayoutArea<'a> {
@@ -370,6 +371,7 @@ impl<'a> LayoutArea<'a> {
             over_dismiss: Dismiss::ANY,
             inside: None,
             labels: Labels::ENGLISH,
+            sublayer_of: None,
         }
     }
 
@@ -448,6 +450,19 @@ impl<'a> LayoutArea<'a> {
         self
     }
 
+    /// Draws the zones lying over their neighbour and the flyout as
+    /// sublayers of `parent` ([`egui::Context::set_sublayer`]), a layer in
+    /// the foreground order: egui then keeps them directly above `parent`,
+    /// whatever was shown or clicked last. A host keeping a fixed z-order
+    /// gives a layer it holds under its own overlays, so that the
+    /// overlays stay above the zones lying over and the flyout. By
+    /// default they are plain foreground areas, raised when clicked.
+    #[inline]
+    pub fn sublayer_of(mut self, parent: LayerId) -> Self {
+        self.sublayer_of = Some(parent);
+        self
+    }
+
     /// Draws the layout in the `Ui`'s whole rect, and returns where each
     /// zone went with what the user changed.
     pub fn show_inside(self, ui: &mut Ui, viewer: &mut dyn ZoneViewer) -> Laid {
@@ -505,6 +520,7 @@ impl<'a> LayoutArea<'a> {
             viewer,
             &names,
             (self.over_dismiss, self.inside),
+            self.sublayer_of,
             &mut events,
         );
         let flyout_rect = self.flyout.as_ref().and_then(|flyout| {
@@ -519,6 +535,7 @@ impl<'a> LayoutArea<'a> {
                 viewer,
                 &names,
                 (self.flyout_dismiss, self.inside),
+                self.sublayer_of,
                 &mut events,
             )
         });
