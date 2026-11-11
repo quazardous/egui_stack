@@ -31,7 +31,9 @@
 //!   folds or opens ([`plan::keep_title`]).
 //! - [`Sections::fill`] (on by default) off sizes the stack by its content: an open section
 //!   sized by the list is never taller than what its body lays out, the folded bands follow
-//!   right under it, and the room left stays empty under the last band ([`plan::fit_within`]).
+//!   right under it, and the room left stays empty under the last band ([`plan::fit_content`]).
+//!   A drag still moves a band: the section above grows past its content, into that room, the
+//!   last open one included, and keeps the height it is given until a double click.
 //! - [`Sections::bar_style`] and [`Sections::bar_track_inset`] give the scroll bars of the
 //!   bodies and of the stack a style of their own (their colours, say) and an inset along
 //!   their track, the content keeping the `Ui`'s style.
@@ -770,8 +772,11 @@ impl<'a> Sections<'a> {
     /// out taller than what its body laid out on the last pass (its rows, its content, or what
     /// a bare body drew), the long ones sharing what is left, and the folded bands follow right
     /// under the last open section, the room left empty under the last band
-    /// ([`plan::fit_within`]). A section set by hand keeps its height; resizing, the least
-    /// heights and the scrolling inside a section are as when it fills.
+    /// ([`plan::fit_content`]). A section set by hand keeps its height, the last open one too:
+    /// a drag down grows the section above past its content, into the room under the last
+    /// band, and a drag up shrinks it to its least height. The content only places the
+    /// sections until a drag; the least heights and the scrolling inside a section are as when
+    /// it fills.
     pub fn fill(mut self, fill: bool) -> Self {
         self.fill = fill;
         self
@@ -898,7 +903,11 @@ impl<'a> Sections<'a> {
                 .map(|(k, &bound)| content.get(k).copied().unwrap_or(f32::INFINITY).min(bound))
                 .collect()
         };
-        let (fit, spare) = plan::fit_within(&asked, &most, space, layout.empty);
+        let (fit, spare) = if self.fill {
+            plan::fit_within(&asked, &most, space, layout.empty)
+        } else {
+            plan::fit_content(&asked, &most, space, layout.empty)
+        };
         let tall = bands + fit.heights.iter().sum::<f32>();
         let overflows = finite && tall - room.height() > 0.5;
         let stack = Shown {
@@ -910,6 +919,14 @@ impl<'a> Sections<'a> {
             space,
             // What the content leaves is not the layout's: a drag keeps the empty room asked.
             empty: fit.empty - spare,
+            // Sized by the content, a drag takes the room the content leaves too: the section
+            // above grows past its content.
+            free: if self.fill {
+                fit.empty - spare
+            } else {
+                fit.empty
+            },
+            fill: self.fill,
             step: row,
         };
         let mut contents: BTreeMap<String, f32> = BTreeMap::new();
@@ -1346,8 +1363,13 @@ struct Shown<'a> {
     bounds: &'a [f32],
     /// The height the open sections divide.
     space: f32,
-    /// The empty room shown under the last section.
+    /// The empty room kept under the last section, as the layout asks it.
     empty: f32,
+    /// The empty room a drag can take: the room kept, and in a stack sized by its content, the
+    /// room the content leaves.
+    free: f32,
+    /// Whether the stack fills its room ([`Sections::fill`]).
+    fill: bool,
     /// How far an arrow key moves a boundary.
     step: f32,
 }
@@ -1377,20 +1399,32 @@ impl Shown<'_> {
     ) -> bool {
         let placed = self.placed(self.heights);
         let delta = self.bounded(above, delta, mode);
-        let plan = plan::plan_drag(&placed, above, delta, self.empty, mode);
-        let pinned = plan::pin_plan_within(
-            &hands.asked(self),
-            self.most,
-            self.space,
-            plan.empty,
-            &plan.heights,
-        );
+        let plan = plan::plan_drag(&placed, above, delta, self.free, mode);
+        let pinned = if self.fill {
+            plan::pin_plan_within(
+                &hands.asked(self),
+                self.most,
+                self.space,
+                plan.empty,
+                &plan.heights,
+            )
+        } else {
+            // Every open section the drag moves keeps its height by hand, the last one too: the
+            // room under the last band is what they leave, none to keep.
+            plan::pin_plan_content(
+                &hands.asked(self),
+                self.most,
+                self.space,
+                0.0,
+                &plan.heights,
+            )
+        };
         for (key, hand) in self.keys.iter().zip(pinned) {
             layout.set_height(key, hand);
         }
-        layout.empty = plan.empty;
+        layout.empty = if self.fill { plan.empty } else { 0.0 };
         let moved = |(a, b): (&f32, &f32)| (a - b).abs() > 0.01;
-        (plan.empty - self.empty).abs() > 0.01 || plan.heights.iter().zip(self.heights).any(moved)
+        (plan.empty - self.free).abs() > 0.01 || plan.heights.iter().zip(self.heights).any(moved)
     }
 
     /// `delta` on the boundary under `above`, cut so that no section grows past its bound:
@@ -1441,7 +1475,7 @@ impl Shown<'_> {
     /// What the boundary under `above` can do from here, up and down.
     fn reach(&self, above: usize) -> (bool, f32) {
         let placed = self.placed(self.heights);
-        let plan = |delta| plan::plan_drag(&placed, above, delta, self.empty, DragMode::Push);
+        let plan = |delta| plan::plan_drag(&placed, above, delta, self.free, DragMode::Push);
         (
             self.bounded(above, -self.step, DragMode::Push) < 0.0 && plan(-self.step).moved < 0.0,
             plan(self.space).heights[above].min(self.bounds[above]),
