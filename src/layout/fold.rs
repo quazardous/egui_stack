@@ -194,6 +194,10 @@ pub(super) fn strips(
         let dir = parent_dir(&layout.root, &at.name.0).unwrap_or_default();
         let breadth = along(dir, strip.size());
         let grip = Rect::from_min_size(strip.min, egui::vec2(breadth, breadth)).intersect(strip);
+        // The whole strip clicks like its grip, under the grip and the
+        // viewer's own widgets (drawn after it, so on top): on a bare strip,
+        // the whole strip is the button. Not a keyboard stop: the grip is.
+        let body = ui.interact(strip, id.with(("strip_body", &at.name.0)), Sense::CLICK);
         let response = ui.interact(grip, id.with(("grip", &at.name.0)), Sense::click());
         let label = match at.shown {
             Shown::Over => names.fold(&at.name),
@@ -213,8 +217,11 @@ pub(super) fn strips(
                 grip,
                 axis,
                 grip_state: PartState::NONE
-                    .with(PartState::HOVERED, response.hovered())
-                    .with(PartState::PRESSED, response.is_pointer_button_down_on())
+                    .with(PartState::HOVERED, response.hovered() || body.hovered())
+                    .with(
+                        PartState::PRESSED,
+                        response.is_pointer_button_down_on() || body.is_pointer_button_down_on(),
+                    )
                     .with(PartState::FOCUSED, response.has_focus()),
                 zone: &at.name,
                 shown: at.shown,
@@ -237,17 +244,21 @@ pub(super) fn strips(
         child.set_clip_rect(rest.intersect(ui.clip_rect()));
         viewer.strip(&mut child, &at.name);
 
-        if at.shown == Shown::Folded
-            && style.strip_drag
-            && drag_out(ui, id, layout, laid, at, strip, dir, style, painter)
-        {
-            events.push(LayoutEvent::Unfolded {
-                zone: at.name.clone(),
-            });
-            continue;
+        let mut band_clicked = false;
+        if at.shown == Shown::Folded && style.strip_drag {
+            match drag_out(ui, id, layout, laid, at, strip, dir, style, painter) {
+                DragOut::Unfolded => {
+                    events.push(LayoutEvent::Unfolded {
+                        zone: at.name.clone(),
+                    });
+                    continue;
+                }
+                DragOut::Clicked => band_clicked = true,
+                DragOut::None => {}
+            }
         }
 
-        if response.clicked() {
+        if response.clicked() || body.clicked() || band_clicked {
             match (flyout, at.shown) {
                 (Some(flyout), _) if flyout.zone == at.name => {
                     events.push(LayoutEvent::FlyoutClosed {
@@ -539,9 +550,22 @@ fn towards_end(
     along(dir, strip.center().to_vec2()) < (start + end) * 0.5
 }
 
+/// What the edge band of a folded zone's strip did this frame.
+enum DragOut {
+    /// Nothing that changes the zone.
+    None,
+    /// Pressed and released without moving: a click, which the strip takes
+    /// like its grip's.
+    Clicked,
+    /// Dragged out and released: the zone unfolded.
+    Unfolded,
+}
+
 /// The edge of a folded zone's strip facing its neighbour, dragged: past
 /// half the zone's least size, the zone unfolds on release, at the size
-/// dragged to, with a guide line meanwhile. Returns whether it unfolded.
+/// dragged to, with a guide line meanwhile. The band lies across the edge,
+/// or, on a strip narrower than twice the band, just outside it so that
+/// the strip stays a button; a press there without motion is a click.
 #[expect(
     clippy::too_many_arguments,
     reason = "the area's parts, borrowed apart"
@@ -556,32 +580,37 @@ fn drag_out(
     dir: Dir,
     style: &LayoutStyle,
     painter: &dyn LayoutPainter,
-) -> bool {
+) -> DragOut {
     let towards_end = towards_end(layout, laid, ui, at, strip, dir);
     let edge = if towards_end {
         along(dir, strip.max.to_vec2())
     } else {
         along(dir, strip.min.to_vec2())
     };
-    let band = span(
-        dir,
-        strip,
-        edge - style.sash_grab * 0.5,
-        edge + style.sash_grab * 0.5,
-    );
+    let sign = if towards_end { 1.0 } else { -1.0 };
+    let breadth = along(dir, strip.size());
+    let grab = style.sash_grab;
+    let band = if breadth < 2.0 * grab {
+        // Outside a narrow strip, which it would otherwise mostly cover.
+        let (a, b) = (edge, edge + sign * grab);
+        span(dir, strip, a.min(b), a.max(b))
+    } else {
+        span(dir, strip, edge - grab * 0.5, edge + grab * 0.5)
+    };
     let edge_id = id.with(("strip_edge", &at.name.0));
-    // A drag only: the grip is the strip's keyboard stop.
+    // Not a keyboard stop: the grip is the strip's.
     let cursor = match dir {
         Dir::Horizontal => CursorIcon::ResizeHorizontal,
         Dir::Vertical => CursorIcon::ResizeVertical,
     };
     let response = ui
-        .interact(band, edge_id, Sense::DRAG)
+        .interact(band, edge_id, Sense::CLICK | Sense::DRAG)
         .on_hover_and_drag_cursor(cursor);
-    let sign = if towards_end { 1.0 } else { -1.0 };
+    if response.clicked() {
+        return DragOut::Clicked;
+    }
     let delta = along(dir, response.drag_delta());
     let total_id = edge_id.with("total");
-    let breadth = along(dir, strip.size());
     let mut total = None;
     if response.dragged() || delta != 0.0 {
         total = Some(ui.ctx().data_mut(|d| {
@@ -596,7 +625,7 @@ fn drag_out(
         total = Some(done);
     }
     let Some(total) = total else {
-        return false;
+        return DragOut::None;
     };
     // The zone's size were it unfolded at the pointer: from the strip's far
     // edge to it.
@@ -628,7 +657,7 @@ fn drag_out(
             zone.state.size = Some(size);
         }
         layout.set_folded(&at.name.0, false);
-        return true;
+        return DragOut::Unfolded;
     }
-    false
+    DragOut::None
 }

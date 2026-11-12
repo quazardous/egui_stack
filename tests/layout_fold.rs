@@ -445,3 +445,102 @@ fn a_zone_lying_over_resizes_from_its_free_edge() {
     let size = harness.state().layout.zone("left").unwrap().state.size;
     assert_eq!(size, Some(100.0));
 }
+
+/// A 14-point bare strip (no icons), its edge band 10 points thick: twice
+/// the band is wider than the strip.
+fn narrow_strip() -> Harness<'static, App> {
+    let mut folded = layout();
+    folded.set_folded("left", true);
+    let mut harness = Harness::builder().with_size([800.0, 400.0]).build_ui_state(
+        |ui, app: &mut App| {
+            let mut style = egui_stack::layout::LayoutStyle::default();
+            style.strip = 14.0;
+            style.sash_grab = 10.0;
+            let laid = LayoutArea::new(&mut app.layout)
+                .style(style)
+                .show_inside(ui, &mut Viewer);
+            app.events.extend(laid.events);
+        },
+        App {
+            layout: folded,
+            flyout: None,
+            events: Vec::new(),
+        },
+    );
+    harness.run();
+    harness
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_click_anywhere_on_a_bare_strip_unfolds_its_zone() {
+    // The strip runs from x 8 to 22; its grip is the square at its top.
+    for pos in [pos2(15.0, 200.0), pos2(9.0, 390.0), pos2(21.0, 60.0)] {
+        let mut harness = narrow_strip();
+        click(&mut harness, pos);
+        assert_eq!(state(&harness), (false, false), "a click at {pos:?}");
+        assert!(
+            harness
+                .state()
+                .events
+                .iter()
+                .any(|e| matches!(e, LayoutEvent::Unfolded { .. }))
+        );
+    }
+
+    // On a strip as wide as the default, too, below the grip.
+    let mut folded = layout();
+    folded.set_folded("left", true);
+    let mut harness = harness(folded);
+    click(&mut harness, pos2(20.0, 200.0));
+    assert_eq!(state(&harness), (false, false));
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_narrow_strips_edge_band_lies_outside_it_and_takes_a_click_as_a_click() {
+    // The band lies past the strip's edge (x 22), from 22 to 32.
+    let mut harness = narrow_strip();
+    click(&mut harness, pos2(27.0, 200.0));
+    assert_eq!(state(&harness), (false, false));
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_narrow_strips_edge_dragged_out_unfolds_at_the_size_dragged_to() {
+    let mut harness = narrow_strip();
+    drag_by(&mut harness, pos2(27.0, 200.0), 150.0);
+    assert_eq!(state(&harness), (false, false));
+    let size = harness.state().layout.zone("left").unwrap().state.size;
+    assert_eq!(size, Some(164.0));
+    assert_eq!(harness.get_by_label("left").rect().width(), 164.0);
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn the_resize_cursor_shows_over_the_edge_band_only() {
+    let mut harness = narrow_strip();
+    let cursor = |harness: &mut Harness<'_, App>, pos: Pos2| {
+        harness.hover_at(pos);
+        harness.run();
+        harness.output().platform_output.cursor_icon
+    };
+    assert_eq!(
+        cursor(&mut harness, pos2(15.0, 200.0)),
+        egui::CursorIcon::Default
+    );
+    assert_eq!(
+        cursor(&mut harness, pos2(21.0, 200.0)),
+        egui::CursorIcon::Default
+    );
+    assert_eq!(
+        cursor(&mut harness, pos2(27.0, 200.0)),
+        egui::CursorIcon::ResizeHorizontal
+    );
+    assert_eq!(
+        cursor(&mut harness, pos2(100.0, 200.0)),
+        egui::CursorIcon::Default
+    );
+    // Hovering is not clicking: it stays folded.
+    assert_eq!(state(&harness), (true, false));
+}
