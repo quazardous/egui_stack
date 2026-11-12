@@ -1,5 +1,14 @@
 # egui_stack changelog
 
+## egui_stack 0.25.10 - 2026-11-12
+
+### Fixed
+
+- A docked zone's content follows its sash in the same frame while the sash
+  is dragged: `LayoutArea` applies the sashes' moves before it draws the
+  zones, and paints the sashes from the same layout, so the content's edge no
+  longer trails the sash line by one frame.
+
 ## egui_stack 0.25.9 - 2026-11-12
 
 ### Fixed
