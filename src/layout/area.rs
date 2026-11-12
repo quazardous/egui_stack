@@ -484,6 +484,24 @@ impl<'a> LayoutArea<'a> {
             content,
         };
         let laid = self.layout.solve(rect, &solve);
+
+        // The sashes' moves first, read from where they were last frame, so
+        // that the zones are drawn at the size their sash shows this frame.
+        let mut events = Vec::new();
+        let mut guides = HashMap::new();
+        let moved = sashes(&self.layout.root, &laid);
+        for sash in &moved {
+            if let Some(guide) =
+                sash_input(ui, self.id, self.layout, sash, &moved, &style, &mut events)
+            {
+                guides.insert(sash.zone.clone(), guide);
+            }
+        }
+        let laid = if events.is_empty() {
+            laid
+        } else {
+            self.layout.solve(rect, &solve)
+        };
         let names = Names::new(&self.labels, &laid, viewer);
 
         // The zones' contents, then the sashes over them.
@@ -500,7 +518,7 @@ impl<'a> LayoutArea<'a> {
         );
         ui.ctx().data_mut(|d| d.insert_temp(content_id, asked));
 
-        let mut events = Vec::new();
+        let resized = events.len();
         let painter = self.painter;
         fold::strips(
             ui,
@@ -543,25 +561,25 @@ impl<'a> LayoutArea<'a> {
                 &mut events,
             )
         });
-        let sashes = sashes(&self.layout.root, &laid);
-        for sash in &sashes {
+        // Painted from the same layout as the zones.
+        for sash in &sashes(&self.layout.root, &laid) {
             sash_ui(
                 ui,
                 self.id,
-                self.layout,
                 sash,
-                &sashes,
+                guides.remove(&sash.zone),
                 &style,
-                self.painter,
+                painter,
                 &names,
-                &mut events,
             );
         }
 
-        let mut laid = if events.is_empty() {
+        if !events.is_empty() {
+            ui.ctx().request_repaint();
+        }
+        let mut laid = if events.len() == resized {
             laid
         } else {
-            ui.ctx().request_repaint();
             self.layout.solve(rect, &solve)
         };
         laid.events = events;
@@ -798,40 +816,24 @@ pub(super) fn paint_guide(
     painter.snap_guide(&layer, guide);
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the area's parts, borrowed apart"
-)]
-fn sash_ui(
-    ui: &mut Ui,
+/// Applies what the user did to `sash` this frame (drag, keys, double
+/// click, accessibility actions) to its zone's size, before the zones are
+/// drawn. Its response is read from where it was last frame, `sash`'s
+/// rect; [`sash_ui`] registers it again where it is drawn. Returns the
+/// snap guide to paint, if any.
+fn sash_input(
+    ui: &Ui,
     id: Id,
     layout: &mut Layout,
     sash: &Sash,
     all: &[Sash],
     style: &LayoutStyle,
-    painter: &dyn LayoutPainter,
-    names: &Names<'_>,
     events: &mut Vec<LayoutEvent>,
-) {
+) -> Option<(SnapKind, Rect)> {
     let horizontal = sash.dir == Dir::Horizontal;
-    let thick = |grow: f32| {
-        let mid = along(sash.dir, sash.rect.min.to_vec2());
-        span(sash.dir, sash.rect, mid - grow * 0.5, mid + grow * 0.5)
-    };
     let sash_id = id.with(("sash", &sash.zone.0));
-    let cursor = if horizontal {
-        CursorIcon::ResizeHorizontal
-    } else {
-        CursorIcon::ResizeVertical
-    };
-    let response = ui
-        .interact(thick(style.sash_grab), sash_id, Sense::click_and_drag())
-        .on_hover_and_drag_cursor(cursor);
-    let axis = if horizontal {
-        SeparatorAxis::Vertical
-    } else {
-        SeparatorAxis::Horizontal
-    };
+    // Not there last frame: nothing done to it yet.
+    let response = ui.ctx().read_response(sash_id)?;
 
     // Moving the sash by `delta` (right or down) changes the zone by
     // `delta` before it, by `-delta` after it.
@@ -875,7 +877,7 @@ fn sash_ui(
         events.push(LayoutEvent::Folded {
             zone: sash.zone.clone(),
         });
-        return;
+        return None;
     }
     let mut guide = None;
     if let Some(to) = dragged_to {
@@ -948,7 +950,6 @@ fn sash_ui(
         }
     });
 
-    let mut size = sash.size;
     if reset {
         if let Some(zone) = layout.zone_mut(&sash.zone.0) {
             zone.state.size = None;
@@ -962,27 +963,47 @@ fn sash_ui(
             && let Some(zone) = layout.zone_mut(&sash.zone.0)
         {
             zone.state.size = Some(clamped);
-            size = clamped;
             events.push(LayoutEvent::Resized {
                 zone: sash.zone.clone(),
                 size: clamped,
             });
         }
     }
+    guide
+}
 
-    // Painted where it is after this frame's move.
-    let drawn = sash.line_at(size);
-    let mid = along(sash.dir, drawn.min.to_vec2());
-    let drawn = span(
-        sash.dir,
-        drawn,
-        mid - style.sash_width * 0.5,
-        mid + style.sash_width * 0.5,
-    );
+/// Registers and paints `sash` where it is laid this frame, with the snap
+/// guide its drag shows.
+fn sash_ui(
+    ui: &mut Ui,
+    id: Id,
+    sash: &Sash,
+    guide: Option<(SnapKind, Rect)>,
+    style: &LayoutStyle,
+    painter: &dyn LayoutPainter,
+    names: &Names<'_>,
+) {
+    let horizontal = sash.dir == Dir::Horizontal;
+    let mid = along(sash.dir, sash.rect.min.to_vec2());
+    let thick = |grow: f32| span(sash.dir, sash.rect, mid - grow * 0.5, mid + grow * 0.5);
+    let sash_id = id.with(("sash", &sash.zone.0));
+    let cursor = if horizontal {
+        CursorIcon::ResizeHorizontal
+    } else {
+        CursorIcon::ResizeVertical
+    };
+    let response = ui
+        .interact(thick(style.sash_grab), sash_id, Sense::click_and_drag())
+        .on_hover_and_drag_cursor(cursor);
+    let axis = if horizontal {
+        SeparatorAxis::Vertical
+    } else {
+        SeparatorAxis::Horizontal
+    };
     painter.sash(
         ui.painter(),
         &SashPaint {
-            rect: drawn,
+            rect: thick(style.sash_width),
             axis,
             state: PartState::NONE
                 .with(PartState::HOVERED, response.hovered())
@@ -1007,7 +1028,7 @@ fn sash_ui(
             },
         );
     }
-    describe_sash(ui, &response, sash, size, names);
+    describe_sash(ui, &response, sash, sash.size, names);
 }
 
 /// The sash as a splitter whose value is its zone's size.
