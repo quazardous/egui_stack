@@ -287,7 +287,8 @@ snapping during a drag.
 terminal in the centre is not resized). The strip is drawn by the painter (`strip`, its grip) and
 by the viewer (`ZoneViewer::strip`, the application's icons); a click on the grip toggles. A side
 zone may also lie **over** its neighbour: unfolded, next to its strip, without taking room, with
-the style's shadow. The growing zone never folds.
+the style's shadow; its free edge resizes it, painted by the painter's `over_edge` (nothing by
+default) with its hover and drag state. The growing zone never folds.
 
 **Flyouts.** An application asks for one flyout at a time: an item of a folded zone (one panel of
 its dock), shown over the neighbouring zone, next to the strip, without moving the layout. The

@@ -8,8 +8,8 @@ use egui_kittest::{
     kittest::{NodeT as _, Queryable as _},
 };
 use egui_stack::layout::{
-    Content, Dir, Dismiss, Flyout, Fold, Layout, LayoutArea, LayoutEvent, Size, Zone, ZoneName,
-    ZoneViewer,
+    Content, Dir, Dismiss, Flyout, Fold, Layout, LayoutArea, LayoutEvent, LayoutPainter, SashPaint,
+    Size, Zone, ZoneName, ZoneViewer,
 };
 
 struct Viewer;
@@ -543,4 +543,55 @@ fn the_resize_cursor_shows_over_the_edge_band_only() {
     );
     // Hovering is not clicking: it stays folded.
     assert_eq!(state(&harness), (true, false));
+}
+
+/// Records the free edges of the zones lying over: where, and in which
+/// state.
+#[derive(Default)]
+struct Edges(std::cell::RefCell<Vec<(egui::Rect, egui_stack::PartState)>>);
+
+impl LayoutPainter for Edges {
+    fn over_edge(&self, _painter: &egui::Painter, edge: &SashPaint<'_>) {
+        assert_eq!(edge.axis, egui_stack::SeparatorAxis::Vertical);
+        self.0.borrow_mut().push((edge.rect, edge.state));
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_zone_lying_over_paints_its_free_edge_with_its_state() {
+    use egui_stack::PartState;
+    let mut over = layout();
+    over.set_over("left", true);
+    let edges = std::rc::Rc::new(Edges::default());
+    let seen = edges.clone();
+    let mut harness = Harness::builder().with_size([800.0, 400.0]).build_ui_state(
+        move |ui, layout: &mut Layout| {
+            LayoutArea::new(layout)
+                .painter(&*edges)
+                .show_inside(ui, &mut Viewer);
+        },
+        over,
+    );
+    harness.run();
+    let last = || *seen.0.borrow().last().expect("the free edge is painted");
+    let (rect, state) = last();
+    // The over zone's right edge, past its strip.
+    let edge = harness.get_by_label("Resize left").rect();
+    assert!((rect.center().x - edge.center().x).abs() < 0.5, "{rect:?}");
+    assert_eq!(state, PartState::NONE);
+
+    harness.hover_at(edge.center());
+    harness.run();
+    assert!(last().1.contains(PartState::HOVERED));
+
+    harness.drag_at(edge.center());
+    harness.step();
+    harness.hover_at(edge.center() + vec2(20.0, 0.0));
+    harness.step();
+    harness.hover_at(edge.center() + vec2(30.0, 0.0));
+    harness.step();
+    assert!(last().1.contains(PartState::DRAGGED), "{:?}", last().1);
+    harness.drop_at(edge.center() + vec2(30.0, 0.0));
+    harness.run();
 }

@@ -202,6 +202,17 @@ pub trait LayoutPainter {
         painter.line_segment(guide.line, guide.style.snap_guide);
     }
 
+    /// The free edge of a zone lying over its neighbour, the edge that
+    /// resizes it, painted above the zone's content. `edge.rect` is
+    /// [`LayoutStyle::sash_width`] thick, centred on the edge; `edge.state`
+    /// tells whether it is hovered or dragged, as a sash's. By default
+    /// nothing: the zone's frame ([`LayoutPainter::flyout_frame`]) is its
+    /// only border. A host that styles its sashes' hover and drag can
+    /// paint the same line here, so both kinds of edge look alike.
+    fn over_edge(&self, painter: &Painter, edge: &SashPaint<'_>) {
+        let _ = (painter, edge);
+    }
+
     /// The frame of a zone lying over its neighbour, or of a flyout: shadow,
     /// background and border, painted before its content.
     fn flyout_frame(&self, painter: &Painter, frame: &FlyoutPaint<'_>) {

@@ -7,8 +7,8 @@ use egui::{
 };
 
 use super::area::{
-    LayoutPainter, LayoutStyle, Names, SnapGuidePaint, SnapKind, ZoneViewer, paint_guide,
-    zone_ui_at,
+    LayoutPainter, LayoutStyle, Names, SashPaint, SnapGuidePaint, SnapKind, ZoneViewer,
+    paint_guide, zone_ui_at,
 };
 use super::solve::{along, span};
 use super::{Dir, Laid, LaidZone, Layout, LayoutEvent, Shown, Zone, ZoneName};
@@ -363,6 +363,27 @@ pub(super) fn overs(
                     .interact(edge, area_id.with("edge"), Sense::drag())
                     .on_hover_and_drag_cursor(cursor);
                 response.widget_info(|| WidgetInfo::labeled(Role::Splitter, true, &label));
+                painter.over_edge(
+                    ui.painter(),
+                    &SashPaint {
+                        rect: span(
+                            dir,
+                            rect,
+                            free_edge - style.sash_width * 0.5,
+                            free_edge + style.sash_width * 0.5,
+                        ),
+                        axis: match dir {
+                            Dir::Horizontal => SeparatorAxis::Vertical,
+                            Dir::Vertical => SeparatorAxis::Horizontal,
+                        },
+                        state: PartState::NONE
+                            .with(PartState::HOVERED, response.hovered())
+                            .with(PartState::PRESSED, response.is_pointer_button_down_on())
+                            .with(PartState::DRAGGED, response.dragged()),
+                        zone: &at.name,
+                        style,
+                    },
+                );
                 let delta = along(dir, response.drag_delta());
                 if delta != 0.0 {
                     let sign = if towards_end { 1.0 } else { -1.0 };
