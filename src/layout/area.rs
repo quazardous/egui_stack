@@ -61,7 +61,9 @@ pub struct LayoutStyle {
     /// The guide line showing what a dragged sash caught.
     pub snap_guide: Stroke,
     /// Whether a folded zone's strip edge facing its neighbour drags the
-    /// zone out of its strip. By default `true`.
+    /// zone out of its strip. The edge's band is [`sash_grab`](Self::sash_grab)
+    /// thick, across the edge, or just outside a strip narrower than twice
+    /// that; a click on it acts like the grip's. By default `true`.
     pub strip_drag: bool,
 }
 
@@ -229,8 +231,10 @@ pub trait ZoneViewer {
     fn ui(&mut self, ui: &mut Ui, zone: &ZoneName);
 
     /// A folded zone's strip, after the painter's background and grip: the
-    /// application's icons, say. The `Ui` is the strip less its grip. By
-    /// default nothing.
+    /// application's icons, say. The `Ui` is the strip less its grip. A
+    /// click on the strip that none of these widgets takes acts like the
+    /// grip's, so a strip left empty is a button as a whole. By default
+    /// nothing.
     fn strip(&mut self, ui: &mut Ui, zone: &ZoneName) {
         let _ = (ui, zone);
     }
