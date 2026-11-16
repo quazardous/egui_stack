@@ -337,6 +337,94 @@ impl<Tab> DockState<Tab> {
         }
     }
 
+    /// Moves a whole leaf, all its tabs in their order, as a tab is moved: into another leaf's
+    /// tabs ([`TabInsert::Insert`] at an index, [`TabInsert::Append`] after them), beside a leaf
+    /// ([`TabInsert::Split`]), into an empty surface, or into a new window. The leaf's active tab
+    /// stays the active one where it lands; the leaf it leaves goes, and a window left empty too.
+    ///
+    /// Nothing happens when `src` is not a leaf holding tabs, or when `dst` is that leaf itself.
+    ///
+    /// ```
+    /// # use egui_stack::{DockState, NodeIndex, NodePath, SurfaceIndex, TabDestination, TabIndex, TabInsert};
+    /// let mut dock = DockState::new(vec!["a", "b"]);
+    /// let [left, right] = dock.main_surface_mut().split_right(NodeIndex::root(), 0.5, vec!["c", "d", "e"]);
+    /// let [left, right] = [left, right].map(|n| NodePath::new(SurfaceIndex::main(), n));
+    /// dock.leaf_mut(right).unwrap().active = TabIndex(1); // "d"
+    /// dock.move_node(right, TabDestination::Node(left, TabInsert::Append));
+    /// let a = dock.find_tab(&"a").unwrap().node_path();
+    /// let leaf = dock.leaf(a).unwrap();
+    /// assert_eq!(leaf.tabs, ["a", "b", "c", "d", "e"]);
+    /// assert_eq!(leaf.active, TabIndex(3));
+    /// ```
+    pub fn move_node(&mut self, src: NodePath, dst: impl Into<TabDestination>) {
+        let dst = dst.into();
+        if matches!(dst, TabDestination::Node(d, _) if d == src) {
+            return;
+        }
+        let Ok(leaf) = self.leaf_mut(src) else {
+            return;
+        };
+        if leaf.tabs.is_empty() {
+            return;
+        }
+        let active = leaf.active.0.min(leaf.tabs.len() - 1);
+        let tabs = std::mem::take(&mut leaf.tabs);
+        match dst {
+            TabDestination::Window(rect) => {
+                let surface = self.add_window(tabs);
+                if let Ok(leaf) = self.leaf_mut(NodePath::new(surface, NodeIndex::root())) {
+                    leaf.active = TabIndex(active);
+                }
+                let from_dock = !self.is_window(src.surface);
+                let state = self.get_window_state_mut(surface).unwrap();
+                state.set_position(rect.min);
+                if from_dock {
+                    state.set_size(rect.size() * 0.8);
+                } else {
+                    state.set_size(rect.size());
+                }
+            }
+            TabDestination::Node(d, insert) => match insert {
+                TabInsert::Split(split) => {
+                    let mut node = Node::leaf_with(tabs);
+                    if let Some(leaf) = node.get_leaf_mut() {
+                        leaf.active = TabIndex(active);
+                    }
+                    self[d.surface].split(d.node, split, 0.5, node);
+                }
+                TabInsert::Insert(_) | TabInsert::Append => {
+                    let Ok(leaf) = self.leaf_mut(d) else {
+                        // Not a leaf: put the tabs back.
+                        if let Ok(leaf) = self.leaf_mut(src) {
+                            leaf.tabs = tabs;
+                        }
+                        return;
+                    };
+                    let at = match insert {
+                        TabInsert::Insert(i) => i.0.min(leaf.tabs.len()),
+                        _ => leaf.tabs.len(),
+                    };
+                    leaf.tabs.splice(at..at, tabs);
+                    leaf.active = TabIndex(at + active);
+                }
+            },
+            TabDestination::EmptySurface(surface) => {
+                assert!(self[surface].is_empty());
+                let mut tree = Tree::new(tabs);
+                if let Some(leaf) = tree.root_node_mut().and_then(Node::get_leaf_mut) {
+                    leaf.active = TabIndex(active);
+                }
+                self[surface] = tree;
+            }
+        }
+        if self[src].is_leaf() && self[src].tabs_count() == 0 {
+            self[src.surface].remove_leaf(src.node);
+        }
+        if self[src.surface].is_empty() && self.is_window(src.surface) {
+            self.remove_surface(src.surface);
+        }
+    }
+
     /// Moves a tab from a node to another node.
     /// You need to specify with [`TabDestination`] how the tab should be moved.
     pub fn move_tab(&mut self, src: TabPath, dst_tab: impl Into<TabDestination>) {
@@ -539,12 +627,8 @@ impl<Tab> DockState<Tab> {
     fn find_empty_surface_index(&self) -> SurfaceIndex {
         // Find the first possible empty surface to insert our window into.
         // Starts at 1 as 0 is always the main surface.
-        for i in 1..self.surfaces.len() {
-            if self.surfaces[i].is_empty() {
-                return SurfaceIndex(i);
-            }
-        }
-        SurfaceIndex(self.surfaces.len())
+        let empty = (self.surfaces.iter().enumerate().skip(1)).find(|(_, s)| s.is_empty());
+        SurfaceIndex(empty.map_or(self.surfaces.len(), |(i, _)| i))
     }
 
     /// Ensures that the surface at `index` contains a [`Tree`]

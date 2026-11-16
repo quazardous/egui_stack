@@ -10,9 +10,9 @@ use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
-    DockArea, DraggedTab, NodeIndex, PartState, Style, SurfaceIndex, TabAddAlign, TabBarPaint,
-    TabBarTailPaint, TabBodyPaint, TabClose, TabFocus, TabIndex, TabMeasure, TabPaint, TabStyle,
-    TabViewer,
+    DockArea, DraggedNode, DraggedTab, NodeIndex, PartState, Style, SurfaceIndex, TabAddAlign,
+    TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabFocus, TabIndex, TabMeasure, TabPaint,
+    TabStyle, TabViewer,
     dock_area::{
         drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
         state::State,
@@ -342,6 +342,9 @@ impl<Tab> DockArea<'_, Tab> {
                     style,
                 },
             );
+            // The rest of the bar drags the whole group, as an editor group is dragged by its tab
+            // bar. Registered before the bar's buttons, which keep their clicks.
+            self.tab_bar_tail_drag(ui, state, path, tail);
 
             // Add button at the ends of the tab bar.
             if self.show_add_buttons {
@@ -1075,6 +1078,53 @@ impl<Tab> DockArea<'_, Tab> {
         );
     }
 
+    /// The empty part of a tab bar, right of its tabs: dragged, it drags the whole leaf with all
+    /// its tabs ([`DockArea::dragged_node`]).
+    fn tab_bar_tail_drag(&self, ui: &Ui, state: &mut State, path: NodePath, tail: Rect) {
+        if !self.draggable_tabs || !tail.is_positive() {
+            return;
+        }
+        let id = self
+            .id
+            .with((path.surface, "surface"))
+            .with((path.node, "node"))
+            .with("tab_bar_drag");
+        let response = ui.interact(tail, id, Sense::drag());
+        if response.hovered() && ui.ctx().dragged_id().is_none() {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::Grab);
+        }
+        let dragged =
+            ui.ctx().is_being_dragged(id) && ui.input(|i| i.pointer.is_decidedly_dragging());
+        if dragged {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+            self.try_initiate_node_drag(ui, state, path);
+        }
+    }
+
+    /// As [`try_initiate_tab_drag`](Self::try_initiate_tab_drag), for a whole leaf.
+    fn try_initiate_node_drag(&self, ui: &Ui, state: &mut State, path: NodePath) {
+        let Some(pointer_pos) = ui.ctx().pointer_interact_pos() else {
+            return;
+        };
+        let start = *state.drag_start.get_or_insert(pointer_pos);
+        let delta = pointer_pos - start;
+        if delta.x.abs() > 30.0 || delta.y.abs() > 6.0 {
+            state.dragged_node = Some(DraggedNode {
+                path,
+                pointer: pointer_pos,
+            });
+            ui.memory_mut(|mem| {
+                mem.data.insert_temp(
+                    self.id.with("drag_data"),
+                    Some(DragData {
+                        src: TreeComponent::Node(path),
+                        rect: self.dock_state[path].rect().unwrap(),
+                    }),
+                );
+            });
+        }
+    }
+
     /// Checks if a drag has exceeded the movement threshold, and if so,
     /// stores DragData for the given tab. Returns the drag delta if stored.
     fn try_initiate_tab_drag(
@@ -1506,7 +1556,13 @@ impl<Tab> DockArea<'_, Tab> {
                             || !self.dock_state[src_path.node_path()].is_leaf()
                             || self.may_float(src_path, tab_viewer)
                     }
-                    _ => unreachable!("collections of nodes can't be dragged (yet)"),
+                    TreeComponent::Node(src_path) => {
+                        !self.dock_state.is_window(path.surface)
+                            || self.node_may_float(src_path, tab_viewer)
+                    }
+                    TreeComponent::Surface(_) => {
+                        unreachable!("surfaces can't be dragged (yet)")
+                    }
                 },
                 _ => true,
             };

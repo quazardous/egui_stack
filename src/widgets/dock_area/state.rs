@@ -1,7 +1,7 @@
 use egui::{Context, Id, Pos2};
 
 use super::{
-    DraggedTab,
+    DraggedNode, DraggedTab,
     drag_and_drop::{DragData, DragDropState, HoverData},
 };
 use crate::{Style, SurfaceIndex};
@@ -14,6 +14,8 @@ pub(super) struct State {
     pub window_fade: Option<(f64, SurfaceIndex)>,
     /// The tab dragged during the last frame, if any.
     pub dragged: Option<DraggedTab>,
+    /// The tab group (a leaf, all its tabs) dragged during the last frame, if any.
+    pub dragged_node: Option<DraggedNode>,
     /// The pass the drag was last resolved in: the docks of a space resolve it once a pass.
     pub pass: Option<u64>,
 }
@@ -27,6 +29,7 @@ impl State {
             dnd: None,
             window_fade: None,
             dragged: None,
+            dragged_node: None,
             pass: None,
         })
     }
