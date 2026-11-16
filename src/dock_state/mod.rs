@@ -627,12 +627,8 @@ impl<Tab> DockState<Tab> {
     fn find_empty_surface_index(&self) -> SurfaceIndex {
         // Find the first possible empty surface to insert our window into.
         // Starts at 1 as 0 is always the main surface.
-        for i in 1..self.surfaces.len() {
-            if self.surfaces[i].is_empty() {
-                return SurfaceIndex(i);
-            }
-        }
-        SurfaceIndex(self.surfaces.len())
+        let empty = (self.surfaces.iter().enumerate().skip(1)).find(|(_, s)| s.is_empty());
+        SurfaceIndex(empty.map_or(self.surfaces.len(), |(i, _)| i))
     }
 
     /// Ensures that the surface at `index` contains a [`Tree`]
