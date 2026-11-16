@@ -158,6 +158,7 @@ impl<Tab> DockArea<'_, Tab> {
         dock_rect: Rect,
     ) {
         state.dragged = None;
+        state.dragged_node = None;
 
         // Delay hover position one frame. On touch screens hover_pos() is None when any_released()
         if !ui.input(|i| i.pointer.any_released()) {
@@ -198,13 +199,15 @@ impl<Tab> DockArea<'_, Tab> {
             if ui.input(|i| i.pointer.primary_released())
                 && let Some(destination) = tab_dst
             {
-                let source = {
-                    match state.dnd.as_ref().unwrap().drag.src {
-                        TreeComponent::Tab(src) => src,
-                        _ => todo!(
-                            "collections of tabs, like nodes and surfaces can't be docked (yet)"
-                        ),
+                let source = match state.dnd.as_ref().unwrap().drag.src {
+                    TreeComponent::Tab(src) => src,
+                    TreeComponent::Node(src) => {
+                        self.dock_state.move_node(src, destination);
+                        ui.ctx().request_repaint();
+                        state.reset_drag();
+                        return;
                     }
+                    TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
                 };
                 let src_tab_count = self.dock_state[source.node_path()].tabs_count();
                 self.dock_state.move_tab(source, destination);
@@ -300,6 +303,17 @@ impl<Tab> DockArea<'_, Tab> {
             unreachable!("tab drags can only come from leaf nodes")
         };
         dock_allows && tab_viewer.allowed_in_windows(&mut leaf.tabs[path.tab.0])
+    }
+
+    /// Whether the leaf at `path`, dragged whole, may become a floating window: each of its tabs
+    /// may.
+    pub(super) fn node_may_float(
+        &mut self,
+        path: NodePath,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+    ) -> bool {
+        let count = self.dock_state[path].tabs_count();
+        (0..count).all(|i| self.may_float((path, crate::TabIndex(i)).into(), tab_viewer))
     }
 
     /// Whether one of this dock's floating windows, not the one `ui` draws, is the topmost
@@ -459,9 +473,17 @@ impl<Tab> DockArea<'_, Tab> {
         };
         let allowed_splits = self.allowed_splits & restricted_splits & dock_splits;
 
+        // A whole leaf dragged onto itself goes nowhere.
+        if let TreeComponent::Node(src) = drag_state.drag.src
+            && !drag_state.hover.outside
+            && drag_state.hover.dst.node_address() == (src.surface, Some(src.node))
+        {
+            return None;
+        }
         let allowed_in_window = match drag_state.drag.src {
             TreeComponent::Tab(path) => self.may_float(path, tab_viewer),
-            _ => todo!("collections of tabs, like nodes or surfaces, can't be dragged! (yet)"),
+            TreeComponent::Node(path) => self.node_may_float(path, tab_viewer),
+            TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
         };
         let drag_state = state.dnd.as_mut().unwrap();
         drag_state.src_in_window = self.dock_state.is_window(src_surface);
@@ -505,13 +527,13 @@ impl<Tab> DockArea<'_, Tab> {
         let destination = destination?;
         let from_buttons = from_buttons && !matches!(destination, TabDestination::Window(_));
 
-        // Last, the viewer's veto for this tab at this destination.
-        let TreeComponent::Tab(path) = drag_state.drag.src else {
-            unreachable!("only tabs can be dragged")
+        // Last, the viewer's veto for this tab at this destination; for a whole leaf, for each
+        // of its tabs, the first refusal said.
+        let (src, tabs) = match drag_state.drag.src {
+            TreeComponent::Tab(path) => (path.node_path(), path.tab.0..path.tab.0 + 1),
+            TreeComponent::Node(path) => (path, 0..self.dock_state[path].tabs_count()),
+            TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
         };
-        let tab = &self.dock_state[path.node_path()]
-            .tabs()
-            .expect("tab drags can only come from leaf nodes")[path.tab.0];
         let to = match destination {
             TabDestination::Node(path, _) => self.dock_name(path.surface),
             TabDestination::EmptySurface(surface) => self.dock_name(surface),
@@ -519,13 +541,20 @@ impl<Tab> DockArea<'_, Tab> {
         };
         let drop = DockDrop {
             destination: &destination,
-            from: self.dock_name(path.surface),
+            from: self.dock_name(src.surface),
             to,
         };
-        let (allowed, refusal) = match tab_viewer.dock_drop_allowed(tab, &drop) {
-            DropVerdict::Allow => (true, None),
-            DropVerdict::Refuse(reason) => (false, Some(reason)),
-        };
+        let leaf_tabs = self.dock_state[src]
+            .tabs()
+            .expect("drags can only come from leaf nodes");
+        let refusal =
+            leaf_tabs[tabs]
+                .iter()
+                .find_map(|tab| match tab_viewer.dock_drop_allowed(tab, &drop) {
+                    DropVerdict::Allow => None,
+                    DropVerdict::Refuse(reason) => Some(reason),
+                });
+        let allowed = refusal.is_none();
         drag_state.paint_preview(
             ui,
             style,

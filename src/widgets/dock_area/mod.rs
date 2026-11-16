@@ -83,6 +83,17 @@ pub struct DraggedTab {
     pub pointer: Pos2,
 }
 
+/// A tab group being dragged in a [`DockArea`], from [`DockArea::dragged_node`]: a leaf with
+/// all its tabs, dragged by the empty part of its tab bar.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct DraggedNode {
+    /// Where the dragged leaf is in the [`DockState`].
+    pub path: NodePath,
+    /// The pointer's position.
+    pub pointer: Pos2,
+}
+
 // Not generic over the tab type, so that `DockArea::dragged_tab(ctx, id)` needs no annotation.
 impl DockArea<'_, ()> {
     /// The id of a [`DockArea`] whose [`id`](Self::id) was not set.
@@ -98,6 +109,17 @@ impl DockArea<'_, ()> {
     pub fn dragged_tab(ctx: &Context, id: Id) -> Option<DraggedTab> {
         ctx.data(|d| d.get_temp::<state::State>(id))
             .and_then(|state| state.dragged)
+    }
+
+    /// The tab group being dragged in the [`DockArea`] with this `id`, as of its last
+    /// [`show_inside`](DockArea::show_inside): a leaf dragged whole by the empty part of its tab
+    /// bar, all its tabs moving together and its active tab kept.
+    ///
+    /// It counts as dragged once it has moved far enough, until it is released. Use
+    /// [`default_id`](Self::default_id) if the [`DockArea`]'s id was not set.
+    pub fn dragged_node(ctx: &Context, id: Id) -> Option<DraggedNode> {
+        ctx.data(|d| d.get_temp::<state::State>(id))
+            .and_then(|state| state.dragged_node)
     }
 }
 
