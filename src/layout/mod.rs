@@ -263,8 +263,12 @@ pub struct Constraints {
     pub drops: Drops,
     /// While the zone is folded, a tab dropped on its strip joins the dock
     /// it holds ([`Content::Dock`]), if [`drops`](Self::drops) and the dock
-    /// accept it ([`DockSpace::bind`](crate::DockSpace::bind)). Off by
-    /// default: the strip refuses drops.
+    /// accept it ([`DockSpace::bind`](crate::DockSpace::bind)), the zone
+    /// staying folded. On a split zone, the tab joins one of the docks the
+    /// split holds that accept drops: the one holding the focused leaf (the
+    /// last active), else the first, depth first; and the zone is reported
+    /// to unfold ([`DockSpace::take_unfolds`](crate::DockSpace::take_unfolds)).
+    /// Off by default: the strip takes no drops.
     pub strip_drops: bool,
 }
 

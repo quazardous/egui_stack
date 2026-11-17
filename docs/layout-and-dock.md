@@ -534,7 +534,10 @@ Where the `layout` module differs from the sketch above:
   `Constraints::strip_drops`, `bind` makes a folded zone's strip a target for its dock; a tab
   released there joins the dock's focused leaf (else its first, else the empty dock), the zone
   staying folded. Without it, strips refuse drops as before. A zone lying over keeps its strip
-  refusing.
+  refusing. On a folded split zone, `strip_drops` makes its strip a target for one of the docks the
+  split holds (the one holding the focused leaf, else the first accepting drops, depth first); a
+  tab released there joins it, and `DockSpace::take_unfolds` names the zone for the application to
+  unfold with `Layout::set_folded`.
 - `Docked<Tab> { layout, space }` with `repair` as sketched, without floats (not built yet): a
   zone whose dock is gone is dropped (a leaf root is emptied instead); a dock no zone shows gets a
   hidden leaf named after it, last under the root (not when the root is a leaf, or the name is
