@@ -34,8 +34,14 @@ impl egui_stack::TabViewer for TabViewer {
                 );
             }
             "Hidden" => {
+                // The app's own header: dragged, it moves the whole tab group.
+                let header = ui.add(
+                    egui::Label::new(egui::RichText::new("⠿ Hidden").strong())
+                        .sense(egui::Sense::drag()),
+                );
+                DockArea::drag_group_by(ui, &header);
                 ui.label("The tab bar is hidden.");
-                ui.label("Try dragging by the top margin of the tab when the tab bar is hidden.");
+                ui.label("Drag the header above, or the top margin of the tab, to move it.");
             }
             _ => {}
         }
@@ -77,6 +83,7 @@ impl eframe::App for MyApp {
         DockArea::new(&mut self.tree)
             .style(style)
             .hidable_tab_bars(true)
+            .hidden_tab_bar_drags_group(true)
             .draggable_tabs(true)
             .show_inside(ui, &mut TabViewer {});
     }

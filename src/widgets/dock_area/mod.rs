@@ -134,8 +134,43 @@ impl DockArea<'_, ()> {
     /// when the [`DockArea`]'s tabs are not [`draggable`](DockArea::draggable_tabs). Returns
     /// whether `response` is being dragged as a handle.
     pub fn drag_group_by(ui: &Ui, response: &Response) -> bool {
-        let _ = (ui, response);
-        false
+        let Some(body) = ui.data(|d| d.get_temp::<Option<BodyLeaf>>(BodyLeaf::id()).flatten())
+        else {
+            return false;
+        };
+        if !body.draggable {
+            return false;
+        }
+        let dragged = response.dragged() && ui.input(|i| i.pointer.is_decidedly_dragging());
+        if dragged {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+            ui.data_mut(|d| d.insert_temp(BodyLeaf::request_id(body.dock_area), body.path));
+        } else if response.hovered() && ui.ctx().dragged_id().is_none() {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
+        }
+        dragged
+    }
+}
+
+/// The leaf whose tab body is being shown, so that [`DockArea::drag_group_by`] knows which
+/// group a handle drags. Kept in the context's temporary data while
+/// [`TabViewer::ui`](crate::TabViewer::ui) runs, the outer one put back after (a dock shown
+/// inside a tab).
+#[derive(Clone, Copy)]
+struct BodyLeaf {
+    dock_area: Id,
+    path: NodePath,
+    draggable: bool,
+}
+
+impl BodyLeaf {
+    fn id() -> Id {
+        Id::unique("egui_stack::BodyLeaf")
+    }
+
+    /// Where a handle asks the [`DockArea`] `dock_area` to drag a group this frame.
+    fn request_id(dock_area: Id) -> Id {
+        dock_area.with("group_drag_request")
     }
 }
 
