@@ -23,12 +23,42 @@ pub(super) struct HoverData {
     /// If a tab title or the tab head is hovered, this is the rect of it.
     pub tab: Option<Rect>,
 
+    /// The hovered leaf's tab bar, whether or not the pointer is on it: the pointer is tested
+    /// against it again when the hover is used ([`HoverData::retarget`]).
+    pub tab_bar: Option<Rect>,
+
     /// Whether the pointer is outside the dock, over none of its surfaces: with
     /// [`OverlayType::Zones`](crate::OverlayType::Zones), a drop there opens a new window.
     pub outside: bool,
 }
 
 /// Specifies the location of a tab on the tree, used when moving tabs.
+impl HoverData {
+    /// Tests `pointer` against the hovered leaf's tab bar again. The hover was recorded during
+    /// an earlier pass, or kept by the leaf preference, so it may say "tab bar" when the pointer
+    /// has left it, or "body" when the pointer has reached it: the leaf is kept, the part of it
+    /// is the one under the pointer now, so a tab released on the tab bar joins the leaf's tabs
+    /// and one released in an edge band splits it.
+    pub(super) fn retarget(&mut self, pointer: Pos2) {
+        let Some(tab_bar) = self.tab_bar else {
+            return;
+        };
+        if self.outside || !self.rect.contains(pointer) {
+            return;
+        }
+        match (tab_bar.contains(pointer), self.tab) {
+            (true, None) => self.tab = Some(tab_bar),
+            (false, Some(_)) => {
+                self.tab = None;
+                if let TreeComponent::Tab(path) = self.dst {
+                    self.dst = TreeComponent::Node(path.node_path());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct DragData {
     pub src: TreeComponent,

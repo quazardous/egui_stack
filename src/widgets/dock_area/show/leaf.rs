@@ -1594,6 +1594,7 @@ impl<Tab> DockArea<'_, Tab> {
                             rect,
                             dst,
                             tab,
+                            tab_bar: Some(tabbar_rect),
                             outside: false,
                         }),
                     );
