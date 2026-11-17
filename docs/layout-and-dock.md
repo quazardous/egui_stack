@@ -459,7 +459,10 @@ Where the `layout` module differs from the sketch above:
   (`LAYOUT_VERSION`) and a later version fails to load (`VersionError`).
 - `Constraints` gains `auto_fold: bool`, the opt-in of step 4 of the algorithm (with
   `Fold::ToStrip`). A zone folded by the solver is reported as `Shown::AutoFolded` and its
-  `state.folded` is not written, so it comes back with the room.
+  `state.folded` is not written, so it comes back with the room. A `LayoutArea` reports the
+  change once in `Laid::events`, `LayoutEvent::AutoFolded` and `AutoUnfolded`, so an application
+  can tell a zone the user folded from one folded for want of room. `Layout::set_folded`, the
+  application's own act, reports no event.
 - Giving way is ordered by priority, then nearest to the growing child (else the last open child)
   first, as sections give way nearest the boundary; the solver keeps no memory of the last sash
   dragged. The shared rule is `sections::plan::give_in_turn`.

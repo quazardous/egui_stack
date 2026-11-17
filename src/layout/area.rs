@@ -593,6 +593,7 @@ impl<'a> LayoutArea<'a> {
         } else {
             self.layout.solve(rect, &solve)
         };
+        auto_folds(ui, self.id, &laid, &mut events);
         laid.events = events;
         laid.flyout = flyout_rect;
         laid
@@ -1077,4 +1078,30 @@ fn describe_sash(
             }
         }
     });
+}
+
+/// Reports the zones the solver folded by itself ([`Shown::AutoFolded`]) since
+/// the area was last drawn, and those it brought back, from the auto-folded
+/// zones it remembers between frames. A zone no longer laid (under a folded
+/// zone) is forgotten without an event.
+fn auto_folds(ui: &Ui, id: Id, laid: &Laid, events: &mut Vec<LayoutEvent>) {
+    let memory = id.with("auto_folded");
+    let before: Vec<ZoneName> = ui.ctx().data(|d| d.get_temp(memory)).unwrap_or_default();
+    let now: Vec<ZoneName> = laid
+        .zones
+        .iter()
+        .filter(|zone| zone.shown == Shown::AutoFolded)
+        .map(|zone| zone.name.clone())
+        .collect();
+    for zone in &now {
+        if !before.contains(zone) {
+            events.push(LayoutEvent::AutoFolded { zone: zone.clone() });
+        }
+    }
+    for zone in before {
+        if !now.contains(&zone) && laid.get(&zone.0).is_some() {
+            events.push(LayoutEvent::AutoUnfolded { zone });
+        }
+    }
+    ui.ctx().data_mut(|d| d.insert_temp(memory, now));
 }

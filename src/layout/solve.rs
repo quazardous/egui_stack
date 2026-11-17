@@ -89,7 +89,10 @@ impl LaidZone {
 }
 
 /// What changed in a layout while a [`LayoutArea`](super::LayoutArea) drew
-/// it: the user's acts, each already applied to the [`Layout`].
+/// it: the user's acts, each already applied to the [`Layout`], and the zones
+/// the solver folded or brought back by itself. The application's own
+/// changes ([`Layout::set_folded`](super::Layout::set_folded) and the like)
+/// are not reported: it made them.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutEvent {
@@ -115,6 +118,21 @@ pub enum LayoutEvent {
     },
     /// The zone unfolded, back in the flow: its strip's grip was clicked.
     Unfolded {
+        /// The zone.
+        zone: ZoneName,
+    },
+    /// The solver folded the zone by itself, short of room
+    /// ([`Constraints::auto_fold`](super::Constraints::auto_fold)): it shows
+    /// as [`Shown::AutoFolded`]. Its [`ZoneState::folded`](super::ZoneState::folded)
+    /// is not touched: the zone comes back with the room.
+    AutoFolded {
+        /// The zone.
+        zone: ZoneName,
+    },
+    /// The room came back for a zone the solver had folded
+    /// ([`AutoFolded`](Self::AutoFolded)): it is no longer
+    /// [`Shown::AutoFolded`].
+    AutoUnfolded {
         /// The zone.
         zone: ZoneName,
     },

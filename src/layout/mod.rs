@@ -385,7 +385,9 @@ impl Layout {
 
     /// Folds the zone named `name` to its strip, or unfolds it; either way
     /// it no longer lies over its neighbour. Says whether the zone exists.
-    /// The zone that grows never folds: the solver ignores its state.
+    /// The zone that grows never folds: the solver ignores its state. No
+    /// [`LayoutEvent`] reports it: the events are the user's acts and the
+    /// solver's, not the application's.
     pub fn set_folded(&mut self, name: &str, folded: bool) -> bool {
         self.zone_mut(name)
             .map(|zone| {
