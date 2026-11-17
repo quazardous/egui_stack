@@ -2,7 +2,7 @@
 
 use egui::{Id, Rect};
 
-use crate::layout::{Content, Drops, Laid, Shown};
+use crate::layout::{Content, Drops, Laid, Shown, ZoneName};
 use crate::{AllowedSplits, DockState, Surface, SurfaceIndex, Tree};
 
 /// Several named docks, each with its own tree, and floating windows, sharing one drag: a tab
@@ -74,7 +74,20 @@ pub(crate) struct NoDrop {
     pub(crate) ids: Vec<Id>,
     /// Folded zones' strips taking drops for a dock ([`DockSpace::bind`]): the strip, and the
     /// dock's name.
-    pub(crate) strips: Vec<(Rect, String)>,
+    pub(crate) strips: Vec<StripDrop>,
+    /// Folded split zones a tab was dropped on, to unfold ([`DockSpace::take_unfolds`]). Kept
+    /// across frames until taken.
+    pub(crate) unfolds: Vec<ZoneName>,
+}
+
+/// A folded zone's strip taking drops for a dock ([`DockSpace::bind`]).
+#[derive(Clone, Debug)]
+pub(crate) struct StripDrop {
+    pub(crate) rect: Rect,
+    /// The dock a tab released there joins.
+    pub(crate) dock: String,
+    /// For a split zone's strip, the zone, to unfold once a tab is dropped there.
+    pub(crate) unfold: Option<ZoneName>,
 }
 
 /// A dock of a [`DockSpace`]: its name, its surface and its rules.
@@ -405,7 +418,9 @@ impl<Tab> DockSpace<Tab> {
     /// A folded zone with [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops)
     /// that accepts drops, holding a dock of this space, takes them on its strip instead: a tab
     /// released there joins that dock (its focused leaf, else its first), the strip highlighted
-    /// meanwhile, unless the dock's rules or the viewer's veto refuse it.
+    /// meanwhile, unless the dock's rules or the viewer's veto refuse it. A folded split zone
+    /// with `strip_drops` takes them for one of the docks it holds, the last active one, else the
+    /// first accepting drops, and reports the zone to unfold ([`take_unfolds`](Self::take_unfolds)).
     ///
     /// Call it every frame, after the layout is drawn: its zones take effect for the docks drawn
     /// next, a frame later for those already drawn, which a drag does not notice.
@@ -447,6 +462,15 @@ impl<Tab> DockSpace<Tab> {
     pub fn bind(&mut self, laid: &Laid) {
         for zone in &laid.zones {
             let Some(content) = &zone.content else {
+                if let Some(strip) = zone.strip
+                    && let Some(dock) = self.split_strip_dock(zone)
+                {
+                    self.no_drop.strips.push(StripDrop {
+                        rect: strip,
+                        dock,
+                        unfold: Some(zone.name.clone()),
+                    });
+                }
                 continue;
             };
             if let Some(strip) = zone.strip {
@@ -461,7 +485,11 @@ impl<Tab> DockSpace<Tab> {
                 };
                 match content {
                     Content::Dock(name) if takes => {
-                        self.no_drop.strips.push((strip, name.clone()));
+                        self.no_drop.strips.push(StripDrop {
+                            rect: strip,
+                            dock: name.clone(),
+                            unfold: None,
+                        });
                     }
                     _ => self.no_drop.rects.push(strip),
                 }
@@ -478,6 +506,38 @@ impl<Tab> DockSpace<Tab> {
                 self.no_drop.rects.push(zone.rect);
             }
         }
+    }
+
+    /// The dock a folded split zone's strip takes drops for, with
+    /// [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops): of the docks the
+    /// split holds that accept drops, the one holding the focused leaf (the last active), else
+    /// the first.
+    fn split_strip_dock(&self, zone: &crate::layout::LaidZone) -> Option<String> {
+        if !(zone.strip_drops
+            && zone.drops == Drops::Accept
+            && matches!(zone.shown, Shown::Folded | Shown::AutoFolded))
+        {
+            return None;
+        }
+        let candidates: Vec<&String> = zone
+            .docks
+            .iter()
+            .filter(|name| self.rules(name).is_some_and(|rules| rules.accept_drops))
+            .collect();
+        let focused = self.state.focused_leaf().map(|path| path.surface);
+        candidates
+            .iter()
+            .find(|name| focused.is_some() && self.dock_surface(name) == focused)
+            .or(candidates.first())
+            .map(|name| (*name).clone())
+    }
+
+    /// The folded split zones a tab was dropped on since the last call, for the application to
+    /// unfold ([`Layout::set_folded`](crate::layout::Layout::set_folded)): a split zone's strip
+    /// takes drops with [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops)
+    /// ([`bind`](Self::bind)). Call it every frame, after the layout is drawn.
+    pub fn take_unfolds(&mut self) -> Vec<ZoneName> {
+        std::mem::take(&mut self.no_drop.unfolds)
     }
 
     /// The dock whose [`DockArea`](crate::DockArea) also draws the floating windows: the one

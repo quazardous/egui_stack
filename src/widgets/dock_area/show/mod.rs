@@ -11,8 +11,9 @@ use super::{
 };
 use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
-use crate::dock_space::{NoDrop, dock_name, remove_empty_docks};
+use crate::dock_space::{NoDrop, StripDrop, dock_name, remove_empty_docks};
 use crate::dock_state::tree::node::shares;
+use crate::layout::ZoneName;
 use crate::tab_viewer::{DockDrop, DropVerdict, OnCloseResponse};
 use crate::{
     AllowedSplits, DockArea, DockPainter, DockRules, LinearDir, Node, NodeIndex, OverlayType,
@@ -183,9 +184,10 @@ impl<Tab> DockArea<'_, Tab> {
         });
 
         // A folded zone's strip taking drops wins over whatever lies under it.
-        let hover_data = drag_data
-            .as_ref()
-            .and_then(|_| self.hover_strip(state))
+        let strip = drag_data.as_ref().and_then(|_| self.hover_strip(state));
+        let unfold = strip.as_ref().and_then(|(_, unfold)| unfold.clone());
+        let hover_data = strip
+            .map(|(hover, _)| hover)
             .or(hover_data)
             .or_else(|| self.hover_outside(dock_rect, state, &drag_data));
         // Where no tab may land, the drag hovers nothing: released, the tab stays where it was.
@@ -199,7 +201,11 @@ impl<Tab> DockArea<'_, Tab> {
             hover_data
         };
         if let Some(space) = &mut self.space {
-            *space.no_drop = NoDrop::default();
+            let unfolds = std::mem::take(&mut space.no_drop.unfolds);
+            *space.no_drop = NoDrop {
+                unfolds,
+                ..NoDrop::default()
+            };
         }
 
         if let (Some(source), Some(hover)) = (drag_data, hover_data) {
@@ -214,6 +220,10 @@ impl<Tab> DockArea<'_, Tab> {
             if ui.input(|i| i.pointer.primary_released())
                 && let Some(destination) = tab_dst
             {
+                // Dropped on a folded split zone's strip: the zone is to unfold.
+                if let (Some(zone), Some(space)) = (unfold, &mut self.space) {
+                    space.no_drop.unfolds.push(zone);
+                }
                 let source = match state.dnd.as_ref().unwrap().drag.src {
                     TreeComponent::Tab(src) => src,
                     TreeComponent::Node(src) => {
@@ -353,14 +363,18 @@ impl<Tab> DockArea<'_, Tab> {
     /// ([`DockSpace::bind`](crate::DockSpace::bind)), under the pointer and under no floating
     /// window: hovered as that dock's tab bar, so a tab released there joins the dock's focused
     /// leaf, else its first, or the dock itself when empty.
-    fn hover_strip(&self, state: &State) -> Option<HoverData> {
+    fn hover_strip(&self, state: &State) -> Option<(HoverData, Option<ZoneName>)> {
         let space = self.space.as_ref()?;
         let pointer = state.last_hover_pos?;
-        let (strip, name) = space
+        let StripDrop {
+            rect: strip,
+            dock: name,
+            unfold,
+        } = space
             .no_drop
             .strips
             .iter()
-            .find(|(strip, _)| strip.contains(pointer))?;
+            .find(|strip| strip.rect.contains(pointer))?;
         let over_a_window = self
             .dock_state
             .valid_surface_indices()
@@ -380,14 +394,17 @@ impl<Tab> DockArea<'_, Tab> {
             Some(node) => TreeComponent::Node(NodePath::new(surface, node)),
             None => TreeComponent::Surface(surface),
         };
-        Some(HoverData {
-            rect: *strip,
-            dst,
-            // As a tab bar: the tab joins the leaf, with no split.
-            tab: Some(*strip),
-            tab_bar: None,
-            outside: false,
-        })
+        Some((
+            HoverData {
+                rect: *strip,
+                dst,
+                // As a tab bar: the tab joins the leaf, with no split.
+                tab: Some(*strip),
+                tab_bar: None,
+                outside: false,
+            },
+            unfold.clone(),
+        ))
     }
 
     /// With [`OverlayType::Zones`], a tab dragged outside the dock, where none of its surfaces

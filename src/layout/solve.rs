@@ -73,6 +73,9 @@ pub struct LaidZone {
     /// Whether a tab dropped on its strip, while folded, joins its dock
     /// ([`Constraints::strip_drops`](super::Constraints::strip_drops)).
     pub strip_drops: bool,
+    /// For a split, the docks its leaves hold ([`Content::Dock`]), depth first, leaving out
+    /// the zones hidden or refusing drops; empty for a leaf.
+    pub docks: Vec<String>,
 }
 
 impl LaidZone {
@@ -174,6 +177,7 @@ impl Layout {
             content: leaf_content(&self.root),
             drops: self.root.constraints.drops,
             strip_drops: false,
+            docks: split_docks(&self.root),
         });
         lay_children(&self.root, rect, solve, &mut laid);
         laid
@@ -232,6 +236,7 @@ fn lay_children(zone: &Zone, rect: Rect, solve: &Solve, laid: &mut Laid) {
             content: leaf_content(child),
             drops: child.constraints.drops,
             strip_drops: child.constraints.strip_drops,
+            docks: split_docks(child),
         });
         if matches!(s.shown, Shown::Open | Shown::Over) {
             lay_children(child, child_rect, solve, laid);
@@ -386,6 +391,34 @@ fn fit(
         sized[taker].size = rest;
     }
     (sized, short)
+}
+
+/// The docks a split's leaves hold, depth first, but those hidden or refusing drops; none for
+/// a leaf.
+fn split_docks(zone: &Zone) -> Vec<String> {
+    fn visit(zone: &Zone, docks: &mut Vec<String>) {
+        if zone.state.hidden || zone.constraints.drops == Drops::Refuse {
+            return;
+        }
+        match &zone.kind {
+            ZoneKind::Leaf {
+                content: Content::Dock(name),
+            } => docks.push(name.clone()),
+            ZoneKind::Leaf { .. } => {}
+            ZoneKind::Split { children, .. } => {
+                for child in children {
+                    visit(child, docks);
+                }
+            }
+        }
+    }
+    let mut docks = Vec::new();
+    if let ZoneKind::Split { children, .. } = &zone.kind {
+        for child in children {
+            visit(child, &mut docks);
+        }
+    }
+    docks
 }
 
 fn leaf_content(zone: &Zone) -> Option<Content> {
