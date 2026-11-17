@@ -73,6 +73,7 @@ fn auto_events(app: &mut App) -> Vec<LayoutEvent> {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_zone_folded_by_the_solver_is_reported_once_and_once_back() {
     let mut harness = harness();
     assert!(auto_events(harness.state_mut()).is_empty());
@@ -100,6 +101,7 @@ fn a_zone_folded_by_the_solver_is_reported_once_and_once_back() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn folding_from_the_application_reports_nothing() {
     let mut harness = harness();
     harness.state_mut().layout.set_folded("left", true);
