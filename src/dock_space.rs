@@ -462,14 +462,17 @@ impl<Tab> DockSpace<Tab> {
     pub fn bind(&mut self, laid: &Laid) {
         for zone in &laid.zones {
             let Some(content) = &zone.content else {
-                if let Some(strip) = zone.strip
-                    && let Some(dock) = self.split_strip_dock(zone)
-                {
-                    self.no_drop.strips.push(StripDrop {
-                        rect: strip,
-                        dock,
-                        unfold: Some(zone.name.clone()),
-                    });
+                // A folded split zone's strip: a target for one of its docks, else a no-drop
+                // zone, as a folded leaf's strip is.
+                if let Some(strip) = zone.strip {
+                    match self.split_strip_dock(zone) {
+                        Some(dock) => self.no_drop.strips.push(StripDrop {
+                            rect: strip,
+                            dock,
+                            unfold: Some(zone.name.clone()),
+                        }),
+                        None => self.no_drop.rects.push(strip),
+                    }
                 }
                 continue;
             };
