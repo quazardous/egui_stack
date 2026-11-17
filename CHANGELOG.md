@@ -1,5 +1,32 @@
 # egui_stack changelog
 
+## egui_stack 0.26.0 - 2026-11-17
+
+`OverlayFeel` gains public fields, which breaks code that builds it with a struct literal naming
+every field (end the literal with `..Default::default()`). Behaviour changes to know before
+upgrading: a `DockArea` separator's accessible name is now "Resize between Left and Right" (after
+its neighbours) instead of "Resize", so a test or an assistive script that looked it up by
+"Resize" must use the new name; a tab starts dragging 6 points from the press in every direction
+(`OverlayFeel::drag_activation_distance`), sooner than before; and with `OverlayType::Zones` a
+leaf's drop zones leave its tab bar out.
+
+### Breaking changes
+
+- With `OverlayType::Zones`, the drop zones of a leaf leave its tab bar out: `OverlayFeel` has two new fields, `zone_tab_bar_stack_band`, a band right under the tab bar where a dropped tab joins the leaf's tabs as over the tab bar (`8.0` points by default), and `zone_edges_below_tab_bar`, which lays the edge bands on the leaf's body below the tab bar and that band (`true` by default) instead of on the whole leaf, where in a compact leaf the top band was mostly hidden under the tab bar, leaving a strip under it that split the leaf. `DropZone::in_leaf` picks a zone the way the dock does. `zone_edges_below_tab_bar: false` with `zone_tab_bar_stack_band: 0.0` gives the former geometry back. Breaking for code that builds `OverlayFeel` with a struct literal naming every field: add the new field, or end the literal with `..Default::default()`.
+- `OverlayFeel` has a new field, `drag_activation_distance`: how far, along `x` and `y`, the pointer moves from where it pressed a tab (or the empty part of a tab bar) before the tab (or the tab group) starts being dragged, measured from the press. It is `6.0` along both axes by default, egui's click distance, so a tab drags as soon as the press is no longer a click, in every direction; it used to start only 30 points to the side or 6 points up or down past that point, about 38 and 14 points from the press, with a range in between where the tab neither clicked nor dragged. `vec2(37.0, 13.0)` gives the former distances back. The dragged tab's title moves with the pointer from where it was pressed. Breaking for code that builds `OverlayFeel` with a struct literal naming every field: add the new field, or end the literal with `..Default::default()`.
+
+### Added
+
+- A zone the solver folds by itself for want of room (`Constraints::auto_fold`) is reported once in `Laid::events` by `LayoutArea`: `LayoutEvent::AutoFolded` when it folds, `LayoutEvent::AutoUnfolded` when the room comes back. Its `ZoneState::folded` is still not touched, so an application tells a zone the user folded (`Folded`, `Unfolded`) from one folded for lack of room. `Layout::set_folded` still reports no event: the application made that change itself. An application matching `LayoutEvent` already has a catch-all arm (the enum is `#[non_exhaustive]`).
+- An editor whose tab bar is hidden can be moved again by a handle of the app's choosing: `DockArea::drag_group_by(ui, &response)`, called from `TabViewer::ui` with the response of a widget that senses drags (an editor's own header, a grip), makes that widget drag the whole tab group, as the empty part of a tab bar does, through the same drop zones and past `OverlayFeel::drag_activation_distance`. `DockArea::hidden_tab_bar_drags_group(true)` makes the strip at the top of a hidden tab bar's leaf (`TabBodyStyle::hidden_tab_bar_drag_height` high) drag the group too, instead of its active tab alone. Both are opt-in: nothing changes for an app that uses neither.
+- A `DockArea` separator is named after what it resizes, "Resize between Left and Right" (the titles of the active tabs on each side, of the first leaf for a side holding a split), from the new label `Labels::separator_between`, so a screen reader tells two separators apart; `Labels::separator` ("Resize") still names a grid's lines and a separator next to an empty leaf. A `LayoutArea` sash now exposes its step, `LayoutStyle::key_step`, next to its value, minimum and maximum in points, as a `DockArea` separator does. Both stay Tab stops moved by the arrow keys, and ranges set or stepped through accesskit (SetValue, Increment, Decrement). An app or test that looked a dock separator up by the name "Resize" finds it by its new name.
+- A folded split zone's strip can take dragged tabs: with `Constraints::strip_drops` on a split zone, a tab released on its strip joins one of the docks the split holds that accept drops, the one holding the focused leaf (the last active), else the first, depth first, and `DockSpace::take_unfolds`, called after the layout is drawn, names the zone for the application to unfold with `Layout::set_folded`. `LaidZone` has a new field, `docks`: the docks a split's leaves hold. Off by default: a split zone without `strip_drops` behaves as before.
+
+### Fixed
+
+- A dragged tab lands where the pointer is released, not where it was a frame earlier: released on a leaf's tab bar it joins the leaf's tabs, released in an edge band it splits the leaf, also when the pointer moved there in the release frame or while the hovered leaf is still preferred (`OverlayFeel::max_preference_time`), which now keeps the leaf only, not whether its tab bar or its body was hovered.
+- A folded split zone's strip that takes no drops (without `Constraints::strip_drops`, or when none of its docks accepts them) is a no-drop zone for `DockSpace::bind`, as a folded leaf's strip is: a tab released there stays where it was, instead of opening in a floating window.
+
 ## egui_stack 0.25.12 - 2026-11-16
 
 ### Added
