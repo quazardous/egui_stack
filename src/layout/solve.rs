@@ -121,21 +121,6 @@ pub enum LayoutEvent {
         /// The zone.
         zone: ZoneName,
     },
-    /// The solver folded the zone by itself, short of room
-    /// ([`Constraints::auto_fold`](super::Constraints::auto_fold)): it shows
-    /// as [`Shown::AutoFolded`]. Its [`ZoneState::folded`](super::ZoneState::folded)
-    /// is not touched: the zone comes back with the room.
-    AutoFolded {
-        /// The zone.
-        zone: ZoneName,
-    },
-    /// The room came back for a zone the solver had folded
-    /// ([`AutoFolded`](Self::AutoFolded)): it is no longer
-    /// [`Shown::AutoFolded`].
-    AutoUnfolded {
-        /// The zone.
-        zone: ZoneName,
-    },
     /// The flyout asked to close (Escape, a click outside it, its strip's
     /// grip, its zone unfolded): the application stops giving it to
     /// [`LayoutArea::flyout`](super::LayoutArea::flyout).
@@ -150,6 +135,21 @@ pub enum LayoutEvent {
         key: String,
         /// Its breadth, in points.
         size: f32,
+    },
+    /// The solver folded the zone by itself, short of room
+    /// ([`Constraints::auto_fold`](super::Constraints::auto_fold)): it shows
+    /// as [`Shown::AutoFolded`]. Its [`ZoneState::folded`](super::ZoneState::folded)
+    /// is not touched: the zone comes back with the room.
+    AutoFolded {
+        /// The zone.
+        zone: ZoneName,
+    },
+    /// The room came back for a zone the solver had folded
+    /// ([`AutoFolded`](Self::AutoFolded)): it is no longer
+    /// [`Shown::AutoFolded`].
+    AutoUnfolded {
+        /// The zone.
+        zone: ZoneName,
     },
 }
 
