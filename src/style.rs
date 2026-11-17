@@ -408,8 +408,9 @@ pub struct OverlayFeel {
 
     /// With [`OverlayType::Zones`], how much of a leaf's width (left and right) or height (top
     /// and bottom) the band along each edge covers, in `0.0..=0.5`: over a band, a dropped tab
-    /// splits the leaf on that side; over the rest, it joins the leaf's tabs. See
-    /// [`DropZone::at`](crate::DropZone::at).
+    /// splits the leaf on that side; over the rest, it joins the leaf's tabs. The height is the
+    /// body's, below the tab bar, with [`zone_edges_below_tab_bar`](Self::zone_edges_below_tab_bar).
+    /// See [`DropZone::in_leaf`](crate::DropZone::in_leaf).
     pub zone_edge_coverage: f32,
 
     /// With [`OverlayType::Zones`], whether the edge bands
