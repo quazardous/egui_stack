@@ -770,7 +770,7 @@ impl<Tab> Tree<Tab> {
     }
 
     /// The first leaf in the subtree of `top`, `top` included, depth first.
-    fn first_leaf(&self, top: NodeIndex) -> Option<NodeIndex> {
+    pub(crate) fn first_leaf(&self, top: NodeIndex) -> Option<NodeIndex> {
         match self.nodes.get(top.0)? {
             Node::Leaf(_) => Some(top),
             node => node

@@ -128,7 +128,7 @@ fn buttons_are_named() {
 fn labels_are_settable() {
     let mut labels = Labels::default();
     labels.close_tab = "Fermer l'onglet".into();
-    labels.separator = "Redimensionner".into();
+    labels.separator_between = "Redimensionner entre {first} et {second}".into();
     let mut harness = harness(split_dock(), labels);
     harness.run();
 
@@ -143,7 +143,7 @@ fn labels_are_settable() {
             .query_by_role_and_label(Role::Button, "Close tab")
             .is_none()
     );
-    harness.get_by_role_and_label(Role::Splitter, "Redimensionner");
+    harness.get_by_role_and_label(Role::Splitter, "Redimensionner entre First et Third");
 }
 
 #[test]
@@ -194,7 +194,7 @@ fn separators_are_splitters() {
 
     let numeric = |harness: &Harness<'_, App>| {
         harness
-            .get_by_role_and_label(Role::Splitter, "Resize")
+            .get_by_role_and_label(Role::Splitter, "Resize between First and Third")
             .accesskit_node()
             .numeric_value()
             .unwrap()
@@ -203,7 +203,7 @@ fn separators_are_splitters() {
     assert_eq!(split_fraction(harness.state()), 0.5);
 
     harness
-        .get_by_role_and_label(Role::Splitter, "Resize")
+        .get_by_role_and_label(Role::Splitter, "Resize between First and Third")
         .increment_accesskit();
     harness.run();
     let increased = split_fraction(harness.state());
@@ -211,13 +211,13 @@ fn separators_are_splitters() {
     assert_eq!(numeric(&harness), f64::from(increased));
 
     harness
-        .get_by_role_and_label(Role::Splitter, "Resize")
+        .get_by_role_and_label(Role::Splitter, "Resize between First and Third")
         .decrement_accesskit();
     harness.run();
     assert!((split_fraction(harness.state()) - 0.5).abs() < 1e-6);
 
     harness
-        .get_by_role_and_label(Role::Splitter, "Resize")
+        .get_by_role_and_label(Role::Splitter, "Resize between First and Third")
         .set_value_accesskit(0.25);
     harness.run();
     assert!((split_fraction(harness.state()) - 0.25).abs() < 1e-6);
