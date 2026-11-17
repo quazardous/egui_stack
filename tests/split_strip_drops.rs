@@ -141,11 +141,30 @@ fn a_folded_split_strip_refuses_drops_by_default() {
     let mut harness = harness(false, DockRules::default());
     let target = strip(&harness);
     drop_at(&mut harness, "Preview", target);
-    // As before: the strip is no dock's, the tab joins neither of the split's docks.
-    let dock = dock_of(harness.state(), "Preview");
-    assert!(
-        !matches!(dock.as_deref(), Some("top" | "bottom")),
-        "{dock:?}"
+    // The strip takes no drops and is a no-drop zone: the tab stays where it was, in no
+    // floating window.
+    assert_eq!(
+        dock_of(harness.state(), "Preview").as_deref(),
+        Some("centre")
+    );
+    assert!(harness.state().unfolded.is_empty());
+    assert!(folded(harness.state()));
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_folded_split_strip_whose_docks_all_refuse_drops_is_a_no_drop_zone() {
+    let mut harness = harness(true, DockRules::default().accept_drops(false));
+    harness
+        .state_mut()
+        .space
+        .set_rules("top", DockRules::default().accept_drops(false));
+    harness.run();
+    let target = strip(&harness);
+    drop_at(&mut harness, "Preview", target);
+    assert_eq!(
+        dock_of(harness.state(), "Preview").as_deref(),
+        Some("centre")
     );
     assert!(harness.state().unfolded.is_empty());
     assert!(folded(harness.state()));
