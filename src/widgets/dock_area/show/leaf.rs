@@ -6,6 +6,7 @@ use egui::{
 };
 
 use crate::NodePath;
+use crate::dock_area::BodyLeaf;
 use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
@@ -92,6 +93,15 @@ impl<Tab> DockArea<'_, Tab> {
 
         if tab_bar_hidden {
             self.hidden_tab_bar_controls(ui, state, path, tabbar_rect, style);
+        }
+
+        // A handle of the body (`DockArea::drag_group_by`) asked to drag the group.
+        let request = BodyLeaf::request_id(self.id);
+        if let Some(handle_path) = ui.data_mut(|d| d.remove_temp::<NodePath>(request))
+            && handle_path == path
+            && self.draggable_tabs
+        {
+            self.try_initiate_node_drag(ui, state, path);
         }
 
         let tabs = self.dock_state[path]
@@ -204,11 +214,15 @@ impl<Tab> DockArea<'_, Tab> {
                 && ui.input(|i| i.pointer.is_decidedly_dragging());
             if is_being_dragged {
                 ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
-                let active = self.dock_state[path]
-                    .get_leaf()
-                    .expect("This node must be a leaf")
-                    .active;
-                self.try_initiate_tab_drag(ui, state, path, active);
+                if self.hidden_tab_bar_drags_group {
+                    self.try_initiate_node_drag(ui, state, path);
+                } else {
+                    let active = self.dock_state[path]
+                        .get_leaf()
+                        .expect("This node must be a leaf")
+                        .active;
+                    self.try_initiate_tab_drag(ui, state, path, active);
+                }
             }
         }
     }
@@ -1558,7 +1572,18 @@ impl<Tab> DockArea<'_, Tab> {
                         }
                         let available_rect = ui.available_rect_before_wrap();
                         ui.expand_to_include_rect(available_rect);
+                        let outer = ui.data_mut(|d| {
+                            let body = BodyLeaf {
+                                dock_area: self.id,
+                                path,
+                                draggable: self.draggable_tabs,
+                            };
+                            let outer = d.get_temp::<Option<BodyLeaf>>(BodyLeaf::id()).flatten();
+                            d.insert_temp(BodyLeaf::id(), Some(body));
+                            outer
+                        });
                         tab_viewer.ui(ui, tab);
+                        ui.data_mut(|d| d.insert_temp(BodyLeaf::id(), outer));
                     });
             });
         }

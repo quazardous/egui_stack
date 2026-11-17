@@ -15,7 +15,7 @@ pub use allowed_splits::AllowedSplits;
 pub use drop_zone::DropZone;
 use std::panic::AssertUnwindSafe;
 
-use egui::{Context, Id, Modifiers, emath::*};
+use egui::{Context, Id, Modifiers, Response, Ui, emath::*};
 pub use labels::Labels;
 use tab_removal::TabRemoval;
 
@@ -41,6 +41,7 @@ pub struct DockArea<'tree, Tab> {
     draggable_tabs: bool,
     tab_focus: TabFocus,
     hidable_tab_bars: bool,
+    hidden_tab_bar_drags_group: bool,
     show_tab_name_on_hover: bool,
     show_window_close_buttons: bool,
     show_window_collapse_buttons: bool,
@@ -121,6 +122,56 @@ impl DockArea<'_, ()> {
         ctx.data(|d| d.get_temp::<state::State>(id))
             .and_then(|state| state.dragged_node)
     }
+
+    /// Makes `response` a handle that drags the whole tab group showing it, as the empty part of
+    /// a tab bar does: call it from [`TabViewer::ui`](crate::TabViewer::ui) with the response of
+    /// a widget of the tab's body that senses drags, such as an editor's own header. It lets an
+    /// editor whose tab bar is hidden be moved by a handle the app draws where it wants.
+    ///
+    /// Dragged past [`OverlayFeel::drag_activation_distance`](crate::OverlayFeel::drag_activation_distance),
+    /// the group moves through the same drop zones as a tab, and
+    /// [`dragged_node`](Self::dragged_node) reports it. It does nothing outside a tab's body, or
+    /// when the [`DockArea`]'s tabs are not [`draggable`](DockArea::draggable_tabs). Returns
+    /// whether `response` is being dragged as a handle.
+    pub fn drag_group_by(ui: &Ui, response: &Response) -> bool {
+        let Some(body) = ui.data(|d| d.get_temp::<Option<BodyLeaf>>(BodyLeaf::id()).flatten())
+        else {
+            return false;
+        };
+        if !body.draggable {
+            return false;
+        }
+        let dragged = response.dragged() && ui.input(|i| i.pointer.is_decidedly_dragging());
+        if dragged {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+            ui.data_mut(|d| d.insert_temp(BodyLeaf::request_id(body.dock_area), body.path));
+        } else if response.hovered() && ui.ctx().dragged_id().is_none() {
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
+        }
+        dragged
+    }
+}
+
+/// The leaf whose tab body is being shown, so that [`DockArea::drag_group_by`] knows which
+/// group a handle drags. Kept in the context's temporary data while
+/// [`TabViewer::ui`](crate::TabViewer::ui) runs, the outer one put back after (a dock shown
+/// inside a tab).
+#[derive(Clone, Copy)]
+struct BodyLeaf {
+    dock_area: Id,
+    path: NodePath,
+    draggable: bool,
+}
+
+impl BodyLeaf {
+    fn id() -> Id {
+        Id::unique("egui_stack::BodyLeaf")
+    }
+
+    /// Where a handle asks the [`DockArea`] `dock_area` to drag a group this frame.
+    fn request_id(dock_area: Id) -> Id {
+        dock_area.with("group_drag_request")
+    }
 }
 
 /// How the keyboard focus reaches the tabs of a tab bar, set with [`DockArea::tab_focus`], or
@@ -157,6 +208,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             draggable_tabs: true,
             tab_focus: TabFocus::Each,
             hidable_tab_bars: false,
+            hidden_tab_bar_drags_group: false,
             show_tab_name_on_hover: false,
             allowed_splits: AllowedSplits::default(),
             space: None,
@@ -356,6 +408,17 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     /// By default it's `false`.
     pub fn hidable_tab_bars(mut self, hidable_tab_bars: bool) -> Self {
         self.hidable_tab_bars = hidable_tab_bars;
+        self
+    }
+
+    /// Whether the strip left at the top of a leaf whose tab bar is hidden drags the whole tab
+    /// group, as the empty part of a tab bar does, rather than its active tab alone.
+    /// By default it's `false`: the strip drags the active tab.
+    ///
+    /// The strip is [`TabBodyStyle::hidden_tab_bar_drag_height`](crate::TabBodyStyle::hidden_tab_bar_drag_height)
+    /// high. [`DockArea::drag_group_by`] makes any widget of the tab's body a handle instead.
+    pub fn hidden_tab_bar_drags_group(mut self, drags_group: bool) -> Self {
+        self.hidden_tab_bar_drags_group = drags_group;
         self
     }
 
