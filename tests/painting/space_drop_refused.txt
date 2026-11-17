@@ -98,13 +98,13 @@ clip [[0.0 0.0] - [900.0 400.0]]
   Rect(RectShape { rect: [[706.0 166.0] - [769.3 189.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 1.0, color: #FF_00_00_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[0.0 0.0] - [900.0 400.0]]
   Text "Not here" at [712.0 170.0] size [51.3 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
-clip [[657.1 128.0] - [809.1 152.0]]
-  Rect(RectShape { rect: [[657.1 128.0] - [722.9 152.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
-clip [[657.1 128.0] - [809.1 152.0]]
-  Rect(RectShape { rect: [[658.1 129.0] - [721.9 151.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
-clip [[657.1 128.0] - [809.1 152.0]]
-  Text "Files" at [665.1 132.5] size [25.8 15.0] fallback #FF_FF_FF_FF override None opacity 1.0
-clip [[657.1 128.0] - [809.1 152.0]]
-  LineSegment { points: [[706.4 135.5], [715.4 144.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
-clip [[657.1 128.0] - [809.1 152.0]]
-  LineSegment { points: [[715.4 135.5], [706.4 144.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[657.1 138.0] - [809.1 162.0]]
+  Rect(RectShape { rect: [[657.1 138.0] - [722.9 162.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[657.1 138.0] - [809.1 162.0]]
+  Rect(RectShape { rect: [[658.1 139.0] - [721.9 161.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[657.1 138.0] - [809.1 162.0]]
+  Text "Files" at [665.1 142.5] size [25.8 15.0] fallback #FF_FF_FF_FF override None opacity 1.0
+clip [[657.1 138.0] - [809.1 162.0]]
+  LineSegment { points: [[706.4 145.5], [715.4 154.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[657.1 138.0] - [809.1 162.0]]
+  LineSegment { points: [[715.4 145.5], [706.4 154.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
