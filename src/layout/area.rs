@@ -1039,11 +1039,18 @@ fn sash_ui(
             },
         );
     }
-    describe_sash(ui, &response, sash, sash.size, names);
+    describe_sash(ui, &response, sash, sash.size, style.key_step, names);
 }
 
-/// The sash as a splitter whose value is its zone's size.
-fn describe_sash(ui: &Ui, response: &Response, sash: &Sash, size: f32, names: &Names<'_>) {
+/// The sash as a splitter whose value is its zone's size, stepped by `key_step` points.
+fn describe_sash(
+    ui: &Ui,
+    response: &Response,
+    sash: &Sash,
+    size: f32,
+    key_step: f32,
+    names: &Names<'_>,
+) {
     let label = names.resize(&sash.zone);
     let enabled = ui.is_enabled();
     response.widget_info(|| {
@@ -1059,6 +1066,7 @@ fn describe_sash(ui: &Ui, response: &Response, sash: &Sash, size: f32, names: &N
         });
         node.set_min_numeric_value(f64::from(sash.least));
         node.set_max_numeric_value(f64::from(sash.most));
+        node.set_numeric_value_step(f64::from(key_step));
         if sash.least < sash.most {
             node.add_action(Action::SetValue);
             if size < sash.most {

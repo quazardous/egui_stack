@@ -640,7 +640,8 @@ impl<Tab> DockArea<'_, Tab> {
                 node: node_index,
             };
             for separator in separators(&self.dock_state[path]) {
-                self.show_separator(ui, path, separator, fade_style);
+                let name = self.separator_name(path, separator, tab_viewer);
+                self.show_separator(ui, path, separator, &name, fade_style);
             }
         }
     }
@@ -775,12 +776,46 @@ impl<Tab> DockArea<'_, Tab> {
         }
     }
 
-    /// Shows a separator of the container at `path`.
+    /// The accessible name of a separator of the container at `path`: "Resize between {first}
+    /// and {second}", named after the active tab of the first leaf on each side, or "Resize"
+    /// when a side has none (a grid's line, an empty leaf).
+    fn separator_name(
+        &mut self,
+        path: NodePath,
+        separator_of: SeparatorOf,
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
+    ) -> String {
+        let surface = &mut self.dock_state[path.surface];
+        let pair = match (&surface[path.node], separator_of) {
+            (Node::Linear(linear), SeparatorOf::Linear(index)) => {
+                Some([linear.children()[index], linear.children()[index + 1]])
+            }
+            _ => None,
+        };
+        let mut title = |side: NodeIndex| {
+            let leaf = surface.first_leaf(side)?;
+            let leaf = surface[leaf].get_leaf_mut()?;
+            let active = leaf.active.0;
+            let tab = leaf.tabs.get_mut(active)?;
+            Some(tab_viewer.title(tab).text().to_owned())
+        };
+        match pair.map(|[first, second]| (title(first), title(second))) {
+            Some((Some(first), Some(second))) => self
+                .labels
+                .separator_between
+                .replace("{first}", &first)
+                .replace("{second}", &second),
+            _ => self.labels.separator.to_string(),
+        }
+    }
+
+    /// Shows a separator of the container at `path`, named `label`.
     fn show_separator(
         &mut self,
         ui: &mut Ui,
         path: NodePath,
         separator_of: SeparatorOf,
+        label: &str,
         fade_style: Option<&Style>,
     ) {
         let tree = &self.dock_state[path.surface];
@@ -796,7 +831,6 @@ impl<Tab> DockArea<'_, Tab> {
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
         let pixels_per_point = ui.ctx().pixels_per_point();
         let painter = self.painter.0;
-        let label = &self.labels.separator;
 
         // The separator stands after the share `index`, moving it and the next one.
         let (horizontal, rect, shares, index) =

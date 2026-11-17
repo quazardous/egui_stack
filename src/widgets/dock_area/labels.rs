@@ -41,8 +41,13 @@ pub struct Labels {
     pub restore_window: Cow<'static, str>,
     /// The button that shows a hidden tab bar.
     pub show_tab_bar: Cow<'static, str>,
-    /// A separator between two nodes, which resizes them.
+    /// A separator between two nodes, which resizes them, when they have no names: a line of
+    /// a grid, or a neighbour with no tab.
     pub separator: Cow<'static, str>,
+    /// A separator between two nodes, which resizes them: `{first}` and `{second}` are replaced
+    /// by the titles of the active tabs on each side (of the first leaf, for a side holding a
+    /// split), before then after it.
+    pub separator_between: Cow<'static, str>,
     /// A boundary between two sections of a [`Sections`](crate::sections::Sections) stack,
     /// which resizes the section above it: `{section}` is replaced by that section's title.
     pub resize_section: Cow<'static, str>,
@@ -77,6 +82,7 @@ impl Labels {
         restore_window: Cow::Borrowed("Restore window"),
         show_tab_bar: Cow::Borrowed("Show tab bar"),
         separator: Cow::Borrowed("Resize"),
+        separator_between: Cow::Borrowed("Resize between {first} and {second}"),
         resize_section: Cow::Borrowed("Resize {section}"),
         more_tools: Cow::Borrowed("More tools"),
         more_tools_in: Cow::Borrowed("More tools: {toolbar}"),
