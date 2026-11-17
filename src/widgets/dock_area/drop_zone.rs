@@ -1,6 +1,6 @@
 use egui::{Pos2, Rect};
 
-use crate::{AllowedSplits, Split};
+use crate::{AllowedSplits, OverlayFeel, Split};
 
 /// The region of a leaf a dragged tab is dropped on with
 /// [`OverlayType::Zones`](crate::OverlayType::Zones): a band along one of its edges, which splits
@@ -52,6 +52,37 @@ impl DropZone {
             }
         }
         best.0
+    }
+
+    /// The zone of a leaf under `pointer`, as the dock picks it: `leaf` is the whole leaf,
+    /// `tab_bar` its tab bar, if it has one, and `feel` the overlay's settings.
+    ///
+    /// Right under the tab bar, over [`OverlayFeel::zone_tab_bar_stack_band`], it is
+    /// [`DropZone::Center`], whatever the edges say. Elsewhere [`DropZone::at`] picks the zone
+    /// with [`OverlayFeel::zone_edge_coverage`], on the leaf's body below the tab bar and that
+    /// band when [`OverlayFeel::zone_edges_below_tab_bar`] is set, on the whole leaf if not.
+    /// Without a tab bar, it is [`DropZone::at`] on the whole leaf.
+    pub fn in_leaf(
+        leaf: Rect,
+        tab_bar: Option<Rect>,
+        pointer: Pos2,
+        feel: &OverlayFeel,
+        allowed: AllowedSplits,
+    ) -> Self {
+        let Some(tab_bar) = tab_bar else {
+            return Self::at(leaf, pointer, feel.zone_edge_coverage, allowed);
+        };
+        let body_top =
+            (tab_bar.bottom() + feel.zone_tab_bar_stack_band.max(0.0)).min(leaf.bottom());
+        if (tab_bar.bottom()..body_top).contains(&pointer.y) {
+            return Self::Center;
+        }
+        let rect = if feel.zone_edges_below_tab_bar {
+            Rect::from_min_max(Pos2::new(leaf.left(), body_top), leaf.max)
+        } else {
+            leaf
+        };
+        Self::at(rect, pointer, feel.zone_edge_coverage, allowed)
     }
 
     /// The split this zone makes, `None` for [`DropZone::Center`].
@@ -153,6 +184,66 @@ mod tests {
         assert_eq!(
             DropZone::at(empty, pos2(10.0, 10.0), 0.25, AllowedSplits::All),
             DropZone::Center
+        );
+    }
+
+    /// A compact leaf: 96 points high, a 28-point tab bar.
+    const COMPACT: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(400.0, 96.0));
+    const TAB_BAR: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(400.0, 28.0));
+
+    fn in_compact(y: f32, feel: &crate::OverlayFeel) -> DropZone {
+        DropZone::in_leaf(
+            COMPACT,
+            Some(TAB_BAR),
+            pos2(200.0, y),
+            feel,
+            AllowedSplits::All,
+        )
+    }
+
+    #[test]
+    fn under_the_tab_bar_the_stack_band_joins_the_tabs() {
+        let feel = crate::OverlayFeel::default();
+        assert_eq!(feel.zone_tab_bar_stack_band, 8.0);
+        assert_eq!(in_compact(28.0, &feel), DropZone::Center);
+        assert_eq!(in_compact(35.9, &feel), DropZone::Center);
+        // The body starts at 36 and is 60 points high: its top band, 30 %, is 18 points.
+        assert_eq!(in_compact(36.0, &feel), DropZone::Top);
+        assert_eq!(in_compact(53.9, &feel), DropZone::Top);
+        assert_eq!(in_compact(54.1, &feel), DropZone::Center);
+        assert_eq!(in_compact(78.1, &feel), DropZone::Bottom);
+    }
+
+    #[test]
+    fn the_former_geometry_is_the_whole_leaf() {
+        let feel = crate::OverlayFeel {
+            zone_edges_below_tab_bar: false,
+            zone_tab_bar_stack_band: 0.0,
+            ..Default::default()
+        };
+        // 30 % of 96 points: the top band ends 28.8 points down.
+        assert_eq!(in_compact(28.5, &feel), DropZone::Top);
+        assert_eq!(in_compact(29.0, &feel), DropZone::Center);
+    }
+
+    #[test]
+    fn bands_below_the_tab_bar_without_a_stack_band() {
+        let feel = crate::OverlayFeel {
+            zone_tab_bar_stack_band: 0.0,
+            ..Default::default()
+        };
+        // The body is 68 points high from 28: its top band ends 20.4 points down.
+        assert_eq!(in_compact(28.0, &feel), DropZone::Top);
+        assert_eq!(in_compact(48.0, &feel), DropZone::Top);
+        assert_eq!(in_compact(49.0, &feel), DropZone::Center);
+    }
+
+    #[test]
+    fn without_a_tab_bar_it_is_the_whole_leaf() {
+        let feel = crate::OverlayFeel::default();
+        assert_eq!(
+            DropZone::in_leaf(COMPACT, None, pos2(200.0, 28.5), &feel, AllowedSplits::All),
+            DropZone::Top
         );
     }
 

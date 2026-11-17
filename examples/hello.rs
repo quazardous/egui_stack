@@ -435,6 +435,17 @@ impl MyContext {
                 );
                 labeled_widget!(
                     ui,
+                    unit_slider!(&mut style.overlay.feel.zone_tab_bar_stack_band, 0.0..=40.0, "pt"),
+                    "Tab bar stack band",
+                    "the band under a tab bar where a dropped tab joins the leaf's tabs, with the Zones overlay."
+                );
+                ui.checkbox(
+                    &mut style.overlay.feel.zone_edges_below_tab_bar,
+                    "Zone edges below the tab bar",
+                )
+                .on_hover_text("lay the edge bands on the leaf's body, below its tab bar, with the Zones overlay.");
+                labeled_widget!(
+                    ui,
                     unit_slider!(&mut style.overlay.feel.center_drop_coverage, 0.0..=1.0, "%", 100.0),
                     "Center drop coverage",
                     "how big the area where dropping a tab into the center of another should be."

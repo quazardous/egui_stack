@@ -258,7 +258,7 @@ impl DragDropState {
     }
 
     /// Resolves the destination from the zone of the hovered node under the pointer
-    /// ([`DropZone::at`]), or a new window outside the dock; the preview, which shows the zone,
+    /// ([`DropZone::in_leaf`]), or a new window outside the dock; the preview, which shows the zone,
     /// is left to the caller.
     pub(super) fn resolve_zones(
         &mut self,
@@ -283,10 +283,11 @@ impl DragDropState {
         draw_highlight_rect(self.hover.rect, ui, style, painter);
         self.update_lock(LockState::SoftLock, style, ui.ctx());
 
-        let zone = DropZone::at(
+        let zone = DropZone::in_leaf(
             self.hover.rect,
+            self.hover.tab_bar,
             self.pointer,
-            style.overlay.feel.zone_edge_coverage,
+            &style.overlay.feel,
             allowed_splits,
         );
         match self.hover.dst {
