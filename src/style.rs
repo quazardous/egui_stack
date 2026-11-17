@@ -412,6 +412,23 @@ pub struct OverlayFeel {
     /// [`DropZone::at`](crate::DropZone::at).
     pub zone_edge_coverage: f32,
 
+    /// With [`OverlayType::Zones`], whether the edge bands
+    /// ([`zone_edge_coverage`](Self::zone_edge_coverage)) are laid on the leaf's body, below its
+    /// tab bar and the [`zone_tab_bar_stack_band`](Self::zone_tab_bar_stack_band), or on the whole
+    /// leaf, tab bar included. On the whole leaf, the top band of a compact leaf lies mostly under
+    /// its tab bar, leaving a thin strip of it right below the bar.
+    ///
+    /// By `Default` it's `true`; `false`, with a `zone_tab_bar_stack_band` of `0.0`, gives the
+    /// geometry of egui_stack 0.25.12 and before.
+    pub zone_edges_below_tab_bar: bool,
+
+    /// With [`OverlayType::Zones`], the height in points of a band right under a leaf's tab bar
+    /// where a dropped tab joins the leaf's tabs, as over the tab bar itself, whatever the edge
+    /// bands say: a tab aimed at the tab bar and released a little low does not split the leaf.
+    ///
+    /// By `Default` it's `8.0`, a third of a default tab bar's height.
+    pub zone_tab_bar_stack_band: f32,
+
     /// How far, in points, the pointer must move from where it was pressed on a tab (or on the
     /// empty part of a tab bar) along `x` and along `y` before the tab (or the tab group) starts
     /// being dragged; further along either axis, it drags.
@@ -641,6 +658,8 @@ impl Default for OverlayFeel {
             fade_hold_time: 0.2,
             interact_expansion: 20.0,
             zone_edge_coverage: 0.3,
+            zone_edges_below_tab_bar: true,
+            zone_tab_bar_stack_band: 8.0,
             drag_activation_distance: Vec2::splat(6.0),
         }
     }
