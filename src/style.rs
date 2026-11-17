@@ -1,4 +1,4 @@
-use egui::{CornerRadius, Margin, Stroke, ecolor::*};
+use egui::{CornerRadius, Margin, Stroke, Vec2, ecolor::*};
 
 /// Left or right alignment for tab add button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -411,6 +411,18 @@ pub struct OverlayFeel {
     /// splits the leaf on that side; over the rest, it joins the leaf's tabs. See
     /// [`DropZone::at`](crate::DropZone::at).
     pub zone_edge_coverage: f32,
+
+    /// How far, in points, the pointer must move from where it was pressed on a tab (or on the
+    /// empty part of a tab bar) along `x` and along `y` before the tab (or the tab group) starts
+    /// being dragged; further along either axis, it drags.
+    ///
+    /// egui takes a press for a click until the pointer moves further than its click distance
+    /// ([`egui::InputOptions::max_click_dist`]), so a distance at or below it starts the drag as
+    /// soon as the press is no longer a click. A larger distance leaves a range where the press
+    /// neither clicks nor drags, which can guard against moving a tab by accident.
+    ///
+    /// By `Default` it's `6.0` along both axes, egui's default click distance.
+    pub drag_activation_distance: Vec2,
 }
 
 /// Specifies the type of overlay used.
@@ -629,6 +641,7 @@ impl Default for OverlayFeel {
             fade_hold_time: 0.2,
             interact_expansion: 20.0,
             zone_edge_coverage: 0.3,
+            drag_activation_distance: Vec2::splat(6.0),
         }
     }
 }

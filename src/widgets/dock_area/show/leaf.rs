@@ -1,8 +1,8 @@
 use egui::{
     Align, Button, Color32, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId, Layout,
-    NumExt, Order, Popup, PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape, Stroke,
-    TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role, emath::TSTransform,
-    lerp, pos2, vec2,
+    NumExt, Order, Popup, PopupCloseBehavior, Pos2, Rect, Response, ScrollArea, Sense, Shape,
+    Stroke, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role,
+    emath::TSTransform, lerp, pos2, vec2,
 };
 
 use crate::NodePath;
@@ -1101,14 +1101,36 @@ impl<Tab> DockArea<'_, Tab> {
         }
     }
 
+    /// Where the button dragging a tab was pressed, the drag's distances are measured from; the
+    /// pointer when egui no longer knows it.
+    fn press_origin(ui: &Ui, pointer_pos: Pos2) -> Pos2 {
+        ui.input(|i| i.pointer.press_origin())
+            .unwrap_or(pointer_pos)
+    }
+
+    /// Whether a pointer `delta` away from the press starts a drag
+    /// ([`OverlayFeel::drag_activation_distance`](crate::OverlayFeel::drag_activation_distance)).
+    fn drag_activated(&self, delta: Vec2) -> bool {
+        let distance = self
+            .style
+            .as_ref()
+            .unwrap()
+            .overlay
+            .feel
+            .drag_activation_distance;
+        delta.x.abs() > distance.x || delta.y.abs() > distance.y
+    }
+
     /// As [`try_initiate_tab_drag`](Self::try_initiate_tab_drag), for a whole leaf.
     fn try_initiate_node_drag(&self, ui: &Ui, state: &mut State, path: NodePath) {
         let Some(pointer_pos) = ui.ctx().pointer_interact_pos() else {
             return;
         };
-        let start = *state.drag_start.get_or_insert(pointer_pos);
+        let start = *state
+            .drag_start
+            .get_or_insert_with(|| Self::press_origin(ui, pointer_pos));
         let delta = pointer_pos - start;
-        if delta.x.abs() > 30.0 || delta.y.abs() > 6.0 {
+        if self.drag_activated(delta) {
             state.dragged_node = Some(DraggedNode {
                 path,
                 pointer: pointer_pos,
@@ -1135,9 +1157,11 @@ impl<Tab> DockArea<'_, Tab> {
         tab_index: TabIndex,
     ) -> Option<Vec2> {
         let pointer_pos = ui.ctx().pointer_interact_pos()?;
-        let start = *state.drag_start.get_or_insert(pointer_pos);
+        let start = *state
+            .drag_start
+            .get_or_insert_with(|| Self::press_origin(ui, pointer_pos));
         let delta = pointer_pos - start;
-        (delta.x.abs() > 30.0 || delta.y.abs() > 6.0).then(|| {
+        self.drag_activated(delta).then(|| {
             state.dragged = Some(DraggedTab {
                 path: (path, tab_index).into(),
                 pointer: pointer_pos,
