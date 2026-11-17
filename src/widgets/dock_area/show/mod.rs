@@ -160,10 +160,20 @@ impl<Tab> DockArea<'_, Tab> {
         state.dragged = None;
         state.dragged_node = None;
 
-        // Delay hover position one frame. On touch screens hover_pos() is None when any_released()
-        if !ui.input(|i| i.pointer.any_released()) {
-            state.last_hover_pos = ui.input(|i| i.pointer.hover_pos());
-        }
+        // Where the pointer is now. On a release, where it was released: a mouse moved and
+        // released in one frame drops there, not where it was the frame before. On touch screens
+        // hover_pos() is None once released, so the release position comes from interact_pos(),
+        // or, without it, the last known position is kept.
+        state.last_hover_pos = ui.input(|i| {
+            if i.pointer.any_released() {
+                i.pointer
+                    .interact_pos()
+                    .or(i.pointer.hover_pos())
+                    .or(state.last_hover_pos)
+            } else {
+                i.pointer.hover_pos()
+            }
+        });
 
         let (drag_data, hover_data) = ui.memory_mut(|mem| {
             (
@@ -195,6 +205,11 @@ impl<Tab> DockArea<'_, Tab> {
         if let (Some(source), Some(hover)) = (drag_data, hover_data) {
             let style = self.style.as_ref().unwrap();
             state.set_drag_and_drop(source, hover, ui.ctx(), style);
+            // The hover comes from the last pass, or is the preferred leaf's kept a while: the
+            // part of the leaf under the pointer, tab bar or body, is tested again now.
+            if let (Some(dnd), Some(pointer)) = (state.dnd.as_mut(), state.last_hover_pos) {
+                dnd.hover.retarget(pointer);
+            }
             let tab_dst = self.show_drag_drop_overlay(ui, state, tab_viewer);
             if ui.input(|i| i.pointer.primary_released())
                 && let Some(destination) = tab_dst
@@ -370,6 +385,7 @@ impl<Tab> DockArea<'_, Tab> {
             dst,
             // As a tab bar: the tab joins the leaf, with no split.
             tab: Some(*strip),
+            tab_bar: None,
             outside: false,
         })
     }
@@ -406,6 +422,7 @@ impl<Tab> DockArea<'_, Tab> {
             rect: Rect::NOTHING,
             dst: TreeComponent::Surface(SurfaceIndex::main()),
             tab: None,
+            tab_bar: None,
             outside: true,
         })
     }

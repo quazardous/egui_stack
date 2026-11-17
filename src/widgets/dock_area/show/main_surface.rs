@@ -35,6 +35,7 @@ impl<Tab> DockArea<'_, Tab> {
                             rect,
                             dst: TreeComponent::Surface(surf_index),
                             tab: None,
+                            tab_bar: None,
                             outside: false,
                         }),
                     );
