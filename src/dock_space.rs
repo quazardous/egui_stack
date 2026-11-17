@@ -2,7 +2,7 @@
 
 use egui::{Id, Rect};
 
-use crate::layout::{Content, Drops, Laid, Shown};
+use crate::layout::{Content, Drops, Laid, Shown, ZoneName};
 use crate::{AllowedSplits, DockState, Surface, SurfaceIndex, Tree};
 
 /// Several named docks, each with its own tree, and floating windows, sharing one drag: a tab
@@ -75,6 +75,9 @@ pub(crate) struct NoDrop {
     /// Folded zones' strips taking drops for a dock ([`DockSpace::bind`]): the strip, and the
     /// dock's name.
     pub(crate) strips: Vec<(Rect, String)>,
+    /// Folded split zones a tab was dropped on, to unfold ([`DockSpace::take_unfolds`]). Kept
+    /// across frames until taken.
+    pub(crate) unfolds: Vec<ZoneName>,
 }
 
 /// A dock of a [`DockSpace`]: its name, its surface and its rules.
@@ -478,6 +481,14 @@ impl<Tab> DockSpace<Tab> {
                 self.no_drop.rects.push(zone.rect);
             }
         }
+    }
+
+    /// The folded split zones a tab was dropped on since the last call, for the application to
+    /// unfold ([`Layout::set_folded`](crate::layout::Layout::set_folded)): a split zone's strip
+    /// takes drops with [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops)
+    /// ([`bind`](Self::bind)). Call it every frame, after the layout is drawn.
+    pub fn take_unfolds(&mut self) -> Vec<ZoneName> {
+        std::mem::take(&mut self.no_drop.unfolds)
     }
 
     /// The dock whose [`DockArea`](crate::DockArea) also draws the floating windows: the one
