@@ -67,7 +67,7 @@ impl Recorder<'_> {
     }
 
     fn leaf_of(&self, tab: &str) -> Rect {
-        let tree = self.harness.state().dock_state.main_surface();
+        let tree = self.harness.state().dock.state().main_surface();
         let (node, _) = tree.find_tab(&tab.to_owned()).expect("the tab is docked");
         tree[node].rect().expect("a leaf has a rect")
     }
@@ -103,7 +103,7 @@ fn record_demo_gif() {
     recorder.release();
     recorder.hold(20);
 
-    let root = &recorder.harness.state().dock_state.main_surface()[NodeIndex::root()];
+    let root = &recorder.harness.state().dock.state().main_surface()[NodeIndex::root()];
     assert_eq!(
         root.children().len(),
         4,
@@ -117,7 +117,13 @@ fn record_demo_gif() {
     recorder.release();
     recorder.hold(4);
     assert!(
-        recorder.harness.state().dock_state.focused_leaf().is_some(),
+        recorder
+            .harness
+            .state()
+            .dock
+            .state()
+            .focused_leaf()
+            .is_some(),
         "a click on a tab focuses its leaf"
     );
     let grid = recorder.harness.get_by_label("Grid").rect().center();
@@ -127,7 +133,7 @@ fn record_demo_gif() {
     recorder.move_to(pos2(grid.x + 40.0, grid.y + 120.0), 10);
     recorder.hold(40);
 
-    let root = &recorder.harness.state().dock_state.main_surface()[NodeIndex::root()];
+    let root = &recorder.harness.state().dock.state().main_surface()[NodeIndex::root()];
     assert!(matches!(root, Node::Grid(_)), "the row became a grid");
 
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../images/demo.gif");

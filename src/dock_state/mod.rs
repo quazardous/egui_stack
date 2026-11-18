@@ -609,6 +609,12 @@ impl<Tab> DockState<Tab> {
     /// Adds a window with its own list of tabs.
     ///
     /// Returns the [`SurfaceIndex`] of the new window, which will remain constant through the windows lifetime.
+    ///
+    /// This is the legacy floating window, an `egui::Window` drawn by the
+    /// [`DockArea`](crate::DockArea) of a dock that is not in a [`DockSpace`](crate::DockSpace):
+    /// it has no move handle and none of the floats' gestures. Prefer floats: put the dock in a
+    /// [`DockSpace`](crate::DockSpace), draw its floats with [`FloatsArea`](crate::FloatsArea),
+    /// and open one with [`DockSpace::float_out`](crate::DockSpace::float_out).
     pub fn add_window(&mut self, tabs: Vec<Tab>) -> SurfaceIndex {
         let surface = Surface::Window(Tree::new(tabs), WindowState::new());
         let index = self.find_empty_surface_index();

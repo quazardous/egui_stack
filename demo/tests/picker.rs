@@ -43,7 +43,7 @@ fn picks_a_tab_and_pins_it_on_a_click() {
     let pick = harness.state().picker.hovered.clone().expect("a pick");
     assert_eq!(pick.kind, PartKind::Tab);
     assert_eq!(pick.tab, Some(TabIndex(1)), "Console is the second tab");
-    let tree = harness.state().dock_state.main_surface();
+    let tree = harness.state().dock.state().main_surface();
     assert_eq!(
         pick.node,
         tree.find_tab(&"Console".to_owned()).map(|(node, _)| node)
@@ -59,7 +59,7 @@ fn picks_a_tab_and_pins_it_on_a_click() {
     assert!(!picker.picking, "a click leaves the mode");
     assert_eq!(picker.pinned.as_ref().map(|p| p.kind), Some(PartKind::Tab));
     assert!(
-        harness.state().dock_state.focused_leaf().is_none(),
+        harness.state().dock.state().focused_leaf().is_none(),
         "the click went to the picker, not the dock"
     );
 
@@ -72,7 +72,7 @@ fn picks_a_tab_and_pins_it_on_a_click() {
 fn picks_a_body() {
     let mut harness = harness();
     start_picking(&mut harness);
-    let tree = harness.state().dock_state.main_surface();
+    let tree = harness.state().dock.state().main_surface();
     let (node, _) = tree
         .find_tab(&"Preview".to_owned())
         .expect("Preview is docked");
@@ -111,7 +111,7 @@ fn picks_a_body() {
 fn picks_a_separator() {
     let mut harness = harness();
     start_picking(&mut harness);
-    let root = &harness.state().dock_state.main_surface()[NodeIndex::root()];
+    let root = &harness.state().dock.state().main_surface()[NodeIndex::root()];
     let linear = root.get_linear().expect("the root is a row");
     let at = pos2(
         linear.rect.left() + linear.rect.width() * linear.boundary(0),
