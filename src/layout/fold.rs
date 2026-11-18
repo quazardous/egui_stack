@@ -1,9 +1,14 @@
 //! Folded zones: their strips, the zones lying over their neighbour, and
 //! the flyout.
 
+use std::f32::consts::FRAC_PI_2;
+
 use egui::{
-    CursorIcon, Id, Key, LayerId, Order, Pos2, Rect, Sense, Ui, UiBuilder, WidgetInfo,
+    Color32, CursorIcon, FontId, Id, Key, LayerId, Order, Painter, Pos2, Rect, Sense, Ui,
+    UiBuilder, WidgetInfo,
     accesskit::Role,
+    epaint::TextShape,
+    text::{LayoutJob, TextWrapping},
 };
 
 use super::area::{
@@ -57,6 +62,167 @@ pub struct StripPaint<'a> {
     pub shown: Shown,
     /// The layout's style.
     pub style: &'a LayoutStyle,
+}
+
+/// Which way a strip's title reads ([`ZoneViewer::strip_title`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StripOrientation {
+    /// Left to right, upright: the strip of a zone in a column of zones
+    /// (a top or bottom strip).
+    Horizontal,
+    /// Turned a quarter turn anticlockwise, read from the bottom up: a side
+    /// strip.
+    BottomToTop,
+    /// Turned a quarter turn clockwise, read from the top down: a side
+    /// strip.
+    TopToBottom,
+}
+
+/// Which way the title reads on a side strip (a zone in a row of zones),
+/// left and right strips alike ([`StripTitle::vertical`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum VerticalReading {
+    /// From the bottom up, the text's top towards the left.
+    #[default]
+    BottomToTop,
+    /// From the top down, the text's top towards the right.
+    TopToBottom,
+}
+
+impl From<VerticalReading> for StripOrientation {
+    fn from(reading: VerticalReading) -> Self {
+        match reading {
+            VerticalReading::BottomToTop => Self::BottomToTop,
+            VerticalReading::TopToBottom => Self::TopToBottom,
+        }
+    }
+}
+
+/// The title a folded zone's strip shows ([`LayoutStyle::strip_title`]):
+/// the zone's title ([`ZoneViewer::title`]) after its grip, with its icon
+/// ([`ZoneViewer::strip_icon`]) first, if any. A title longer than the
+/// strip is cut with an ellipsis and shown whole in a tooltip when the
+/// strip is hovered. The strip is made broad enough for a line of
+/// [`font`](Self::font), or the widest icon, and the padding on both sides;
+/// it is never narrower than [`LayoutStyle::strip`]. An application draws
+/// its own title with [`ZoneViewer::strip_title`], in the same room.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct StripTitle {
+    /// Which way side strips read. By default from the bottom up.
+    pub vertical: VerticalReading,
+    /// The font of the title and the icon. By default egui's body font.
+    pub font: FontId,
+    /// Their colour. By default the colour of non-interactive text.
+    pub color: Color32,
+    /// The room around the title, inside the strip, after the grip. By
+    /// default 4 points.
+    pub padding: f32,
+    /// The room between the icon and the title. By default 4 points.
+    pub gap: f32,
+}
+
+impl Default for StripTitle {
+    fn default() -> Self {
+        Self::from_egui(&egui::Style::default())
+    }
+}
+
+impl StripTitle {
+    /// A title drawn from egui's style: its body font, its text colour.
+    pub fn from_egui(style: &egui::Style) -> Self {
+        Self {
+            vertical: VerticalReading::default(),
+            font: egui::TextStyle::Body.resolve(style),
+            color: style.visuals.widgets.noninteractive.fg_stroke.color,
+            padding: 4.0,
+            gap: 4.0,
+        }
+    }
+
+    /// The breadth a strip needs for this title: a line of its font, or the
+    /// widest of `icons`, and the padding on both sides.
+    pub(super) fn breadth(&self, painter: &Painter, icons: &[String]) -> f32 {
+        let line = painter.fonts_mut(|fonts| fonts.row_height(&self.font));
+        let icon = icons
+            .iter()
+            .map(|icon| {
+                painter
+                    .layout_no_wrap(icon.clone(), self.font.clone(), self.color)
+                    .size()
+                    .x
+            })
+            .fold(0.0, f32::max);
+        line.max(icon) + 2.0 * self.padding
+    }
+}
+
+/// Paints the built-in title in `rect`: the icon upright next to the grip,
+/// then the title, cut with an ellipsis when too long. Returns whether it
+/// was cut.
+fn paint_title(
+    painter: &Painter,
+    rect: Rect,
+    orientation: StripOrientation,
+    title: &str,
+    icon: Option<&str>,
+    style: &StripTitle,
+) -> bool {
+    let vertical = orientation != StripOrientation::Horizontal;
+    let length = if vertical {
+        rect.height()
+    } else {
+        rect.width()
+    };
+    let mut start = 0.0;
+    if let Some(icon) = icon {
+        let galley = painter.layout_no_wrap(icon.to_owned(), style.font.clone(), style.color);
+        let size = galley.size();
+        let pos = if vertical {
+            egui::pos2(rect.center().x - size.x * 0.5, rect.top())
+        } else {
+            egui::pos2(rect.left(), rect.center().y - size.y * 0.5)
+        };
+        start = if vertical { size.y } else { size.x } + style.gap;
+        painter.galley(pos, galley, style.color);
+    }
+    let room = length - start;
+    if title.is_empty() {
+        return false;
+    }
+    if room <= 0.0 {
+        return true;
+    }
+    let mut job = LayoutJob::simple_singleline(title.to_owned(), style.font.clone(), style.color);
+    job.wrap = TextWrapping {
+        max_width: room,
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('\u{2026}'),
+    };
+    let galley = painter.layout_job(job);
+    let elided = galley.elided;
+    let size = galley.size();
+    // The galley turns about its top-left corner: placed so that the text
+    // starts `start` past the grip side and sits centred across the strip.
+    let (pos, angle) = match orientation {
+        StripOrientation::BottomToTop => (
+            egui::pos2(rect.center().x - size.y * 0.5, rect.top() + start + size.x),
+            -FRAC_PI_2,
+        ),
+        StripOrientation::TopToBottom => (
+            egui::pos2(rect.center().x + size.y * 0.5, rect.top() + start),
+            FRAC_PI_2,
+        ),
+        StripOrientation::Horizontal => (
+            egui::pos2(rect.left() + start, rect.center().y - size.y * 0.5),
+            0.0,
+        ),
+    };
+    painter.add(TextShape::new(pos, galley, style.color).with_angle(angle));
+    elided
 }
 
 /// The frame of a zone lying over its neighbour, or of a flyout.
@@ -242,6 +408,36 @@ pub(super) fn strips(
                 }),
         );
         child.set_clip_rect(rest.intersect(ui.clip_rect()));
+        if let Some(title) = &style.strip_title {
+            let room = rest.shrink(title.padding);
+            let orientation = match dir {
+                Dir::Horizontal => title.vertical.into(),
+                Dir::Vertical => StripOrientation::Horizontal,
+            };
+            if room.is_positive() {
+                let mut title_ui = ui.new_child(
+                    UiBuilder::new()
+                        .id_salt(id.with(("strip_title", &at.name.0)))
+                        .max_rect(room),
+                );
+                title_ui.set_clip_rect(room.intersect(ui.clip_rect()));
+                if !viewer.strip_title(&mut title_ui, &at.name, room, orientation) {
+                    let icon = viewer.strip_icon(&at.name);
+                    let text = names.title(&at.name);
+                    let cut = paint_title(
+                        title_ui.painter(),
+                        room,
+                        orientation,
+                        text,
+                        icon.as_deref(),
+                        title,
+                    );
+                    if cut {
+                        body.clone().on_hover_text(text);
+                    }
+                }
+            }
+        }
         viewer.strip(&mut child, &at.name);
 
         let mut band_clicked = false;

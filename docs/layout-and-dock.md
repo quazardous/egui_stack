@@ -179,6 +179,12 @@ pub mod layout {
         fn ui(&mut self, ui: &mut egui::Ui, zone: &ZoneName);
         /// A folded zone's strip; by default the painter's grip only.
         fn strip(&mut self, ui: &mut egui::Ui, zone: &ZoneName) {}
+        /// A folded zone's strip title, with `LayoutStyle::strip_title` set: `true` when drawn
+        /// here; by default `false`, the built-in title.
+        fn strip_title(&mut self, ui: &mut egui::Ui, zone: &ZoneName, rect: egui::Rect,
+            orientation: StripOrientation) -> bool { false }
+        /// The icon the built-in strip title shows first; by default none.
+        fn strip_icon(&mut self, zone: &ZoneName) -> Option<String> { None }
         /// A float's content.
         fn float(&mut self, ui: &mut egui::Ui, key: &str) {}
         /// A flyout's content.
@@ -289,6 +295,20 @@ by the viewer (`ZoneViewer::strip`, the application's icons); a click on the gri
 zone may also lie **over** its neighbour: unfolded, next to its strip, without taking room, with
 the style's shadow; its free edge resizes it, painted by the painter's `over_edge` (nothing by
 default) with its hover and drag state. The growing zone never folds.
+
+**Strip titles.** A strip shows only its grip unless the style asks for a title
+(`LayoutStyle::strip_title`, a `StripTitle`). The built-in title is the zone's title
+(`ZoneViewer::title`), after the grip, with an optional icon first (`ZoneViewer::strip_icon`,
+upright). Left and right strips read the same way: from the bottom up by default, from the top down
+with `VerticalReading::TopToBottom`; top and bottom strips read left to right. A title longer than
+the strip is cut with an ellipsis and shown whole in a tooltip over the strip. The strip grows to fit
+a line of the title's font, or the widest icon, plus the padding on both sides, and never shrinks
+below `LayoutStyle::strip`; its length keeps the grip, a square at its start. An application that
+wants its own look returns `true` from `ZoneViewer::strip_title(ui, zone, rect, orientation)` and
+draws only the title in `rect` (the strip less its grip and padding), turned as `orientation`
+says; the layout keeps the background, the grip, the clicks, the drag out of the strip and the
+drops on it. `ZoneViewer::strip` still draws over the whole strip, after the title: an
+application drawing everything there leaves `strip_title` off.
 
 **Flyouts.** An application asks for one flyout at a time: an item of a folded zone (one panel of
 its dock), shown over the neighbouring zone, next to the strip, without moving the layout. The
