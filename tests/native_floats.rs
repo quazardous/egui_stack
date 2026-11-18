@@ -24,6 +24,8 @@ struct Viewer {
     tab_rects: Vec<(String, Rect)>,
     policy: ClosePolicy,
     asked: Vec<FloatClose>,
+    /// Each tab drawn, and the viewport it was drawn in.
+    drawn_in: Vec<(String, ViewportId)>,
 }
 
 impl TabViewer for Viewer {
@@ -38,6 +40,7 @@ impl TabViewer for Viewer {
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut String) {
+        self.drawn_in.push((tab.clone(), ui.ctx().viewport_id()));
         ui.label(tab.as_str());
     }
 
@@ -53,9 +56,19 @@ impl TabViewer for Viewer {
 
 struct Host {
     screens: Vec<Screen>,
+    /// The application's own viewport ids, instead of egui_stack's default ones.
+    own_ids: bool,
 }
 
 impl ViewportHost for Host {
+    fn viewport_id(&self, key: &str) -> ViewportId {
+        if self.own_ids {
+            ViewportId::from_hash_of(("app.window", key))
+        } else {
+            ViewportId::from_hash_of(("egui_stack.float", key))
+        }
+    }
+
     fn screens(&self) -> Vec<Screen> {
         self.screens.clone()
     }
@@ -106,6 +119,7 @@ fn app(host: FloatHost) -> App {
         viewer: Viewer::default(),
         host: Host {
             screens: vec![one(), two()],
+            own_ids: false,
         },
         gone: ScreenGone::MoveOnto,
     }
@@ -153,7 +167,11 @@ fn tabs(app: &App, dock: &str) -> Vec<String> {
 }
 
 fn viewport(key: &str) -> ViewportId {
-    Host { screens: vec![] }.viewport_id(key)
+    Host {
+        screens: vec![],
+        own_ids: false,
+    }
+    .viewport_id(key)
 }
 
 /// Starts the application and drags `B` out of every dock: its float, `float-1`.
@@ -484,4 +502,62 @@ fn a_float_over_the_main_window_takes_tabs_out_and_back() {
         ),
         "{events:?}"
     );
+}
+
+/// The viewports `tab` was drawn in since the viewer's list was last cleared.
+fn drawn_in(app: &App, tab: &str) -> Vec<ViewportId> {
+    app.viewer
+        .drawn_in
+        .iter()
+        .filter(|(name, _)| name == tab)
+        .map(|(_, viewport)| *viewport)
+        .collect()
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_float_lives_in_the_application_s_own_viewport_and_keeps_it() {
+    let mut multi = Multi::new();
+    let mut app = app(FloatHost::Native);
+    app.host.own_ids = true;
+    detach_b(&mut multi, &mut app);
+    let own = app.host.viewport_id("float-1");
+    assert_ne!(own, viewport("float-1"));
+    assert!(multi.shown().contains(&own), "its window");
+    assert!(!multi.shown().contains(&viewport("float-1")));
+
+    // The tab is drawn in that viewport, where the application renders what it pairs with it
+    // (a wgpu surface, display settings).
+    app.viewer.drawn_in.clear();
+    multi.passes(2, frame(&mut app));
+    let drawn = drawn_in(&app, "B");
+    assert!(
+        !drawn.is_empty() && drawn.iter().all(|v| *v == own),
+        "{drawn:?}"
+    );
+
+    // Moved, the window keeps its viewport.
+    multi.set_outer_position(own, pos2(700.0, 200.0));
+    multi.passes(4, frame(&mut app));
+    assert_eq!(
+        app.docked.layout.float("float-1").unwrap().place.rect.min,
+        pos2(700.0, 200.0)
+    );
+    app.viewer.drawn_in.clear();
+    multi.pass(frame(&mut app));
+    let drawn = drawn_in(&app, "B");
+    assert!(
+        !drawn.is_empty() && drawn.iter().all(|v| *v == own),
+        "{drawn:?}"
+    );
+
+    // Closed through it, the tab comes back to the main window.
+    multi.request_close(own);
+    multi.passes(2, frame(&mut app));
+    assert!(app.docked.layout.float("float-1").is_none());
+    assert!(!multi.shown().contains(&own));
+    assert_eq!(tabs(&app, "main"), ["A", "B", "C"]);
+    app.viewer.drawn_in.clear();
+    multi.pass(frame(&mut app));
+    assert!(drawn_in(&app, "B").iter().all(|v| *v == ViewportId::ROOT));
 }

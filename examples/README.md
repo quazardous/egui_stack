@@ -24,3 +24,5 @@ Replace `<example_name>` with the name of the example file without the `.rs` ext
 - [`reject_windows`](reject_windows.rs): Demonstrates the ability of tabs to either allow or reject being moved into separate windows.
 - [`sections`](sections.rs): A stack of collapsible, resizable sections in a side panel.
 - [`tool_row`](tool_row.rs): Toolbar rows: a formatting row whose tools overflow into a More button, and a vertical tool palette.
+- [`native_floats`](native_floats.rs): Tabs dragged out of the window open in native windows of their own (egui viewports); closing one returns its tabs, and one drag goes across all the windows.
+- [`wgpu_float`](wgpu_float.rs): A detached 3D viewport: a tab drawing a wgpu scene (an `egui_wgpu` paint callback) moves into a native window the application hosts through its own `ViewportHost`, whose stable viewport ids it pairs its own state with.
