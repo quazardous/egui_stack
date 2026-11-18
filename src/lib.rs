@@ -257,7 +257,7 @@
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
 
-pub use dock_space::{DockRules, DockSpace};
+pub use dock_space::{DockRules, DockSpace, TabOrigin};
 #[allow(deprecated)]
 pub use dock_state::*;
 pub use docked::{Docked, DockedRepair};

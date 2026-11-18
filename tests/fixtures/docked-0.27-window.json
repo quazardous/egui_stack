@@ -1,0 +1,85 @@
+{
+  "layout": {
+    "version": 1,
+    "root": {
+      "name": "root",
+      "split": {
+        "dir": "horizontal",
+        "children": [
+          {
+            "name": "centre",
+            "leaf": { "content": { "dock": "centre" } },
+            "state": { "size": null, "folded": false, "over": false, "hidden": false }
+          }
+        ]
+      },
+      "state": { "size": null, "folded": false, "over": false, "hidden": false }
+    }
+  },
+  "space": {
+    "state": {
+      "surfaces": [
+        {
+          "Main": {
+            "nodes": [
+              {
+                "Leaf": {
+                  "rect": { "min": { "x": 0.0, "y": 0.0 }, "max": { "x": 800.0, "y": 600.0 } },
+                  "viewport": { "min": { "x": 0.0, "y": 24.0 }, "max": { "x": 800.0, "y": 600.0 } },
+                  "tabs": ["Editor"],
+                  "active": 0,
+                  "scroll": 0.0,
+                  "collapsed": false,
+                  "tab_bar_hidden": false
+                }
+              }
+            ],
+            "focused_node": null,
+            "collapsed": false,
+            "collapsed_leaf_count": 0
+          }
+        },
+        {
+          "Window": [
+            {
+              "nodes": [
+                {
+                  "Leaf": {
+                    "rect": { "min": { "x": 40.0, "y": 60.0 }, "max": { "x": 360.0, "y": 300.0 } },
+                    "viewport": { "min": { "x": 40.0, "y": 84.0 }, "max": { "x": 360.0, "y": 300.0 } },
+                    "tabs": ["Log", "Find"],
+                    "active": 1,
+                    "scroll": 0.0,
+                    "collapsed": false,
+                    "tab_bar_hidden": false
+                  }
+                }
+              ],
+              "focused_node": null,
+              "collapsed": false,
+              "collapsed_leaf_count": 0
+            },
+            {
+              "screen_rect": { "min": { "x": 40.0, "y": 60.0 }, "max": { "x": 360.0, "y": 300.0 } },
+              "dragged": false,
+              "next_position": null,
+              "next_size": null,
+              "expanded_height": null,
+              "new": false,
+              "minimized": true
+            }
+          ]
+        }
+      ],
+      "focused_surface": null
+    },
+    "docks": [
+      {
+        "name": "centre",
+        "surface": 0,
+        "rules": { "splits": "All", "windows": true, "keep_when_empty": true, "accept_drops": true }
+      }
+    ],
+    "windows_dock": null
+  }
+}
