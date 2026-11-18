@@ -1,5 +1,14 @@
 # egui_stack changelog
 
+## egui_stack 0.27.1 - 2026-11-18
+
+Titles on folded strips ([#104](https://github.com/quazardous/egui_stack/issues/104)), opt-in: a
+layout that leaves `LayoutStyle::strip_title` unset looks and behaves as before.
+
+### Added
+
+- Folded strips can show their zone's title: set `LayoutStyle::strip_title` to a `StripTitle` (off by default). Left and right strips read the same way, from the bottom up unless `StripTitle::vertical` says `VerticalReading::TopToBottom`; a long title is cut with an ellipsis and shown whole in a tooltip; the strip grows to fit the font, an optional icon (`ZoneViewer::strip_icon`) and the padding. `ZoneViewer::strip_title(ui, zone, rect, orientation)` draws the title instead, in the room past the grip, while the layout keeps the strip's clicks, drag and drops.
+
 ## egui_stack 0.27.0 - 2026-11-18
 
 Collapsible docks ([#103](https://github.com/quazardous/egui_stack/issues/103)). The one break is
