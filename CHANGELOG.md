@@ -1,5 +1,15 @@
 # egui_stack changelog
 
+## egui_stack 0.27.0 - 2026-11-18
+
+Collapsible docks ([#103](https://github.com/quazardous/egui_stack/issues/103)). The one break is
+`OverlayFeel`'s new public field, `restore_band`: a struct literal naming every field ends with
+`..Default::default()`. Nothing changes for a layout that does not opt in with `Fold::Collapse`.
+
+### Breaking changes
+
+- Collapsible docks: a zone with the new `Fold::Collapse` collapses to nothing when folded (`Shown::Collapsed`), keeping its place in the tree, its constraints and its last size, and `DockSpace::collapse_empty` collapses those whose docks are empty, so the zone that grows takes all the room. While a tab is dragged, each collapsed zone shows a thin restore band at its former boundary (on its parent's outer edge when nothing is left between them; several on one boundary stack in tree order), painted by the new `DockPainter::restore_band`; hovered, it previews where the zone comes back (`LaidZone::restore`), and a tab released there, unless vetoed, joins the zone's dock and the zone is named in `DockSpace::take_unfolds` to unfold at its remembered size within its current bounds. A cancelled drag or a release elsewhere leaves the layout unchanged. The band's breadth is the new `OverlayFeel::restore_band`, 8 points by default. Migration: an `OverlayFeel { .. }` literal needs `restore_band` or `..OverlayFeel::default()`; a `match` on `Shown` already has a catch-all arm (the enum is `#[non_exhaustive]`).
+
 ## egui_stack 0.26.0 - 2026-11-17
 
 `OverlayFeel` gains public fields, which breaks code that builds it with a struct literal naming
