@@ -53,7 +53,9 @@ pub use area::{
     DefaultLayoutPainter, LayoutArea, LayoutPainter, LayoutStyle, SashPaint, SnapGuidePaint,
     SnapKind, ZoneViewer,
 };
-pub use fold::{Dismiss, Flyout, FlyoutPaint, Inside, StripPaint};
+pub use fold::{
+    Dismiss, Flyout, FlyoutPaint, Inside, StripOrientation, StripPaint, StripTitle, VerticalReading,
+};
 
 #[cfg(feature = "serde")]
 pub use saved::{LAYOUT_VERSION, VersionError};

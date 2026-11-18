@@ -9,7 +9,9 @@ use egui::{
     accesskit::{Action, ActionData, Orientation, Role},
 };
 
-use super::fold::{self, Dismiss, Flyout, FlyoutPaint, Inside, StripPaint};
+use super::fold::{
+    self, Dismiss, Flyout, FlyoutPaint, Inside, StripOrientation, StripPaint, StripTitle,
+};
 use super::solve::{along, span};
 use super::{
     Dir, Fold, Laid, LaidZone, Layout, LayoutEvent, Shown, Solve, Zone, ZoneKind, ZoneName,
@@ -65,6 +67,10 @@ pub struct LayoutStyle {
     /// thick, across the edge, or just outside a strip narrower than twice
     /// that; a click on it acts like the grip's. By default `true`.
     pub strip_drag: bool,
+    /// The title a folded zone's strip shows after its grip, broadening
+    /// the strip to fit it ([`StripTitle`]). By default `None`: the strip
+    /// shows its grip and what [`ZoneViewer::strip`] draws.
+    pub strip_title: Option<StripTitle>,
 }
 
 impl Default for LayoutStyle {
@@ -97,6 +103,7 @@ impl LayoutStyle {
             snap: 8.0,
             snap_guide: Stroke::new(1.0, style.visuals.selection.stroke.color),
             strip_drag: true,
+            strip_title: None,
         }
     }
 }
@@ -248,6 +255,36 @@ pub trait ZoneViewer {
     /// nothing.
     fn strip(&mut self, ui: &mut Ui, zone: &ZoneName) {
         let _ = (ui, zone);
+    }
+
+    /// A folded zone's strip title, when [`LayoutStyle::strip_title`] is
+    /// set: the application draws it in `rect`, the strip less its grip and
+    /// the title's padding, reading the way `orientation` says, and returns
+    /// `true`; the layout keeps the strip's background, grip, clicks, drag
+    /// and drops. The `Ui` is clipped to `rect`; a widget that senses
+    /// clicks there takes them from the strip. Painted before
+    /// [`ZoneViewer::strip`]. By default `false`: the layout draws the
+    /// zone's title ([`ZoneViewer::title`]) and icon
+    /// ([`ZoneViewer::strip_icon`]).
+    fn strip_title(
+        &mut self,
+        ui: &mut Ui,
+        zone: &ZoneName,
+        rect: Rect,
+        orientation: StripOrientation,
+    ) -> bool {
+        let _ = (ui, zone, rect, orientation);
+        false
+    }
+
+    /// The icon the built-in strip title shows before the zone's title,
+    /// upright, in the title's font: a glyph of an icon font, say. Asked
+    /// each frame while [`LayoutStyle::strip_title`] is set, for every
+    /// zone that folds to a strip, so that the strips fit the widest. By
+    /// default none.
+    fn strip_icon(&mut self, zone: &ZoneName) -> Option<String> {
+        let _ = zone;
+        None
     }
 
     /// The content of the [`Flyout`] given to [`LayoutArea::flyout`]. By
@@ -481,9 +518,20 @@ impl<'a> LayoutArea<'a> {
     /// Draws the layout in the `Ui`'s whole rect, and returns where each
     /// zone went with what the user changed.
     pub fn show_inside(self, ui: &mut Ui, viewer: &mut dyn ZoneViewer) -> Laid {
-        let style = self
+        let mut style = self
             .style
             .unwrap_or_else(|| LayoutStyle::from_egui(ui.style()));
+        if let Some(title) = &style.strip_title {
+            let mut icons = Vec::new();
+            self.layout.root.visit(&mut |zone| {
+                if zone.constraints.fold == Fold::ToStrip
+                    && let Some(icon) = viewer.strip_icon(&zone.name)
+                {
+                    icons.push(icon);
+                }
+            });
+            style.strip = style.strip.max(title.breadth(ui.painter(), &icons));
+        }
         let rect = ui.max_rect();
         let content_id = self.id.with("content");
         let content: HashMap<ZoneName, f32> = ui
