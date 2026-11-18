@@ -121,8 +121,10 @@ An application narrows the set to what it allows; a user setting narrows it furt
 asks for itself, outside these flags.
 
 In a floating window, a drag does what the place it starts says: a tab drags the tab, the group
-grip or the group modifier drags the group, and the window's title bar moves the window. The
-empty part of a tab bar never moves the window (it drags the group when `EMPTY_SPACE` is on).
+grip or the group modifier drags the group, and the window's move handle (or its title bar, when
+it has one: a native float's, or one over the main window with `FloatsArea::title_bar`) moves
+the window. The empty part of a tab bar never moves the window (it drags the group when
+`EMPTY_SPACE` is on).
 One more flag is a floats' handle:
 
 | Flag | Handle |

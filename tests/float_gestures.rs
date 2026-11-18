@@ -75,6 +75,8 @@ struct App {
     viewer: Viewer,
     handles: GroupHandles,
     float_move: FloatMove,
+    /// `FloatsArea::title_bar`.
+    title_bar: bool,
 }
 
 fn app(host: FloatHost, float_move: FloatMove) -> App {
@@ -95,6 +97,7 @@ fn app(host: FloatHost, float_move: FloatMove) -> App {
         viewer: Viewer::default(),
         handles: GroupHandles::ALL,
         float_move,
+        title_bar: false,
     }
 }
 
@@ -111,6 +114,7 @@ fn frame(app: &mut App) -> impl FnMut(&mut Ui) + '_ {
             .host(&mut Host)
             .group_handles(app.handles)
             .float_move(app.float_move)
+            .title_bar(app.title_bar)
             .show(ui.ctx(), &mut app.viewer);
     }
 }
@@ -344,6 +348,7 @@ fn with_dock_a_float_over_the_main_window_docks_by_its_handle_or_title_bar() {
     // By the title bar.
     let mut multi = Multi::new();
     let mut app = self::app(FloatHost::InWindow, FloatMove::Dock);
+    app.title_bar = true;
     detach_b(&mut multi, &mut app);
     let window = app.docked.layout.float("float-1").unwrap().place.rect;
     let title = window.left_top() + vec2(40.0, 8.0);
@@ -359,6 +364,7 @@ fn with_dock_a_float_over_the_main_window_docks_by_its_handle_or_title_bar() {
 fn by_default_the_title_bar_of_a_float_over_the_main_window_only_moves_it() {
     let mut multi = Multi::new();
     let mut app = app(FloatHost::InWindow, FloatMove::default());
+    app.title_bar = true;
     detach_b(&mut multi, &mut app);
     let window = app.docked.layout.float("float-1").unwrap().place.rect;
     let title = window.left_top() + vec2(40.0, 8.0);

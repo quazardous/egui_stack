@@ -289,6 +289,7 @@ pub struct FloatsArea<'a, Tab> {
     handles: GroupHandles,
     modifiers: Modifiers,
     float_move: FloatMove,
+    title_bar: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -340,6 +341,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             handles: GroupHandles::ALL,
             modifiers: Modifiers::SHIFT,
             float_move: FloatMove::Move,
+            title_bar: false,
             painter: None,
             configure: None,
             decorate: None,
@@ -428,6 +430,18 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
         self
     }
 
+    /// Sets whether a float over the main window ([`FloatHost::InWindow`]) has a title bar of
+    /// its own, with its title and a close button, above its dock; by default it has none: its
+    /// top tab bar is its top, the window's move handle ([`GroupHandles::MOVE_WINDOW`]) moves
+    /// it and the tab bars' close all buttons close it. Without the move handle (turned off in
+    /// [`group_handles`](Self::group_handles)), the title bar is kept, so that the window can
+    /// still be moved. A native float keeps the system's decoration either way.
+    #[must_use]
+    pub fn title_bar(mut self, title_bar: bool) -> Self {
+        self.title_bar = title_bar;
+        self
+    }
+
     /// Draws the floats, back to front, and keeps the model up to date (see [`FloatsArea`]).
     pub fn show(self, ctx: &Context, viewer: &mut impl TabViewer<Tab = Tab>) {
         let Self {
@@ -439,6 +453,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             handles,
             modifiers,
             float_move,
+            title_bar,
             painter,
             configure,
             decorate,
@@ -447,6 +462,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             handles,
             modifiers,
             float_move,
+            title_bar,
             painter,
             configure,
             decorate,
@@ -511,6 +527,8 @@ struct Gestures<'a, Tab> {
     handles: GroupHandles,
     modifiers: Modifiers,
     float_move: FloatMove,
+    /// [`FloatsArea::title_bar`].
+    title_bar: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -839,8 +857,9 @@ fn dock_title<Tab>(
     }
 }
 
-/// A float over the main window, as an `egui::Window`: moved by its title bar only (never by
-/// the empty part of a tab bar), or by its move handle.
+/// A float over the main window, as an `egui::Window`: moved by its move handle, or by its
+/// title bar when it has one ([`FloatsArea::title_bar`]), never by the empty part of a tab
+/// bar.
 #[allow(clippy::too_many_arguments)]
 fn show_in_window<Tab>(
     ctx: &Context,
@@ -860,6 +879,9 @@ fn show_in_window<Tab>(
     let mut open = true;
     let id = space.id().with(("egui_stack.float", key));
     let handle = move_handle_id(space.id(), dock);
+    // Without a title bar, only the move handle moves the window: its body and the empty
+    // part of its tab bars keep their own drags.
+    let title_bar = gestures.title_bar || !gestures.handles.contains(GroupHandles::MOVE_WINDOW);
     let window = egui::Window::new(title)
         .id(id)
         .default_pos(place.rect.min)
@@ -867,7 +889,12 @@ fn show_in_window<Tab>(
         .min_size(vec2(120.0, 80.0))
         .collapsible(false)
         .resizable(true)
-        .drag_area(WindowDrag::TitleBar)
+        .title_bar(title_bar)
+        .drag_area(if title_bar {
+            WindowDrag::TitleBar
+        } else {
+            WindowDrag::Off
+        })
         .open(&mut open);
     // The move handle dragged in the last pass: the window follows the pointer, moved as egui
     // moves it by its title bar (a `current_pos` would be undone by the title-bar-only drag).
