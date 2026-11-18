@@ -298,12 +298,13 @@ pub trait DockPainter {
     /// window of a [`DockSpace`](crate::DockSpace) the pointer is over. The default paints a
     /// translucent frame with a shadow, the bar and its tabs through
     /// [`tab_bar`](Self::tab_bar) and [`tab`](Self::tab), and the body's background, see-through
-    /// enough to show the drop overlay under it.
+    /// enough to show the drop overlay under it, unless the application paints the body
+    /// ([`body_painted`](DraggedGroupPaint::body_painted)).
     fn dragged_group(&self, painter: &Painter, group: &DraggedGroupPaint<'_>) {
         let style = group.style;
         let painter = {
             let mut painter = painter.clone();
-            painter.multiply_opacity(0.7);
+            painter.multiply_opacity(GHOST_OPACITY);
             painter
         };
         let corner_radius = style.tab_bar.corner_radius;
@@ -313,7 +314,9 @@ pub trait DockPainter {
                 .popup_shadow
                 .as_shape(group.rect, corner_radius),
         );
-        painter.rect_filled(group.body, CornerRadius::ZERO, style.tab.tab_body.bg_fill);
+        if !group.body_painted {
+            painter.rect_filled(group.body, CornerRadius::ZERO, style.tab.tab_body.bg_fill);
+        }
         self.tab_bar(
             &painter,
             &TabBarPaint {
@@ -351,6 +354,15 @@ pub trait DockPainter {
             group.visuals.window_stroke,
             StrokeKind::Inside,
         );
+    }
+
+    /// While a single tab is dragged, its ghost under the pointer: a one-tab group's, holding
+    /// just that tab ([`count`](DraggedGroupPaint::count) is 1), sized and placed as a group's
+    /// ghost is. It is painted on a layer above the drop overlay, in every window of a
+    /// [`DockSpace`](crate::DockSpace) the pointer is over. The default paints it as
+    /// [`dragged_group`](Self::dragged_group) does, so that both ghosts look the same.
+    fn dragged_tab(&self, painter: &Painter, tab: &DraggedGroupPaint<'_>) {
+        self.dragged_group(painter, tab);
     }
 
     /// One of the drop overlay's buttons ([`OverlayType::Widgets`]):
@@ -1033,7 +1045,12 @@ pub struct WindowOutlinePaint<'a> {
     pub visuals: &'a Visuals,
 }
 
-/// A whole tab group being dragged, for [`DockPainter::dragged_group`]. The ghost keeps a
+/// How opaque the default ghost of a dragged tab or group is: see-through enough to show the
+/// drop overlay under it.
+pub(crate) const GHOST_OPACITY: f32 = 0.7;
+
+/// A whole tab group being dragged, for [`DockPainter::dragged_group`], or a single tab, as a
+/// one-tab group, for [`DockPainter::dragged_tab`]. The ghost keeps a
 /// sensible size whatever the group: the tabs that do not fit its bar are summed up in
 /// [`more`](Self::more).
 #[derive(Clone, Debug)]
@@ -1052,6 +1069,9 @@ pub struct DraggedGroupPaint<'a> {
     pub more: Option<DraggedGroupMore>,
     /// How many tabs the group has.
     pub count: usize,
+    /// Whether the application paints the body ([`TabViewer::ghost_body`](crate::TabViewer::ghost_body)):
+    /// its content goes over the ghost once painted, so the painter leaves the body's hint out.
+    pub body_painted: bool,
     /// The dock's style.
     pub style: &'a Style,
     /// The visuals of the window it is painted in.

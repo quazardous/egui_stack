@@ -1,12 +1,15 @@
-//! The ghost of a whole tab group being dragged, under the pointer.
+//! The ghost of a dragged tab, or of a whole tab group, under the pointer: one drawing for
+//! both, a single tab's ghost being a one-tab group's.
 
 use std::sync::Arc;
 
-use egui::{Galley, LayerId, Order, Pos2, Rect, TextStyle, Ui, Vec2, WidgetText, pos2, vec2};
+use egui::{
+    Galley, LayerId, Order, Pos2, Rect, TextStyle, Ui, UiBuilder, Vec2, WidgetText, pos2, vec2,
+};
 
 use crate::{
-    DockArea, DraggedGroupMore, DraggedGroupPaint, DraggedGroupTab, NodePath, PartState,
-    TabMeasure, TabViewer,
+    DockArea, DraggedGroupMore, DraggedGroupPaint, DraggedGroupTab, NodePath, PartState, TabIndex,
+    TabMeasure, TabViewer, widgets::painter::GHOST_OPACITY,
 };
 
 /// The smallest and largest size of a group's ghost, in points: it takes its leaf's size within
@@ -44,13 +47,15 @@ pub(super) fn fitting_tabs(widths: &[f32], spacing: f32, room: f32, active: usiz
 }
 
 impl<Tab> DockArea<'_, Tab> {
-    /// Paints the ghost of the group at `path` under `pointer`, through
-    /// [`DockPainter::dragged_group`](crate::DockPainter::dragged_group), on a layer above the
-    /// drop overlay.
-    pub(super) fn paint_group_ghost(
+    /// Paints the ghost of what is dragged under `pointer`, on a layer above the drop overlay:
+    /// the group at `path` through [`DockPainter::dragged_group`](crate::DockPainter::dragged_group),
+    /// or, with `tab`, that one tab of it, as a one-tab group, through
+    /// [`DockPainter::dragged_tab`](crate::DockPainter::dragged_tab).
+    pub(super) fn paint_ghost(
         &mut self,
         ui: &Ui,
         path: NodePath,
+        tab: Option<TabIndex>,
         pointer: Pos2,
         tab_viewer: &mut impl TabViewer<Tab = Tab>,
     ) {
@@ -64,19 +69,33 @@ impl<Tab> DockArea<'_, Tab> {
         let Ok(leaf) = self.dock_state.leaf_mut(path) else {
             return;
         };
-        let count = leaf.tabs.len();
+        // The tab whose body the ghost shows: the dragged one, or the group's active one.
+        let shown_tab = tab.map_or(leaf.active.0, |tab| tab.0);
+        let bar_height = style.tab_bar.height;
+        let size = {
+            let min = vec2(GHOST_MIN.x, GHOST_MIN.y.max(bar_height + 24.0));
+            let max = vec2(GHOST_MAX.x, GHOST_MAX.y.max(bar_height + 24.0));
+            let default = leaf_size.clamp(min, max);
+            match leaf.tabs.get(shown_tab) {
+                Some(shown) => tab_viewer.ghost_size(shown, default).clamp(min, max),
+                None => default,
+            }
+        };
+        // The tabs the ghost holds, and which of them is shown.
+        let (tabs, active) = match tab {
+            Some(tab) => match leaf.tabs.get_mut(tab.0) {
+                Some(tab) => (vec![tab], 0),
+                None => return,
+            },
+            None => {
+                let active = leaf.active.0;
+                (leaf.tabs.iter_mut().collect(), active)
+            }
+        };
+        let count = tabs.len();
         if count == 0 {
             return;
         }
-        let active = leaf.active.0;
-        let bar_height = style.tab_bar.height;
-        let size = vec2(
-            leaf_size.x.clamp(GHOST_MIN.x, GHOST_MAX.x),
-            leaf_size.y.clamp(
-                GHOST_MIN.y.max(bar_height + 24.0),
-                GHOST_MAX.y.max(bar_height + 24.0),
-            ),
-        );
         let rect = Rect::from_min_size(pointer - vec2(GRAB_X, bar_height / 2.0), size);
         let bar = Rect::from_min_size(rect.min, vec2(size.x, bar_height));
         let body = Rect::from_min_max(pos2(rect.left(), bar.bottom()), rect.max);
@@ -84,9 +103,8 @@ impl<Tab> DockArea<'_, Tab> {
         let layout = |text: WidgetText| -> Arc<Galley> {
             text.into_galley(ui, None, f32::INFINITY, TextStyle::Button)
         };
-        let titles: Vec<Arc<Galley>> = leaf
-            .tabs
-            .iter_mut()
+        let titles: Vec<Arc<Galley>> = tabs
+            .into_iter()
             .map(|tab| layout(tab_viewer.title(tab)))
             .collect();
         let widths: Vec<f32> = titles
@@ -140,23 +158,61 @@ impl<Tab> DockArea<'_, Tab> {
             }
         });
 
-        let painter = ui
-            .ctx()
-            .layer_painter(LayerId::new(Order::Tooltip, self.id.with("group ghost")))
-            .with_clip_rect(ui.ctx().content_rect());
-        self.painter.dragged_group(
-            &painter,
-            &DraggedGroupPaint {
-                rect,
-                bar,
-                body,
-                tabs,
-                more,
-                count,
-                style,
-                visuals: ui.visuals(),
-            },
-        );
+        let ctx = ui.ctx();
+        let layer = LayerId::new(Order::Tooltip, self.id.with("group ghost"));
+        let painter = ctx.layer_painter(layer).with_clip_rect(ctx.content_rect());
+
+        // The application's body, if it paints one: painted first, then taken out of the
+        // layer and put back over the painter's ghost, so that its shadow stays under it.
+        let start = ctx.graphics_mut(|g| g.entry(layer).next_idx().0);
+        let body_painted = {
+            let mut body_ui = Ui::new(
+                ctx.clone(),
+                self.id.with("ghost body"),
+                UiBuilder::new().layer_id(layer).max_rect(body),
+            );
+            body_ui.set_clip_rect(body.intersect(ctx.content_rect()));
+            body_ui.multiply_opacity(GHOST_OPACITY);
+            self.dock_state
+                .leaf(path)
+                .ok()
+                .and_then(|leaf| leaf.tabs.get(shown_tab))
+                .is_some_and(|shown| tab_viewer.ghost_body(&mut body_ui, shown, body))
+        };
+        let body_shapes = ctx.graphics_mut(|g| {
+            let list = g.entry(layer);
+            let shapes: Vec<_> = list.all_entries().skip(start).cloned().collect();
+            for i in start..start + shapes.len() {
+                list.reset_shape(egui::layers::ShapeIdx(i));
+            }
+            shapes
+        });
+
+        let ghost = DraggedGroupPaint {
+            rect,
+            bar,
+            body,
+            tabs,
+            more,
+            count,
+            body_painted,
+            style,
+            visuals: ui.visuals(),
+        };
+        if tab.is_some() {
+            self.painter.dragged_tab(&painter, &ghost);
+        } else {
+            self.painter.dragged_group(&painter, &ghost);
+        }
+
+        if body_painted {
+            ctx.graphics_mut(|g| {
+                let list = g.entry(layer);
+                for shape in body_shapes {
+                    list.add(shape.clip_rect, shape.shape);
+                }
+            });
+        }
     }
 }
 

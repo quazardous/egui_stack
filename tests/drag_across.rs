@@ -36,7 +36,12 @@ struct Viewer {
     refuse_floats: bool,
     /// Refuses new windows.
     refuse_windows: bool,
+    /// Paints the ghosts' bodies (`TabViewer::ghost_body`) in [`PREVIEW`].
+    preview: bool,
 }
+
+/// The colour of a previewing viewer's ghost body.
+const PREVIEW: egui::Color32 = egui::Color32::from_rgb(0x12, 0x34, 0x56);
 
 impl TabViewer for Viewer {
     type Tab = String;
@@ -55,6 +60,13 @@ impl TabViewer for Viewer {
 
     fn on_tab_button(&mut self, tab: &mut String, response: &egui::Response) {
         self.tab_rects.push((tab.clone(), response.rect));
+    }
+
+    fn ghost_body(&mut self, ui: &mut Ui, _tab: &String, rect: Rect) -> bool {
+        if self.preview {
+            ui.painter().rect_filled(rect.shrink(4.0), 0.0, PREVIEW);
+        }
+        self.preview
     }
 
     fn dock_drop_allowed(&self, _tab: &String, drop: &DockDrop<'_>) -> DropVerdict {
@@ -378,6 +390,75 @@ fn a_group_dragged_over_a_float_shows_its_ghost_there() {
     multi.hold(ViewportId::ROOT, Modifiers::NONE);
     multi.passes(3, frame(&mut app));
     assert_eq!(sorted(tabs(&app, "float-1")), ["A", "B", "C"]);
+}
+
+/// The rects filled with `color` in a window's last pass.
+fn filled(multi: &Multi, viewport: ViewportId, color: egui::Color32) -> Vec<Rect> {
+    fn visit(shape: &egui::Shape, color: egui::Color32, rects: &mut Vec<Rect>) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| visit(s, color, rects)),
+            egui::Shape::Rect(rect) if rect.fill == color => rects.push(rect.rect),
+            _ => {}
+        }
+    }
+    let mut rects = Vec::new();
+    for clipped in multi.shapes(viewport) {
+        visit(&clipped.shape, color, &mut rects);
+    }
+    rects
+}
+
+/// A tab dragged from the main window over a native float on a screen of `scale`: its ghost,
+/// with the viewer's body, is painted by the float, at the same size in points, and nothing of
+/// it by the main window meanwhile, the tab included.
+fn tab_ghost_over_a_float(scale: f32) -> Rect {
+    let mut multi = Multi::new();
+    let mut app = app();
+    app.viewer.preview = true;
+    multi.passes(3, frame(&mut app));
+    let at = if scale > 1.0 {
+        pos2(2100.0, 200.0)
+    } else {
+        pos2(700.0, 100.0)
+    };
+    float(&mut multi, &mut app, "C", at, scale);
+    let float = viewport("float-1");
+
+    let b = tab_rect(&app, "B").center();
+    let over = float_middle(at, scale);
+    multi.press(ViewportId::ROOT, b, frame(&mut app));
+    multi.move_held(ViewportId::ROOT, b, over, frame(&mut app));
+    let preview = PREVIEW.gamma_multiply(0.7);
+    assert!(
+        texts(&multi, float).iter().any(|t| t == "B"),
+        "scale {scale}: the tab's ghost is painted in the float under the pointer"
+    );
+    let bodies = filled(&multi, float, preview);
+    assert_eq!(bodies.len(), 1, "scale {scale}: the viewer's body, once");
+    assert!(
+        !texts(&multi, ViewportId::ROOT).iter().any(|t| t == "B"),
+        "scale {scale}: the main window paints neither the ghost nor the tab in its bar"
+    );
+    assert!(
+        filled(&multi, ViewportId::ROOT, preview).is_empty(),
+        "scale {scale}: no ghost body in the main window"
+    );
+    multi.release(ViewportId::ROOT, over, frame(&mut app));
+    multi.passes(3, frame(&mut app));
+    assert_eq!(sorted(tabs(&app, "float-1")), ["B", "C"]);
+    assert!(
+        filled(&multi, float, preview).is_empty(),
+        "no ghost once dropped"
+    );
+    bodies[0]
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_tab_dragged_over_a_float_shows_its_ghost_there_at_scales_1_and_2() {
+    let one = tab_ghost_over_a_float(1.0);
+    let two = tab_ghost_over_a_float(2.0);
+    assert_eq!(one.size(), two.size(), "the same size in points");
 }
 
 #[test]

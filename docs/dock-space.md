@@ -134,7 +134,32 @@ docks; `FloatsArea::float_move` sets what moving a window does (see
 [native-floats.md](native-floats.md#float-gestures)).
 
 The add tab button sits right after the last tab (`ButtonsStyle::add_tab_align`,
-`TabAddAlign::Left` by default); `TabAddAlign::Right` puts it at the end of the bar.
+`TabAddAlign::Left` by default); `TabAddAlign::Right` puts it at the end of the bar. Its slot is
+reserved left of the grip, so the buttons at the end of the bar (the add button once it is there,
+the grip, the close-all button) always sit side by side.
+
+### The ghost of a drag
+
+A dragged tab or group leaves its bar and shows a ghost under the pointer: a translucent frame
+with a shadow, a tab bar and a hint of the body. A single tab's ghost is a one-tab group's, painted
+by `DockPainter::dragged_tab`, whose default paints it as `DockPainter::dragged_group` paints a
+group's; both get a `DraggedGroupPaint`. The ghost takes its leaf's size, kept within 160 × 80 and
+320 × 200 points, and a group's tabs that do not fit its bar are summed up as "+N".
+
+The application may preview the content under the ghost's tab bar, through two `TabViewer`
+methods, for a single tab and for a group (whose active tab is shown):
+
+- `ghost_size(tab, default)` gives the ghost's size, kept within the same limits; `default` is
+  the leaf's size, as egui_stack picks it.
+- `ghost_body(ui, tab, rect)` paints the body: `ui` covers `rect`, below the tab bar, on the
+  ghost's layer, clipped to it and as translucent as the frame. It returns whether it painted;
+  the painter then leaves its own body hint out (`DraggedGroupPaint::body_painted`), and the
+  application's content goes over the frame the painter drew.
+
+By default neither changes anything. In a space, the ghost is painted by the window under the
+pointer, the drag's own window or another: sizes are in points, so the ghost keeps its size from
+a screen of one scale to another, and the window the drag began in paints nothing of it (nor the
+tab, out of its bar) while the pointer is over another window.
 
 ### Serialisation
 

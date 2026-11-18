@@ -126,13 +126,29 @@ clip [[0.0 0.0] - [900.0 400.0]]
   Rect(RectShape { rect: [[706.0 166.0] - [769.3 189.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 1.0, color: #FF_00_00_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[0.0 0.0] - [900.0 400.0]]
   Text "Not here" at [712.0 170.0] size [51.3 15.0] fallback #8C_8C_8C_FF override None opacity 1.0
-clip [[657.1 138.0] - [793.1 162.0]]
-  Rect(RectShape { rect: [[657.1 138.0] - [722.9 162.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
-clip [[657.1 138.0] - [793.1 162.0]]
-  Rect(RectShape { rect: [[658.1 139.0] - [721.9 161.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 6, se: 6 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
-clip [[657.1 138.0] - [793.1 162.0]]
-  Text "Files" at [665.1 142.5] size [25.8 15.0] fallback #FF_FF_FF_FF override None opacity 1.0
-clip [[657.1 138.0] - [793.1 162.0]]
-  LineSegment { points: [[706.4 145.5], [715.4 154.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
-clip [[657.1 138.0] - [793.1 162.0]]
-  LineSegment { points: [[715.4 145.5], [706.4 154.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+clip [[0.0 0.0] - [900.0 400.0]]
+  Rect(RectShape { rect: [[680.0 148.0] - [880.0 348.0]], corner_radius: CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, fill: #00_00_00_43, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 8.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [900.0 400.0]]
+  Rect(RectShape { rect: [[674.0 162.0] - [874.0 338.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #13_13_13_B3, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [900.0 400.0]]
+  Rect(RectShape { rect: [[674.0 138.0] - [874.0 162.0]], corner_radius: CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, fill: #07_07_07_B3, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [900.0 400.0]]
+  Rect(RectShape { rect: [[674.0 138.0] - [715.8 162.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #13_13_13_B3, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [900.0 400.0]]
+  Rect(RectShape { rect: [[675.0 139.0] - [714.8 161.0]], corner_radius: CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #2A_2A_2A_B3 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[0.0 0.0] - [900.0 400.0]]
+  LineSegment { points: [[676.5 161.0], [713.3 161.0]], stroke: Stroke { width: 2.0, color: #13_13_13_B3 } }
+clip [[0.0 0.0] - [900.0 400.0]]
+  Text "Files" at [682.0 142.5] size [25.8 15.0] fallback #62_62_62_B3 override None opacity 1.0
+clip [[0.0 0.0] - [900.0 400.0]]
+  Rect(RectShape { rect: [[674.0 138.0] - [874.0 338.0]], corner_radius: CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, fill: #00_00_00_00, stroke: Stroke { width: 1.0, color: #2A_2A_2A_B3 }, stroke_kind: Inside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
+clip [[24.0 0.0] - [160.0 24.0]]
+  Noop
+clip [[24.0 0.0] - [160.0 24.0]]
+  Noop
+clip [[24.0 0.0] - [160.0 24.0]]
+  Noop
+clip [[24.0 0.0] - [160.0 24.0]]
+  Noop
+clip [[24.0 0.0] - [160.0 24.0]]
+  Noop
