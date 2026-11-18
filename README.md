@@ -6,8 +6,9 @@
 [![live demo](https://img.shields.io/badge/demo-live-brightgreen?logo=webassembly)](https://quazardous.github.io/egui_stack/)
 [![egui_version](https://img.shields.io/badge/egui-0.37-blue)](https://github.com/emilk/egui)
 
-`egui_stack` is a docking system for `egui`: tabs in splits, rows, columns and grids, floating windows, and
-collapsible sections stacked in a panel.
+`egui_stack` is a docking and window-layout system for `egui`: a window's whole space as a tree of zones (side
+areas, a centre, toolbars), tabs in splits, rows, columns and grids inside them, folding and collapsing zones, floating
+windows, and collapsible sections stacked in a panel.
 
 **[Try it in your browser](https://quazardous.github.io/egui_stack/)**: the demo ([`demo/`](demo)), built for the web
 from this repository's main branch.
@@ -16,18 +17,43 @@ from this repository's main branch.
 
 ## Features
 
-- Opening and closing tabs.
-- Moving tabs between nodes and resizing.
-- Dragging tabs out into new `egui` windows.
+**Docking**
+
+- Tabs in splits, rows, columns and n-ary grids; opening, closing, moving and resizing them.
+- Drop zones drawn on the target (a border and a light tint), with an edge band to split and a band under the tab bar
+  to join; a tab lands where it is released.
+- Dragging a single tab, or a whole tab group by the empty part of its tab bar (or by a handle of the app's choosing
+  when the tab bar is hidden); a drag starts only past an activation distance.
+- Floating `egui` windows for tabs dragged out.
 - Several docks sharing one drag (`DockSpace`): side areas and a centre, each drawn where the application puts it,
-  with the same drop zones between them as inside one dock, and no-drop zones (a toolbar, a status bar) where a released
-  tab goes back instead of floating.
-- Highly customizable look and feel: a `Style`, or a `DockPainter` that paints the tabs, tab bars, separators and drop
-  overlay itself.
-- High degree of control over behaviour of the whole dock area and of individual tabs.
-- Manipulating tabs and dock layout from code.
-- Collapsible sections stacked in a panel (`sections::Sections`): fold, resize, pull as a block, remembered by name,
-  painted by the same `DockPainter`.
+  with no-drop zones (a toolbar, a status bar) where a released tab goes back instead of floating.
+- A veto on every drop (`dock_drop_allowed`), and full control of the layout from code.
+
+**Window layout** ([docs/layout-and-dock.md](docs/layout-and-dock.md))
+
+- `layout::Layout`: the window as a tree of zones with constraints (least, largest and default sizes in points or
+  shares), drawn by `LayoutArea`, with sashes that snap and resize from the keyboard.
+- Folding a zone to a strip, with a grip, the app's icons and an optional built-in title (`LayoutStyle::strip_title`,
+  or `ZoneViewer::strip_title` to draw it yourself); a click unfolds, a drag on the strip's edge pulls it out.
+- Zones that fold by themselves for want of room (`Constraints::auto_fold`), reported as `LayoutEvent`s.
+- Strips that take dropped tabs (`Constraints::strip_drops`), and empty docks that collapse to nothing
+  (`Fold::Collapse`) and come back from a restore band while a tab is dragged.
+- Zones lying over their neighbour and a flyout, with their own dismiss rules.
+- `Docked`: a `Layout` and its `DockSpace` saved and repaired as one value (`serde` feature).
+
+**Sections**
+
+- Collapsible sections stacked in a panel (`sections::Sections`): fold, resize, pull as a block, size by content or
+  share, remembered by name.
+
+**Look and access**
+
+- A `Style`, or a `DockPainter` / `LayoutPainter` that paints tabs, tab bars, bodies, separators, strips, sashes and
+  drop overlays itself.
+- Every separator, sash, grip and strip is named for screen readers (`Labels`), and reachable from the keyboard.
+
+Native floating windows (docks in their own OS window) are being designed in
+[docs/native-floats.md](docs/native-floats.md).
 
 ## Quick start
 
@@ -36,7 +62,7 @@ Add `egui` and `egui_stack` to your project's dependencies:
 ```toml
 [dependencies]
 egui = "0.37"
-egui_stack = "0.25"
+egui_stack = "0.27"
 ```
 
 Then proceed by setting up `egui`, following its [quick start guide](https://github.com/emilk/egui#quick-start). Once
