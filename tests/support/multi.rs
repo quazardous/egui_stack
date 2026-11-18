@@ -13,6 +13,8 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
+use egui::epaint::ClippedShape;
+
 use egui::{
     Context, Event, ImmediateViewport, Modifiers, PointerButton, Pos2, RawInput, Rect, Ui, Vec2,
     ViewportBuilder, ViewportCommand, ViewportEvent, ViewportId, ViewportInfo,
@@ -27,6 +29,7 @@ pub const SIZE: Vec2 = Vec2::new(640.0, 480.0);
 struct Immediate {
     inputs: BTreeMap<ViewportId, RawInput>,
     shown: Vec<(ViewportId, ViewportBuilder, Vec<ViewportCommand>)>,
+    shapes: BTreeMap<ViewportId, Vec<ClippedShape>>,
 }
 
 thread_local! {
@@ -64,7 +67,9 @@ fn render_immediate(ctx: &Context, viewport: ImmediateViewport<'_>) {
             .get(&ids.this)
             .map(|o| o.commands.clone())
             .unwrap_or_default();
-        h.borrow_mut().shown.push((ids.this, builder, commands));
+        let mut h = h.borrow_mut();
+        h.shapes.insert(ids.this, out.shapes);
+        h.shown.push((ids.this, builder, commands));
     }
 }
 
@@ -86,6 +91,8 @@ pub struct Multi {
     commands: BTreeMap<ViewportId, Vec<ViewportCommand>>,
     positions_hidden: bool,
     time: f64,
+    /// What each window painted in its last pass.
+    shapes: BTreeMap<ViewportId, Vec<ClippedShape>>,
 }
 
 impl Default for Multi {
@@ -118,6 +125,7 @@ impl Multi {
             commands: BTreeMap::new(),
             positions_hidden: false,
             time: 0.0,
+            shapes: BTreeMap::new(),
         }
     }
 
@@ -142,6 +150,11 @@ impl Multi {
             outer_rect: Some(rect),
             ..Self::fresh_info()
         }
+    }
+
+    /// What a window painted in the last main pass, empty if it was not shown.
+    pub fn shapes(&self, viewport: ViewportId) -> &[ClippedShape] {
+        self.shapes.get(&viewport).map_or(&[], Vec::as_slice)
     }
 
     pub fn ctx(&self) -> &Context {
@@ -267,6 +280,9 @@ impl Multi {
         let mut immediate = self.immediate.borrow_mut();
         immediate.inputs.clear();
         let shown = std::mem::take(&mut immediate.shown);
+        self.shapes = std::mem::take(&mut immediate.shapes);
+        self.shapes
+            .insert(ViewportId::ROOT, std::mem::take(&mut out.shapes));
         drop(immediate);
         self.shown.clear();
         for (viewport, builder, commands) in shown {

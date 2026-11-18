@@ -334,6 +334,52 @@ fn a_group_dragged_from_the_main_window_lands_whole_in_a_float() {
     }
 }
 
+/// The texts a window painted in the last pass.
+fn texts(multi: &Multi, viewport: ViewportId) -> Vec<String> {
+    fn visit(shape: &egui::Shape, texts: &mut Vec<String>) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| visit(s, texts)),
+            egui::Shape::Text(text) => texts.push(text.galley.text().to_owned()),
+            _ => {}
+        }
+    }
+    let mut texts = Vec::new();
+    for clipped in multi.shapes(viewport) {
+        visit(&clipped.shape, &mut texts);
+    }
+    texts
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_group_dragged_over_a_float_shows_its_ghost_there() {
+    let mut multi = Multi::new();
+    let mut app = app();
+    let at = with_float(&mut multi, &mut app);
+    let float = viewport("float-1");
+    assert!(
+        !texts(&multi, float).iter().any(|t| t == "A" || t == "B"),
+        "before the drag, the float shows only its own tab"
+    );
+
+    let a = tab_rect(&app, "A").center();
+    multi.hold(ViewportId::ROOT, Modifiers::SHIFT);
+    multi.press(ViewportId::ROOT, a, frame(&mut app));
+    let over = float_middle(at, 1.0);
+    multi.move_held(ViewportId::ROOT, a, over, frame(&mut app));
+    let shown = texts(&multi, float);
+    for tab in ["A", "B"] {
+        assert!(
+            shown.iter().any(|t| t == tab),
+            "the group's ghost, {tab} among its tabs, is painted in the float under the pointer: {shown:?}"
+        );
+    }
+    multi.release(ViewportId::ROOT, over, frame(&mut app));
+    multi.hold(ViewportId::ROOT, Modifiers::NONE);
+    multi.passes(3, frame(&mut app));
+    assert_eq!(sorted(tabs(&app, "float-1")), ["A", "B", "C"]);
+}
+
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_vetoed_drop_into_a_float_keeps_both_sides() {
