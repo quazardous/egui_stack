@@ -26,6 +26,7 @@ use across::Across;
 
 mod across;
 mod float_out;
+mod ghost;
 mod leaf;
 mod main_surface;
 mod window_surface;
@@ -234,6 +235,18 @@ impl<Tab> DockArea<'_, Tab> {
             None
         };
         let released = !remote && ui.input(|i| i.pointer.primary_released());
+        // A whole group dragged shows its ghost under the pointer, in the viewport the pointer
+        // is over: the source's, or another's of the space.
+        if !released
+            && !take
+            && let Some(DragData {
+                src: TreeComponent::Node(path),
+                ..
+            }) = drag_data
+            && let Some(pointer) = state.last_hover_pos
+        {
+            self.paint_group_ghost(ui, path, pointer, tab_viewer);
+        }
 
         // A collapsed zone's restore band wins over whatever lies under it, no-drop zones
         // included; then a folded zone's strip taking drops.

@@ -292,6 +292,67 @@ pub trait DockPainter {
         );
     }
 
+    /// While a whole tab group is dragged, its ghost under the pointer: its tab bar with the
+    /// tabs that fit, the active one [`SELECTED`](PartState::SELECTED), a "+N" for the others,
+    /// and a hint of its body below. It is painted on a layer above the drop overlay, in every
+    /// window of a [`DockSpace`](crate::DockSpace) the pointer is over. The default paints a
+    /// translucent frame with a shadow, the bar and its tabs through
+    /// [`tab_bar`](Self::tab_bar) and [`tab`](Self::tab), and the body's background, see-through
+    /// enough to show the drop overlay under it.
+    fn dragged_group(&self, painter: &Painter, group: &DraggedGroupPaint<'_>) {
+        let style = group.style;
+        let painter = {
+            let mut painter = painter.clone();
+            painter.multiply_opacity(0.7);
+            painter
+        };
+        let corner_radius = style.tab_bar.corner_radius;
+        painter.add(
+            group
+                .visuals
+                .popup_shadow
+                .as_shape(group.rect, corner_radius),
+        );
+        painter.rect_filled(group.body, CornerRadius::ZERO, style.tab.tab_body.bg_fill);
+        self.tab_bar(
+            &painter,
+            &TabBarPaint {
+                rect: group.bar,
+                scrolled: 0.0,
+                folded: false,
+                style,
+            },
+        );
+        for tab in &group.tabs {
+            self.tab(
+                &painter,
+                &TabPaint {
+                    rect: tab.rect,
+                    bar: group.bar,
+                    title: &tab.title,
+                    state: tab.state,
+                    close: None,
+                    folded: false,
+                    style,
+                    tab_style: &style.tab,
+                },
+            );
+        }
+        if let Some(more) = &group.more {
+            painter.add(TextShape::new(
+                Align2::CENTER_CENTER.pos_in_rect(&more.rect) - more.label.size() / 2.0,
+                Arc::clone(&more.label),
+                group.visuals.weak_text_color(),
+            ));
+        }
+        painter.rect_stroke(
+            group.rect,
+            corner_radius,
+            group.visuals.window_stroke,
+            StrokeKind::Inside,
+        );
+    }
+
     /// One of the drop overlay's buttons ([`OverlayType::Widgets`]):
     /// the middle one (no split) or a split's.
     fn drop_button(&self, painter: &Painter, button: &DropButtonPaint<'_>) {
@@ -970,6 +1031,55 @@ pub struct WindowOutlinePaint<'a> {
     pub style: &'a Style,
     /// The visuals of the window.
     pub visuals: &'a Visuals,
+}
+
+/// A whole tab group being dragged, for [`DockPainter::dragged_group`]. The ghost keeps a
+/// sensible size whatever the group: the tabs that do not fit its bar are summed up in
+/// [`more`](Self::more).
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct DraggedGroupPaint<'a> {
+    /// The whole ghost, under the pointer: its bar on top, its body below.
+    pub rect: Rect,
+    /// Its tab bar.
+    pub bar: Rect,
+    /// The hint of its body, below the bar.
+    pub body: Rect,
+    /// The tabs that fit in the bar, left to right; the active one is always among them.
+    pub tabs: Vec<DraggedGroupTab>,
+    /// The tabs that do not fit, if any: how many, and where their "+N" goes, at the bar's
+    /// right end.
+    pub more: Option<DraggedGroupMore>,
+    /// How many tabs the group has.
+    pub count: usize,
+    /// The dock's style.
+    pub style: &'a Style,
+    /// The visuals of the window it is painted in.
+    pub visuals: &'a Visuals,
+}
+
+/// A tab of a dragged group's ghost, in [`DraggedGroupPaint`].
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct DraggedGroupTab {
+    /// Where it is in the ghost's bar.
+    pub rect: Rect,
+    /// Its title, laid out.
+    pub title: Arc<Galley>,
+    /// [`SELECTED`](PartState::SELECTED) for the group's active tab.
+    pub state: PartState,
+}
+
+/// The tabs of a dragged group that do not fit its ghost's bar, in [`DraggedGroupPaint`].
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct DraggedGroupMore {
+    /// Where the "+N" goes, at the bar's right end.
+    pub rect: Rect,
+    /// How many tabs are left out.
+    pub hidden: usize,
+    /// "+N", laid out.
+    pub label: Arc<Galley>,
 }
 
 /// A collapsed zone's restore band, for [`DockPainter::restore_band`].

@@ -12,9 +12,10 @@ pub use dock_area::{
     SpaceDrag, TabFocus,
 };
 pub use painter::{
-    DockPainter, DropButtonPaint, DropPaint, DropRefusal, DropTargetPaint, PartState,
-    RestoreBandPaint, SectionBandPaint, SectionBoundaryPaint, SeparatorAxis, SeparatorPaint,
-    StylePainter, TabBarGripPaint, TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose,
-    TabMeasure, TabPaint, ToolItemPaint, ToolMorePaint, ToolSeparatorPaint, WindowOutlinePaint,
+    DockPainter, DraggedGroupMore, DraggedGroupPaint, DraggedGroupTab, DropButtonPaint, DropPaint,
+    DropRefusal, DropTargetPaint, PartState, RestoreBandPaint, SectionBandPaint,
+    SectionBoundaryPaint, SeparatorAxis, SeparatorPaint, StylePainter, TabBarGripPaint,
+    TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabMeasure, TabPaint, ToolItemPaint,
+    ToolMorePaint, ToolSeparatorPaint, WindowOutlinePaint,
 };
 pub use tab_viewer::{DockDrop, TabViewer};
