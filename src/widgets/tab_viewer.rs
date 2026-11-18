@@ -120,6 +120,19 @@ pub trait TabViewer {
         self.drop_allowed(tab, drop.destination)
     }
 
+    /// The title shown for the dock named `dock` of a [`DockSpace`](crate::DockSpace), where
+    /// the dock names a place the user picks: the docks listed by the Move group menu
+    /// ([`GroupHandles::MENU`](crate::GroupHandles::MENU)), whose items, and their accessible
+    /// names, read this title. A refused dock's item is greyed with the reason
+    /// [`dock_drop_allowed`](Self::dock_drop_allowed) gives, which the viewer words itself, so
+    /// it can name the dock by the same title.
+    ///
+    /// By default `None`: the dock is shown by its name, as given to
+    /// [`DockSpace::add_dock`](crate::DockSpace::add_dock).
+    fn dock_title(&mut self, _dock: &str) -> Option<WidgetText> {
+        None
+    }
+
     /// What becomes of the tabs of a float the user closes (its close button, or its native
     /// window's): `close` names the float, its dock and its tabs. By default
     /// [`ClosePolicy::ReturnToOrigin`]: each tab goes back where it came from.
