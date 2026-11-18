@@ -60,6 +60,39 @@ jobs:
           command: doc
           args: --lib --no-deps --all-features
 
+  # Native floating docks on Windows and macOS for pull requests into
+  # `next`, where the tests job runs on Linux only (pushes run every test
+  # on the three systems above). The multi-viewport harness
+  # (tests/support/multi.rs) runs egui's viewports headless, with no window
+  # and no GPU, so these tests need nothing of the system; the wgpu example
+  # is built, not run. Windows is meant as a required check; macOS reports
+  # only, as above.
+  native-floats:
+    name: Native floats (${{ matrix.os }})
+    if: github.base_ref == 'next'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: >-
+          cargo test --all-features
+          --test floats --test native_floats --test drag_across --test bus_points
+
+      - name: Build the examples
+        run: cargo build --example native_floats --example wgpu_float
+
   # The demo (demo/) builds for the browser, as the Pages workflow
   # (pages.yml) builds it on main; nothing is deployed here.
   web-demo:

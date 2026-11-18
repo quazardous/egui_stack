@@ -1,7 +1,9 @@
 # Native floating docks (design note)
 
-Status: steps 2 (the model), 3 (floats drawn, close policy, events, bus points) and 4 (the
-drag across viewports) built; step 5 to come. Tracks [#105](https://github.com/quazardous/egui_stack/issues/105).
+Status: built, steps 2 (the model), 3 (floats drawn, close policy, events, bus points), 4 (the
+drag across viewports) and 5 (an application-owned wgpu surface in a float, the Windows CI job).
+Tracks [#105](https://github.com/quazardous/egui_stack/issues/105). To use it, see
+[Using native floats](#using-native-floats).
 
 Docks in native OS windows (egui viewports) that stay part of one
 logical workspace: the same layout tree, the same panel ids, groups,
@@ -133,6 +135,46 @@ the callbacks.
 release, never once per frame. Payloads are plain `Send + Sync` values,
 never the application's tab type. The bus feature ships together with
 the native floats.
+
+## Using native floats
+
+1. Keep the window's `Layout` and its `DockSpace` together, as a `Docked`, and choose where new
+   floats go: `DockSpace::new().with_float_host(FloatHost::Native)` for native windows
+   (`FloatHost::InWindow`, the default, draws them as `egui::Window`s over the main window).
+2. Each frame, draw the zones and their docks, bind the space to the layout, then draw the floats
+   once, after the docks, in the main window's pass:
+
+   ```rust
+   let laid = LayoutArea::new(&mut docked.layout).show_inside(ui, &mut zone_viewer);
+   docked.space.bind(&laid);
+   docked.floats().host(&mut host).show(ui.ctx(), &mut tab_viewer);
+   for event in docked.space.take_float_events() { /* Detached, Closed, Moved, Repaired */ }
+   ```
+
+   A tab or a group dragged out of every dock now opens a float; `DockSpace::float_out` does the
+   same from code.
+3. The host: `EguiViewports` shows the floats in egui's immediate viewports, with every default.
+   An application that pairs something with its windows implements `ViewportHost` itself:
+   - `viewport_id(key)`: its own id for the float keyed `key`, stable while the float is open;
+     key anything to it (a wgpu surface, a camera, display settings);
+   - `builder(float)`: the window's title, icon, least size (egui_stack adds the place);
+   - `show(ctx, id, builder, body)`: shows the viewport and calls `body` for its content, by
+     default `Context::show_viewport_immediate`;
+   - `screens()`: the monitors (name, desktop physical rect, scale), so windows left off every
+     screen are brought back (`ScreenGone::MoveOnto`, or `DockBack`); none by default;
+   - `outer_rect(ctx, id)`: where the window is, `None` where the system hides it (Wayland).
+4. Rendering stays the application's: a tab draws what it draws anywhere, in `TabViewer::ui`,
+   in whichever viewport it is now (`ui.ctx().viewport_id()`). With eframe's wgpu renderer a
+   paint callback (`egui_wgpu::Callback`) works in every viewport, on the device eframe shares
+   between them; [`examples/wgpu_float.rs`](../examples/wgpu_float.rs) draws a 3D scene in a
+   tab that can be detached.
+5. Decisions: `TabViewer::close_policy` says where a closed window's tabs go (back to their
+   origin by default), `TabViewer::dock_drop_allowed` vetoes a drop in any window. With the
+   `bus` feature, `DockSpace::with_bus` asks them as `stack.dock.drop` and
+   `stack.window.close` instead, and tells the events as `stack.*` points.
+6. Saving: with the `serde` feature, `Docked` saves the floats, their places (per screen, in
+   points with their scale), the closed floats' places and each tab's origin; a layout saved
+   before floats loads its legacy windows as native floats.
 
 ## Steps
 
@@ -305,6 +347,26 @@ the native floats.
 - Not built: two drag sessions (tabs here, other payloads in the application) sharing one
   release (the application's own drags stay its own), and groups dragged back into their own
   leaf.
+
+### As built (step 5)
+
+- `examples/wgpu_float.rs`, the reporter's "detached 3D viewport": eframe's wgpu renderer, a
+  "3D view" tab drawing a spinning triangle with an `egui_wgpu` paint callback (its pipeline,
+  uniform buffer and bind group made once, in egui_wgpu's callback resources), and a
+  `ViewportHost` of the application's (`Windows`) giving its own viewport ids and pairing a
+  tint with each window, kept in egui's memory under the viewport id. The tab draws the same
+  in the main window and in a float; dragged back, it renders in the main window again.
+  egui_stack needs nothing new for it: rendering stays in `TabViewer::ui`.
+- A test (`a_float_lives_in_the_application_s_own_viewport_and_keeps_it`): with a host's own
+  ids, the float's window is the host's viewport, its tab is drawn in that viewport, and it
+  keeps it when the window moves; closed through it, the tab comes back.
+- CI: the `native-floats` job runs the floats tests (`floats`, `native_floats`,
+  `drag_across`, `bus_points`) and builds `native_floats` and `wgpu_float` on Windows and
+  macOS for pull requests into `next` (the tests job is Linux only there; pushes run every
+  test on the three systems). The multi-viewport harness runs egui's viewports headless, with
+  no window and no GPU, so no test is platform-specific; Windows is meant as a required
+  check, macOS reports only. Real windows (a drag across monitors of different scales on a
+  real desktop) are left to manual testing: no CI runner has several monitors.
 
 ## Risks
 

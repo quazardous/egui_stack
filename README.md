@@ -81,6 +81,9 @@ can find all of them in the [`examples`](examples) folder.
 
 You can run them with Cargo from the crate's root directory, for example: `cargo run --example hello`.
 
+`cargo run --example wgpu_float` shows a detached 3D viewport: a tab rendering its own wgpu scene moves into a native
+floating window the application hosts ([docs/native-floats.md](docs/native-floats.md), "Using native floats").
+
 ## Demo
 
 The demo, a separate crate in [`demo/`](demo), runs natively with `cargo run -p egui_stack_demo` and in the browser:
