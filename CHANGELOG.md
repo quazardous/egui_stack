@@ -1,5 +1,11 @@
 # egui_stack changelog
 
+## egui_stack 0.28.6 - 2026-11-18
+
+### Added
+
+- `TabViewer` has a new provided method, `dock_title`: the title the Move group menu shows, and gives as accessible name, for a dock of a `DockSpace`. By default `None`, which keeps showing the dock's name.
+
 ## egui_stack 0.28.5 - 2026-11-18
 
 ### Fixed
