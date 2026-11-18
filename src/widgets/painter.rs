@@ -194,6 +194,31 @@ pub trait DockPainter {
         );
     }
 
+    /// The grip at the end of a tab bar, which moves the whole tab group
+    /// ([`GroupHandles::GRIP`](crate::GroupHandles::GRIP)), painted after the bar's tail. The
+    /// default paints two columns of three dots, on a background when the grip is hovered,
+    /// focused or dragged.
+    fn tab_bar_grip(&self, painter: &Painter, grip: &TabBarGripPaint<'_>) {
+        let buttons = &grip.style.buttons;
+        let active = grip.state.contains(PartState::HOVERED)
+            || grip.state.contains(PartState::FOCUSED)
+            || grip.state.contains(PartState::DRAGGED);
+        if active {
+            painter.rect_filled(grip.rect, grip.corner_radius, buttons.group_grip_bg_fill);
+        }
+        let color = if active {
+            buttons.group_grip_active_color
+        } else {
+            buttons.group_grip_color
+        };
+        let center = grip.rect.center();
+        for column in [-2.0, 2.0] {
+            for row in [-4.0, 0.0, 4.0] {
+                painter.circle_filled(center + vec2(column, row), 1.0, color);
+            }
+        }
+    }
+
     /// A leaf's body border, painted over the body's background and before its contents.
     ///
     /// The painter is clipped to the body ([`TabBodyPaint::rect`]); paint outside it with
@@ -800,6 +825,24 @@ pub struct TabBarTailPaint<'a> {
     pub rect: Rect,
     /// The bar, inside its margins.
     pub bar: Rect,
+    /// Whether its leaf is folded: only the bar shows, with no body below it.
+    pub folded: bool,
+    /// The dock's style.
+    pub style: &'a Style,
+}
+
+/// The grip at the end of a tab bar, for [`DockPainter::tab_bar_grip`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct TabBarGripPaint<'a> {
+    /// The grip, the height of the bar.
+    pub rect: Rect,
+    /// The corners its background keeps to, those of the bar where it touches them.
+    pub corner_radius: CornerRadius,
+    /// [`HOVERED`](PartState::HOVERED), [`PRESSED`](PartState::PRESSED),
+    /// [`FOCUSED`](PartState::FOCUSED) and [`DRAGGED`](PartState::DRAGGED) while it drags its
+    /// group.
+    pub state: PartState,
     /// Whether its leaf is folded: only the bar shows, with no body below it.
     pub folded: bool,
     /// The dock's style.

@@ -16,6 +16,9 @@ pub(super) struct State {
     pub dragged: Option<DraggedTab>,
     /// The tab group (a leaf, all its tabs) dragged during the last frame, if any.
     pub dragged_node: Option<DraggedNode>,
+    /// Whether the tab being dragged carries its whole group: decided when its drag starts, by
+    /// the group drag modifiers held then.
+    pub drag_carries_group: Option<bool>,
     /// The pass the drag was last resolved in: the docks of a space resolve it once a pass.
     pub pass: Option<u64>,
 }
@@ -30,6 +33,7 @@ impl State {
             window_fade: None,
             dragged: None,
             dragged_node: None,
+            drag_carries_group: None,
             pass: None,
         })
     }
@@ -43,6 +47,7 @@ impl State {
         self.dnd = None;
         self.window_fade = None;
         self.drag_start = None;
+        self.drag_carries_group = None;
     }
 
     pub(super) fn set_drag_and_drop(

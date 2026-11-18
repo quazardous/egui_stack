@@ -13,8 +13,9 @@
 
 use egui::{Color32, Id, Panel, Rect, RichText, Slider, Stroke, Ui, WidgetText, pos2, vec2};
 use egui_stack::{
-    AllowedSplits, DockArea, DockPainter, DockRules, DockSpace, DockState, GridLayout, LinearDir,
-    NodeIndex, NodePath, OverlayType, PartState, Style, StylePainter, TabBodyPaint, TabViewer,
+    AllowedSplits, DockArea, DockPainter, DockRules, DockSpace, DockState, GridLayout,
+    GroupHandles, LinearDir, NodeIndex, NodePath, OverlayType, PartState, Style, StylePainter,
+    TabBodyPaint, TabViewer,
 };
 
 pub mod picker;
@@ -39,6 +40,8 @@ pub struct DemoApp {
     pub picker: Picker,
     /// Whether the focused leaf's body is outlined, by [`FocusBorder`].
     pub focus_border: bool,
+    /// The handles that move a whole tab group: all of them by default.
+    pub group_handles: GroupHandles,
     saved: Option<String>,
     status: String,
     opened: usize,
@@ -71,7 +74,8 @@ impl Default for DemoApp {
             tabs: Tabs {
                 notes:
                     "Things to try:\n\n- drag this tab to another leaf's edge\n- drag it out of \
-                        the dock\n- arrange a row as a grid"
+                        the dock\n- arrange a row as a grid\n- move a whole group by the dotted grip at the \
+                        end of its tab bar, or drag a tab with Shift held"
                         .to_owned(),
                 code: "fn main() {\n    println!(\"Hello, docking!\");\n}\n".to_owned(),
                 add_request: None,
@@ -81,6 +85,7 @@ impl Default for DemoApp {
             zone_edge_coverage: Style::default().overlay.feel.zone_edge_coverage,
             picker: Picker::default(),
             focus_border: false,
+            group_handles: GroupHandles::ALL,
             saved: None,
             status: String::new(),
             opened: 0,
@@ -154,6 +159,7 @@ impl DemoApp {
         DockArea::new(&mut self.dock_state)
             .style(style.clone())
             .painter(painter)
+            .group_handles(self.group_handles)
             .show_add_buttons(true)
             .show_leaf_collapse_buttons(true)
             .show_inside(ui, &mut self.tabs);
@@ -183,6 +189,7 @@ impl DemoApp {
                     DockArea::dock(&mut self.space, name)
                         .style(style.clone())
                         .painter(painter)
+                        .group_handles(self.group_handles)
                         .show_leaf_collapse_buttons(true)
                         .show_inside(ui, &mut self.tabs);
                 });
@@ -190,6 +197,7 @@ impl DemoApp {
         DockArea::dock(&mut self.space, "centre")
             .style(style.clone())
             .painter(painter)
+            .group_handles(self.group_handles)
             .show_add_buttons(true)
             .show_leaf_collapse_buttons(true)
             .show_inside(ui, &mut self.tabs);
@@ -287,6 +295,38 @@ impl DemoApp {
             ui.separator();
             ui.toggle_value(&mut self.focus_border, "Focus border")
                 .on_hover_text("Outline the focused leaf, with a custom DockPainter");
+
+            ui.menu_button("Group handles", |ui| {
+                for (flag, label, hint) in [
+                    (
+                        GroupHandles::GRIP,
+                        "Grip",
+                        "The dotted grip at the end of each tab bar",
+                    ),
+                    (
+                        GroupHandles::EMPTY_SPACE,
+                        "Empty space",
+                        "The tab bar right of its tabs",
+                    ),
+                    (
+                        GroupHandles::MODIFIER_DRAG,
+                        "Shift + drag",
+                        "A tab dragged with Shift held",
+                    ),
+                    (
+                        GroupHandles::MENU,
+                        "Menu",
+                        "Move group in the tab's context menu",
+                    ),
+                ] {
+                    let mut on = self.group_handles.contains(flag);
+                    if ui.checkbox(&mut on, label).on_hover_text(hint).changed() {
+                        self.group_handles = self.group_handles.with(flag, on);
+                    }
+                }
+            })
+            .response
+            .on_hover_text("What moves a whole tab group");
 
             if self.page == Page::Dock {
                 ui.separator();

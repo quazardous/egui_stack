@@ -220,6 +220,8 @@
 //!         eject_button: "Przenieś zakładkę do nowego okna".to_string(),
 //!         hide_tab_bar_button: "Schowaj pasek zakładek".to_string(),
 //!         show_tab_bar_button: "Pokaż pasek zakładek".to_string(),
+//!         move_group_menu: "Przenieś grupę".to_string(),
+//!         move_group_new_window: "Nowe okno".to_string(),
 //!     },
 //!     leaf: LeafTranslations {
 //!         close_button_disabled_tooltip: "Ten węzeł zawiera niezamykalne zakładki.".to_string(),

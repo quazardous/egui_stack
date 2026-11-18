@@ -28,6 +28,11 @@ pub struct TabContextMenuTranslations {
     pub hide_tab_bar_button: String,
     /// Button that shows the tab bar.
     pub show_tab_bar_button: String,
+    /// Submenu listing where the whole tab group can move
+    /// ([`GroupHandles::MENU`](crate::GroupHandles::MENU)).
+    pub move_group_menu: String,
+    /// Item of the Move group submenu that floats the group in a new window.
+    pub move_group_new_window: String,
 }
 
 /// Specifies text displayed in the primary buttons on a tab bar.
@@ -92,6 +97,8 @@ impl TabContextMenuTranslations {
             eject_button: String::from("Eject"),
             hide_tab_bar_button: String::from("Hide tab bar"),
             show_tab_bar_button: String::from("Show tab bar"),
+            move_group_menu: String::from("Move group"),
+            move_group_new_window: String::from("New window"),
         }
     }
 }

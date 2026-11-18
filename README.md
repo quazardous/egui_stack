@@ -22,8 +22,9 @@ from this repository's main branch.
 - Tabs in splits, rows, columns and n-ary grids; opening, closing, moving and resizing them.
 - Drop zones drawn on the target (a border and a light tint), with an edge band to split and a band under the tab bar
   to join; a tab lands where it is released.
-- Dragging a single tab, or a whole tab group by the empty part of its tab bar (or by a handle of the app's choosing
-  when the tab bar is hidden); a drag starts only past an activation distance.
+- Dragging a single tab, or a whole tab group by a grip at the end of its tab bar, the empty part of the bar, a tab
+  dragged with Shift held, or "Move group" in its menu, each handle switchable (`GroupHandles`); a drag starts only
+  past an activation distance.
 - Floating `egui` windows for tabs dragged out.
 - Several docks sharing one drag (`DockSpace`): side areas and a centre, each drawn where the application puts it,
   with no-drop zones (a toolbar, a status bar) where a released tab goes back instead of floating.
