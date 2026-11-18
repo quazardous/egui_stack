@@ -213,7 +213,7 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     /// Forgets the bus's verdicts: a drag ended.
-    fn forget_verdicts(&self) {
+    pub(super) fn forget_verdicts(&self) {
         #[cfg(feature = "bus")]
         if let Some(bus) = self.space.as_ref().and_then(|space| space.bus) {
             bus.forget_verdicts();

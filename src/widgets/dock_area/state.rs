@@ -29,6 +29,10 @@ pub(super) struct State {
     pub tab_in_air: Option<TabPath>,
     /// The tab bars drawn this pass, by leaf, in the area's viewport's points.
     pub tab_bars: Vec<(NodePath, Rect)>,
+    /// The widget whose drag was cancelled because its release was lost
+    /// (`DockArea::drag_lost`): egui still believes the button held and
+    /// would take the drag up again, so it stays stopped until the button is let go.
+    pub drag_lost: Option<Id>,
 }
 
 impl State {
@@ -46,6 +50,7 @@ impl State {
             remote: false,
             tab_in_air: None,
             tab_bars: Vec::new(),
+            drag_lost: None,
         })
     }
 
