@@ -1,5 +1,15 @@
 # egui_stack changelog
 
+## egui_stack 0.28.2 - 2026-11-18
+
+### Added
+
+- Floating windows get gestures split by where a drag starts: a tab drags the tab, the group grip or the group modifier drags the group, and the title bar or a new move handle moves the window. The move handle (`GroupHandles::MOVE_WINDOW`, on by default in `GroupHandles::ALL`, named by `Labels::move_window`) sits at the right end of a float's top tab bar, shows the move cursor, and moves the window: through the system on a native float (`ViewportCommand::StartDrag`), as the `egui::Window` on a float over the main window. `FloatsArea::float_move` chooses what moving a window does: `FloatMove::Move` (the default) only moves it and never docks; `FloatMove::Dock` docks the whole float into the dock it is released over, highlighted while it moves, after the viewer's veto (or `stack.dock.drop`), and falls back to a plain move where window positions are hidden (Wayland). `FloatsArea::group_handles` and `group_drag_modifiers` set the floats' handles and modifiers. A float over the main window is moved by its title bar only, never by the empty part of a tab bar. The add tab button now sits right after the last tab by default (`TabAddAlign::Left`, the new default of `ButtonsStyle::add_tab_align`); `TabAddAlign::Right` keeps it at the end of the bar.
+
+### Fixed
+
+- A whole tab group being dragged (by its grip, the empty part of its tab bar, Shift and a tab, or a `DockArea::drag_group_by` handle) shows its ghost under the pointer, as a dragged tab does: its tab bar with its tabs, the active one marked, and a hint of its body, kept to a sensible size with a "+N" for the tabs that do not fit, in whichever window of a `DockSpace` the pointer is over. It is painted by a new provided method, `DockPainter::dragged_group`, from a `DraggedGroupPaint` (with `DraggedGroupTab` and `DraggedGroupMore`), so an application can restyle it.
+
 ## egui_stack 0.28.1 - 2026-11-18
 
 ### Added
