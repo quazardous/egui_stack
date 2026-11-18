@@ -23,8 +23,9 @@ use tab_removal::TabRemoval;
 
 use crate::{
     DockPainter, DockSpace, NodePath, Style, StylePainter, TabIndex, TabPath,
-    dock_space::{Dock, NoDrop},
+    dock_space::{Dock, NoDrop, TabOrigin},
     dock_state::DockState,
+    floats::Floating,
 };
 
 /// Displays a [`DockState`] in `egui`.
@@ -59,25 +60,41 @@ pub struct DockArea<'tree, Tab> {
     window_bounds: Option<Rect>,
 
     /// Set when the area shows one dock of a [`DockSpace`](crate::DockSpace).
-    space: Option<SpaceDock<'tree>>,
+    space: Option<SpaceDock<'tree, Tab>>,
 
     to_remove: Vec<TabRemoval>,
     to_detach: Vec<TabPath>,
     /// Groups moved by their Move group menu, applied once the area is drawn.
     to_move_group: Vec<(NodePath, crate::TabDestination)>,
+    /// Tabs and groups moved out to a new float, applied once the area is drawn.
+    to_float: Vec<(drag_and_drop::TreeComponent, Rect)>,
     new_focused: Option<NodePath>,
     tab_hover_rect: Option<(Rect, TabIndex)>,
 }
 
 /// The dock of a [`DockSpace`](crate::DockSpace) a [`DockArea`] shows, and the space's docks.
-struct SpaceDock<'a> {
+struct SpaceDock<'a, Tab> {
     docks: &'a mut Vec<Dock>,
     /// Where no tab is dropped, this frame.
     no_drop: &'a mut NoDrop,
+    /// The floats' side of the space.
+    floating: &'a mut Floating,
+    /// Where tabs moved out to a float came from.
+    origins: &'a mut Vec<TabOrigin>,
+    /// The application's bus, if it gave one.
+    #[cfg(feature = "bus")]
+    bus: Option<&'a crate::bus::SpaceBus<Tab>>,
+    #[cfg(not(feature = "bus"))]
+    _tab: std::marker::PhantomData<fn(&Tab)>,
     /// The dock shown, as an index in `docks`; `None` if the space has no dock of that name.
     dock: Option<usize>,
     /// Whether this area also shows the floating windows.
     shows_windows: bool,
+    /// Whether this area draws a dock in a native float's viewport: the space's no-drop zones,
+    /// strips and bands are the main window's, and it leaves them alone.
+    native: bool,
+    /// The viewport the area is drawn in, this frame.
+    viewport: Option<egui::ViewportId>,
 }
 
 /// A tab being dragged in a [`DockArea`], from [`DockArea::dragged_tab`].
@@ -223,6 +240,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             to_remove: Vec::new(),
             to_detach: Vec::new(),
             to_move_group: Vec::new(),
+            to_float: Vec::new(),
             new_focused: None,
             tab_hover_rect: None,
             window_bounds: None,
@@ -248,15 +266,33 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     ///
     /// [`Ui`]: egui::Ui
     pub fn dock(space: &'tree mut DockSpace<Tab>, dock: &str) -> DockArea<'tree, Tab> {
-        let (dock_state, docks, no_drop, dock, shows_windows, id) = space.split_for_area(dock);
-        let mut area = Self::new(dock_state).id(id);
+        let parts = space.split_for_area(dock);
+        let mut area = Self::new(parts.state).id(parts.id);
         area.space = Some(SpaceDock {
-            docks,
-            no_drop,
-            dock,
-            shows_windows,
+            docks: parts.docks,
+            no_drop: parts.no_drop,
+            floating: parts.floating,
+            origins: parts.origins,
+            #[cfg(feature = "bus")]
+            bus: parts.bus,
+            #[cfg(not(feature = "bus"))]
+            _tab: std::marker::PhantomData,
+            dock: parts.dock,
+            shows_windows: parts.shows_windows,
+            native: false,
+            viewport: None,
         });
         area
+    }
+
+    /// Marks the area as drawing a dock in a native float's viewport: it keeps its own drag
+    /// state and leaves the main window's no-drop zones alone.
+    pub(crate) fn in_native_float(mut self) -> Self {
+        if let Some(space) = &mut self.space {
+            space.native = true;
+            space.shows_windows = false;
+        }
+        self
     }
 
     /// Sets the [`DockArea`] ID. Useful if you have more than one [`DockArea`].

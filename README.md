@@ -25,7 +25,10 @@ from this repository's main branch.
 - Dragging a single tab, or a whole tab group by a grip at the end of its tab bar, the empty part of the bar, a tab
   dragged with Shift held, or "Move group" in its menu, each handle switchable (`GroupHandles`); a drag starts only
   past an activation distance.
-- Floating `egui` windows for tabs dragged out.
+- Floating docks for tabs and groups dragged out: over the main window, or in native windows of their own (egui
+  viewports the application hosts through `ViewportHost`), drawn by `FloatsArea`; closing one returns its tabs where
+  they came from, or as `ClosePolicy` says, and windows left off every screen are brought back
+  ([docs/native-floats.md](docs/native-floats.md)).
 - Several docks sharing one drag (`DockSpace`): side areas and a centre, each drawn where the application puts it,
   with no-drop zones (a toolbar, a status bar) where a released tab goes back instead of floating.
 - A veto on every drop (`dock_drop_allowed`), and full control of the layout from code.
@@ -40,7 +43,9 @@ from this repository's main branch.
 - Strips that take dropped tabs (`Constraints::strip_drops`), and empty docks that collapse to nothing
   (`Fold::Collapse`) and come back from a restore band while a tab is dragged.
 - Zones lying over their neighbour and a flyout, with their own dismiss rules.
-- `Docked`: a `Layout` and its `DockSpace` saved and repaired as one value (`serde` feature).
+- `Docked`: a `Layout` and its `DockSpace` saved and repaired as one value (`serde` feature), floats included.
+- An optional `bus` feature declaring egui_stack's points (`stack.dock.drop`, `stack.layout.changed`,
+  `stack.window.*`) on an application's [bus-contract](https://docs.rs/bus-contract) bus.
 
 **Sections**
 
@@ -53,8 +58,7 @@ from this repository's main branch.
   drop overlays itself.
 - Every separator, sash, grip and strip is named for screen readers (`Labels`), and reachable from the keyboard.
 
-Native floating windows (docks in their own OS window) are being designed in
-[docs/native-floats.md](docs/native-floats.md).
+Dragging a tab from one native window to another is to come ([docs/native-floats.md](docs/native-floats.md), step 4).
 
 ## Quick start
 

@@ -264,6 +264,7 @@ pub use dock_space::{DockRules, DockSpace, TabOrigin};
 pub use dock_state::*;
 pub use docked::{Docked, DockedRepair};
 pub use egui;
+pub use floats::{ClosePolicy, EguiViewports, FloatClose, FloatEvent, FloatsArea, ViewportHost};
 pub use style::*;
 pub use translations::*;
 pub use tree::*;
@@ -272,6 +273,11 @@ pub use widgets::*;
 pub mod dock_space;
 
 pub mod docked;
+
+pub mod floats;
+
+#[cfg(feature = "bus")]
+pub mod bus;
 
 /// The main structure of the library.
 pub mod dock_state;

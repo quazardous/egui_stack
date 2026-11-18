@@ -593,7 +593,8 @@ impl<Tab> DockArea<'_, Tab> {
                             .hide_tab_bar_button,
                     );
 
-                    let in_window = self.dock_state.is_window(path.surface);
+                    let in_window =
+                        self.dock_state.is_window(path.surface) || self.is_float_dock(path.surface);
                     let may_float = self.may_float((path, tab_index).into(), tab_viewer);
                     response.context_menu(|ui| {
                         let leaf = self.dock_state[path]
@@ -1247,7 +1248,8 @@ impl<Tab> DockArea<'_, Tab> {
         let mut targets: Vec<(String, TabDestination)> = Vec::new();
 
         // A new window, unless the group is already a window of its own.
-        let alone_in_window = self.dock_state.is_window(path.surface)
+        let alone_in_window = (self.dock_state.is_window(path.surface)
+            || self.is_float_dock(path.surface))
             && self.dock_state[path.surface]
                 .iter()
                 .filter(|node| node.is_leaf())
@@ -1289,12 +1291,17 @@ impl<Tab> DockArea<'_, Tab> {
 
         let count = self.dock_state[path].tabs_count();
         for (label, destination) in targets {
-            let refusal = self.group_refusal(path, 0..count, &destination, tab_viewer);
+            let refusal = self.group_refusal(path, 0..count, &destination, tab_viewer, false);
             let mut response = ui.add_enabled(refusal.is_none(), Button::new(label));
             if let Some(Some(reason)) = refusal {
                 response = response.on_disabled_hover_text(reason);
             }
-            if response.clicked() {
+            // Chosen, the veto is asked again: the menu showed an earlier verdict.
+            if response.clicked()
+                && self
+                    .group_refusal(path, 0..count, &destination, tab_viewer, true)
+                    .is_none()
+            {
                 self.to_move_group.push((path, destination));
                 ui.close();
             }
