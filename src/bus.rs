@@ -292,8 +292,11 @@ pub(crate) struct SpaceBus<Tab> {
     pub(crate) key: fn(&Tab) -> String,
     /// The verdicts of `stack.dock.drop` asked since the last release, by ask: a destination
     /// is asked once while hovered, not once per frame.
-    verdicts: Arc<Mutex<Vec<(DropAsk, Option<String>)>>>,
+    verdicts: Verdicts,
 }
+
+/// The verdicts of `stack.dock.drop` kept: each ask, and its refusal's reason.
+type Verdicts = Arc<Mutex<Vec<(DropAsk, Option<String>)>>>;
 
 impl<Tab> Clone for SpaceBus<Tab> {
     fn clone(&self) -> Self {

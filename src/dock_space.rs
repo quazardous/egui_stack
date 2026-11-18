@@ -1083,7 +1083,7 @@ pub(crate) fn record_origin<Tab>(
     }
     let tab = id_of(&mut tabs[at]);
     let before = at.checked_sub(1).map(|i| id_of(&mut tabs[i]));
-    let after = tabs.get_mut(at + 1).map(|t| id_of(t));
+    let after = tabs.get_mut(at + 1).map(&mut *id_of);
     origins.retain(|origin| origin.tab != tab);
     origins.push(TabOrigin::new(tab, dock, before, after));
     Some(())

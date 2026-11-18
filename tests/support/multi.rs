@@ -56,7 +56,7 @@ fn render_immediate(ctx: &Context, viewport: ImmediateViewport<'_>) {
                 ..Default::default()
             }
         });
-    let mut out = ctx.run_ui(input, |ui| viewport_ui_cb(ui));
+    let mut out = ctx.run_ui(input, &mut viewport_ui_cb);
     out.textures_delta.clear();
     if let Some(h) = harness {
         let commands = out
@@ -229,7 +229,7 @@ impl Multi {
             self.immediate.borrow_mut().inputs.insert(viewport, input);
         }
         let input = self.input(ViewportId::ROOT);
-        let mut out = self.ctx.run_ui(input, |ui| app(ui));
+        let mut out = self.ctx.run_ui(input, &mut app);
         out.textures_delta.clear();
         // Events are told once.
         for info in self.info.values_mut() {
