@@ -54,7 +54,9 @@ Publishing is the owner's call, and stays a manual step.
    changesets and deletes them; `scripts/release-notes.sh` then writes
    the release at the top of CHANGELOG.md, as
    `## egui_stack X.Y.Z - DATE` with its "Breaking changes", "Added" and
-   "Fixed" sections, and stages it. Nothing is committed: read the
+   "Fixed" sections, and stages it; `scripts/readme-version.sh` writes the
+   new `X.Y` into README.md's quick start (`tests/readme_version.rs`
+   checks it). Nothing is committed: read the
    entry, touch it up if needed (a sentence above the sections, as 0.22.0
    has, is written by hand), then commit.
 

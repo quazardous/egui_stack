@@ -59,6 +59,10 @@ type = "PrepareRelease"
 type = "Command"
 command = "sh scripts/release-notes.sh"
 
+[[workflows.steps]]
+type = "Command"
+command = "sh scripts/readme-version.sh"
+
 # `knope pending-versions`: the version the pending changesets lead to,
 # written in place and not committed. CI's semver job runs it so that a
 # break declared `major` is checked against the version it will ship.
