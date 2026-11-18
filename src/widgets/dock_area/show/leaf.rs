@@ -1366,7 +1366,7 @@ impl<Tab> DockArea<'_, Tab> {
         let Some(leaf_rect) = self.dock_state[path].rect() else {
             return;
         };
-        let mut targets: Vec<(String, TabDestination)> = Vec::new();
+        let mut targets: Vec<(WidgetText, TabDestination)> = Vec::new();
 
         // A new window, unless the group is already a window of its own.
         let alone_in_window = (self.dock_state.is_window(path.surface)
@@ -1383,12 +1383,13 @@ impl<Tab> DockArea<'_, Tab> {
                     .translations
                     .tab_context_menu
                     .move_group_new_window
-                    .clone(),
+                    .clone()
+                    .into(),
                 TabDestination::Window(rect),
             ));
         }
 
-        // The space's other docks, which take drops.
+        // The space's other docks, which take drops, by the viewer's titles.
         let docks: Vec<String> = self
             .space
             .as_ref()
@@ -1407,7 +1408,8 @@ impl<Tab> DockArea<'_, Tab> {
                 Some(TreeComponent::Surface(surface)) => TabDestination::EmptySurface(surface),
                 _ => continue,
             };
-            targets.push((name, destination));
+            let title = tab_viewer.dock_title(&name).unwrap_or_else(|| name.into());
+            targets.push((title, destination));
         }
 
         let count = self.dock_state[path].tabs_count();
