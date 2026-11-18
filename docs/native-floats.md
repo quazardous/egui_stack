@@ -1,7 +1,7 @@
 # Native floating docks (design note)
 
-Status: steps 2 (the model) and 3 (floats drawn, close policy, events, bus points) built;
-steps 4 and 5 to come. Tracks [#105](https://github.com/quazardous/egui_stack/issues/105).
+Status: steps 2 (the model), 3 (floats drawn, close policy, events, bus points) and 4 (the
+drag across viewports) built; step 5 to come. Tracks [#105](https://github.com/quazardous/egui_stack/issues/105).
 
 Docks in native OS windows (egui viewports) that stay part of one
 logical workspace: the same layout tree, the same panel ids, groups,
@@ -250,6 +250,61 @@ the native floats.
 - Tests: `tests/native_floats.rs` on a small multi-viewport harness (`tests/support/multi.rs`,
   immediate viewports run as eframe runs them, a close request, positions hidden, windows
   moved), and `tests/bus_points.rs` on a minimal bus (`tests/support/test_bus.rs`).
+
+### As built (step 4)
+
+- One drag session per `DockSpace`, kept by the space, whichever viewport its docks are drawn
+  in; `DockSpace::dragging() -> Option<SpaceDrag>` reads it: its `payload`
+  (`DragPayload::Tab(path)` or `DragPayload::Group(path)`), the `source` viewport, the other
+  viewport it is `over`, and whether it is `released` (waiting, see below) or `cancelled`. A
+  native float's `DockArea` still keeps its own egui state (its widgets live in its viewport),
+  but its drag is the space's.
+- The viewport a drag began in, the source, keeps the pointer: the system gives it every pointer
+  event of the drag, past its edges too. Each pass it records the pointer in its points and,
+  where the system tells where windows are, on the desktop in physical pixels (its
+  `inner_rect` × its `pixels_per_point`). Every other viewport showing a dock of the space
+  converts the desktop pointer to its own points (its own `inner_rect` and scale, so screens of
+  different scales neither overlap nor leave gaps), tests it against its docks as drawn in its
+  last pass, shows the usual drop preview (zones, strips, restore bands, no-drop zones and the
+  veto all as in one window), and reports to the session what a release would do: a
+  destination, a refusal, or nothing under the pointer.
+- At its release the source applies the freshest report (made in its last two passes) of the
+  viewport under the pointer, once: outside the source, the highest ranked (a native float
+  above the main window, a float's z order after); inside the main window, a native float over
+  it wins. The destination is asked to the veto again at release (`dock_drop_allowed`, or
+  `stack.dock.drop`, whose verdicts are kept per ask until the release, so it is asked when
+  the destination changes and at release, never per frame), and checked to still be there.
+  Released over no viewport, or over a viewport where no dock is under the pointer, the tab or
+  the group opens a new float at the release point (`Place::from_physical` on the host's
+  screens), unless the dock's rules, `allowed_in_windows` or the veto refuse it: then it goes
+  back. A tear-off from a native float works the same, its origin kept.
+- Escape in the source cancels the drag, and so does closing the window under the pointer
+  (its float closed by the user, its dock emptied, or docked back): nothing moves at the
+  release. A source window that closes ends its drag.
+- Where window positions are hidden (Wayland: no `inner_rect`), no other viewport can place the
+  pointer: once it leaves the source, each other viewport outlines its docks
+  (`DockPainter::window_outline`, `WindowOutlinePaint { rect, refused, .. }`, red where the
+  drop would be refused). Released outside the source, the drag waits `RELEASED_PASSES` (12)
+  passes of the source; the first viewport that sees its own pointer over one of its docks
+  takes it there (asked to the veto again), a refusal ends it, and when nobody takes it, it
+  opens a new float with no position (the system places it).
+- Origins: a tab that leaves a dock for a float's (by a drag, from any viewport) records
+  where it came from, as a drag-out does; a tab that lands in a dock no float shows forgets
+  it; from float to float it keeps it. This holds for drags inside one window too.
+- A float moved to a screen of another scale is never resized or moved by egui_stack: its
+  builder is given unchanged, and its place follows the window (`FloatEvent::Moved` once it
+  settles). A drop lands where it is released, on the new scale.
+- `TabDestination` and `TabInsert` are `Clone`, `Copy`, `Debug` and `PartialEq` now.
+- Tests: `tests/drag_across.rs` on the multi-viewport harness (main to float, float to main,
+  float to float, a group, a veto, Escape, released over nothing, refused, a tear-off, the
+  target closed during the drag, positions hidden with a taker and without, scales 1 and 2,
+  a float moved to a screen of scale 2 during a drag) and `tests/bus_points.rs` (the veto
+  across windows asked when it changes and at release).
+- A float's dock takes the same drop zones as any dock: a tab dropped on a float's edge band
+  splits it, as `DockRules::splits` allows.
+- Not built: two drag sessions (tabs here, other payloads in the application) sharing one
+  release (the application's own drags stay its own), and groups dragged back into their own
+  leaf.
 
 ## Risks
 

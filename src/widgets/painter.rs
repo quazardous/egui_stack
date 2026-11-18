@@ -271,6 +271,27 @@ pub trait DockPainter {
         );
     }
 
+    /// While a tab is dragged out of another window where the system hides window positions
+    /// (Wayland), a dock of this window that could take it: no window can tell whether the
+    /// pointer is over it before the release, so each outlines its docks
+    /// ([`DockSpace::dragging`](crate::DockSpace::dragging)). The default strokes the dock's
+    /// rect with [`OverlayStyle::zone_stroke`](crate::OverlayStyle::zone_stroke), in the error
+    /// color where the drop would be refused.
+    fn window_outline(&self, painter: &Painter, outline: &WindowOutlinePaint<'_>) {
+        let stroke = outline.style.overlay.zone_stroke;
+        let stroke = if outline.refused {
+            Stroke::new(stroke.width.max(1.0), outline.visuals.error_fg_color)
+        } else {
+            stroke
+        };
+        painter.rect_stroke(
+            outline.rect,
+            outline.style.overlay.zone_corner_radius,
+            stroke,
+            StrokeKind::Inside,
+        );
+    }
+
     /// One of the drop overlay's buttons ([`OverlayType::Widgets`]):
     /// the middle one (no split) or a split's.
     fn drop_button(&self, painter: &Painter, button: &DropButtonPaint<'_>) {
@@ -934,6 +955,21 @@ pub struct DropTargetPaint<'a> {
     pub rect: Rect,
     /// The dock's style.
     pub style: &'a Style,
+}
+
+/// A dock outlined while a tab is dragged out of another window where window positions are
+/// hidden, for [`DockPainter::window_outline`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct WindowOutlinePaint<'a> {
+    /// The dock's rect.
+    pub rect: Rect,
+    /// Whether the dragged tab may not land in the dock (its rules, or the veto).
+    pub refused: bool,
+    /// The dock's style.
+    pub style: &'a Style,
+    /// The visuals of the window.
+    pub visuals: &'a Visuals,
 }
 
 /// A collapsed zone's restore band, for [`DockPainter::restore_band`].

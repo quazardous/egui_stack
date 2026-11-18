@@ -399,3 +399,53 @@ fn the_window_events_are_emitted() {
         ],
     );
 }
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_drop_into_another_window_is_asked_when_it_changes_and_at_release() {
+    let bus = Arc::new(TestBus::default());
+    let asked = count_drops(&bus, |ask| {
+        assert!(
+            ask.to_float == (ask.to.as_deref() == Some("float-1")),
+            "{ask:?}"
+        );
+        None
+    });
+    let mut multi = Multi::new();
+    let mut app = app(bus);
+    detach_b(&mut multi, &mut app);
+    let at = pos2(700.0, 100.0);
+    multi.place(viewport("float-1"), at, 1.0);
+    multi.passes(3, frame(&mut app));
+    let size = app
+        .docked
+        .layout
+        .float("float-1")
+        .unwrap()
+        .place
+        .rect
+        .size();
+    let over = at + size / 2.0;
+
+    let a = tab_rect(&app, "A").center();
+    multi.press(ViewportId::ROOT, a, frame(&mut app));
+    multi.move_held(ViewportId::ROOT, a, over, frame(&mut app));
+    let held = asked.load(Ordering::SeqCst);
+    assert!(held > 0, "asked on the way");
+    multi.move_held(ViewportId::ROOT, over, over, frame(&mut app));
+    assert_eq!(
+        asked.load(Ordering::SeqCst),
+        held,
+        "not asked again while held over the other window"
+    );
+    multi.release(ViewportId::ROOT, over, frame(&mut app));
+    multi.passes(3, frame(&mut app));
+    assert_eq!(
+        asked.load(Ordering::SeqCst),
+        held + 1,
+        "asked again at release"
+    );
+    let mut float = tabs(&app, "float-1");
+    float.sort();
+    assert_eq!(float, ["A", "B"]);
+}

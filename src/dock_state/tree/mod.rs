@@ -76,6 +76,7 @@ impl Split {
 }
 
 /// Specify how a tab should be added to a Node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabInsert {
     /// Split the node in the given direction.
     Split(Split),
@@ -88,6 +89,7 @@ pub enum TabInsert {
 }
 
 /// The destination for a tab which is being moved.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TabDestination {
     /// Move to a new window with this rect.
     Window(Rect),

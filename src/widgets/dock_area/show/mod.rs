@@ -6,6 +6,7 @@ use egui::{
 
 use super::{
     drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent, make_overlay_painter},
+    session::Outcome,
     state::State,
     tab_removal::TabRemoval,
 };
@@ -21,7 +22,9 @@ use crate::{
     TabDestination, TabPath, TabViewer,
     utils::{expand_to_pixel, fade_dock_style, map_to_pixel},
 };
+use across::Across;
 
+mod across;
 mod float_out;
 mod leaf;
 mod main_surface;
@@ -177,12 +180,13 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     /// Reads what the leaves recorded during the last pass: the dragged tab and what it hovers.
-    /// Paints the drop preview and, when the tab is released, moves it.
+    /// Paints the drop preview and, when the tab is released, moves it. In a space, the drag
+    /// is the space's across viewports ([`across`](Self::across)).
     fn resolve_drag(
         &mut self,
         ui: &Ui,
         state: &mut State,
-        tab_viewer: &impl TabViewer<Tab = Tab>,
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
         dock_rect: Rect,
     ) {
         state.dragged = None;
@@ -203,12 +207,33 @@ impl<Tab> DockArea<'_, Tab> {
             }
         });
 
-        let (drag_data, hover_data) = ui.memory_mut(|mem| {
+        let (mut drag_data, hover_data) = ui.memory_mut(|mem| {
             (
                 mem.data.remove_temp(self.id.with("drag_data")).flatten(),
                 mem.data.remove_temp(self.id.with("hover_data")).flatten(),
             )
         });
+
+        // The space's one drag across viewports: begun here, begun in another viewport and
+        // shown here, or already settled.
+        let (remote, take) = match self.across(ui, state, &mut drag_data, tab_viewer) {
+            Across::Here => (false, false),
+            Across::Remote { take } => (true, take),
+            Across::Covered => {
+                drag_data = None;
+                (false, false)
+            }
+            Across::Done => {
+                self.forget_no_drop();
+                return;
+            }
+        };
+        let hover_data = if drag_data.is_some() {
+            hover_data
+        } else {
+            None
+        };
+        let released = !remote && ui.input(|i| i.pointer.primary_released());
 
         // A collapsed zone's restore band wins over whatever lies under it, no-drop zones
         // included; then a folded zone's strip taking drops.
@@ -241,7 +266,9 @@ impl<Tab> DockArea<'_, Tab> {
             .map(|(hover, _, _)| hover)
             .or_else(|| strip.map(|(hover, _)| hover))
             .or(hover_data)
-            .or_else(|| self.hover_outside(dock_rect, state, &drag_data));
+            // Shown for another viewport's drag, this one has no "outside": the drag's own
+            // viewport decides what a release over nothing does.
+            .or_else(|| (!remote).then(|| self.hover_outside(dock_rect, state, &drag_data))?);
         // Where no tab may land, the drag hovers nothing: released, the tab stays where it was.
         let refused = preview.is_none()
             && hover_data
@@ -253,16 +280,9 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             hover_data
         };
-        if let Some(space) = &mut self.space
-            && !space.native
-        {
-            let unfolds = std::mem::take(&mut space.no_drop.unfolds);
-            *space.no_drop = NoDrop {
-                unfolds,
-                ..NoDrop::default()
-            };
-        }
+        self.forget_no_drop();
 
+        let mut outcome = refused.then_some(Outcome::Refused);
         if let (Some(source), Some(hover)) = (drag_data, hover_data) {
             let style = self.style.as_ref().unwrap();
             let tab_dst = if let Some(preview) = preview {
@@ -285,57 +305,58 @@ impl<Tab> DockArea<'_, Tab> {
                 }
                 self.show_drag_drop_overlay(ui, state, tab_viewer)
             };
-            if ui.input(|i| i.pointer.primary_released())
-                && let Some(destination) = tab_dst
-            {
+            if remote {
+                outcome = Some(tab_dst.map_or(Outcome::Refused, Outcome::Drop));
+            } else if released && let Some(destination) = tab_dst {
                 // Dropped on a folded split zone's strip, or a collapsed zone's restore band: the
                 // zone is to unfold.
-                if let (Some(zone), Some(space)) = (unfold, &mut self.space) {
+                if let (Some(zone), Some(space)) = (unfold.clone(), &mut self.space) {
                     space.no_drop.unfolds.push(zone);
                 }
-                if let TabDestination::Window(rect) = destination
-                    && self.floats_on()
-                {
+                let source = state.dnd.as_ref().unwrap().drag.src.clone();
+                match destination {
                     // Out of every dock, once the space's floats are drawn: a float.
-                    let source = state.dnd.as_ref().unwrap().drag.src.clone();
-                    self.to_float.push((source, rect));
-                    ui.ctx().request_repaint();
-                    state.reset_drag();
-                    return;
-                }
-                let source = match state.dnd.as_ref().unwrap().drag.src {
-                    TreeComponent::Tab(src) => src,
-                    TreeComponent::Node(src) => {
-                        #[cfg(feature = "bus")]
-                        self.emit_moved(&destination);
-                        self.dock_state.move_node(src, destination);
-                        ui.ctx().request_repaint();
-                        state.reset_drag();
-                        return;
+                    TabDestination::Window(rect) if self.floats_on() => {
+                        self.to_float.push((source, rect));
                     }
-                    TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
-                };
-                let src_tab_count = self.dock_state[source.node_path()].tabs_count();
-                #[cfg(feature = "bus")]
-                self.emit_moved(&destination);
-                self.dock_state.move_tab(source, destination);
-                // unhide tab bar on the source leaf when a tab is dragged out
-                if self.hidable_tab_bars
-                    && let Ok(leaf) = self.dock_state.leaf_mut(source.node_path())
-                    && leaf.tabs.len() < src_tab_count
-                    && leaf.tab_bar_hidden
-                {
-                    leaf.tab_bar_hidden = false;
+                    destination => {
+                        self.apply_move(source, destination, tab_viewer);
+                    }
                 }
+                ui.ctx().request_repaint();
             }
         }
+        if remote {
+            self.report(
+                ui,
+                state,
+                outcome.unwrap_or(Outcome::Free),
+                unfold,
+                take,
+                tab_viewer,
+            );
+        }
 
-        if ui.input(|i| i.pointer.primary_released()) {
+        if released {
             state.reset_drag();
             #[cfg(feature = "bus")]
             if let Some(bus) = self.space.as_ref().and_then(|space| space.bus) {
                 bus.forget_verdicts();
             }
+        }
+    }
+
+    /// Forgets the space's no-drop zones, strips and bands of this frame, once read (the main
+    /// window's areas only: they are the main window's).
+    fn forget_no_drop(&mut self) {
+        if let Some(space) = &mut self.space
+            && !space.native
+        {
+            let unfolds = std::mem::take(&mut space.no_drop.unfolds);
+            *space.no_drop = NoDrop {
+                unfolds,
+                ..NoDrop::default()
+            };
         }
     }
 
@@ -616,7 +637,19 @@ impl<Tab> DockArea<'_, Tab> {
         fresh: bool,
     ) -> Option<Option<egui::WidgetText>> {
         let drag_state = state.dnd.as_ref()?;
-        let (src, tabs, group) = match drag_state.drag.src {
+        self.refusal_of(&drag_state.drag.src, tab_viewer, destination, fresh)
+    }
+
+    /// The veto for `src`, a tab or a whole leaf, at `destination`; see
+    /// [`drop_refusal`](Self::drop_refusal).
+    pub(super) fn refusal_of(
+        &self,
+        src: &TreeComponent,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+        destination: &TabDestination,
+        fresh: bool,
+    ) -> Option<Option<egui::WidgetText>> {
+        let (src, tabs, group) = match *src {
             TreeComponent::Tab(path) => (path.node_path(), path.tab.0..path.tab.0 + 1, false),
             TreeComponent::Node(path) => (path, 0..self.dock_state[path].tabs_count(), true),
             TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),

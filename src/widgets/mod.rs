@@ -8,12 +8,13 @@ pub mod painter;
 pub mod tab_viewer;
 
 pub use dock_area::{
-    AllowedSplits, DockArea, DraggedNode, DraggedTab, DropZone, GroupHandles, Labels, TabFocus,
+    AllowedSplits, DockArea, DragPayload, DraggedNode, DraggedTab, DropZone, GroupHandles, Labels,
+    SpaceDrag, TabFocus,
 };
 pub use painter::{
     DockPainter, DropButtonPaint, DropPaint, DropRefusal, DropTargetPaint, PartState,
     RestoreBandPaint, SectionBandPaint, SectionBoundaryPaint, SeparatorAxis, SeparatorPaint,
     StylePainter, TabBarGripPaint, TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose,
-    TabMeasure, TabPaint, ToolItemPaint, ToolMorePaint, ToolSeparatorPaint,
+    TabMeasure, TabPaint, ToolItemPaint, ToolMorePaint, ToolSeparatorPaint, WindowOutlinePaint,
 };
 pub use tab_viewer::{DockDrop, TabViewer};

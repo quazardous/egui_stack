@@ -78,6 +78,10 @@ pub struct Multi {
     shown: BTreeSet<ViewportId>,
     /// The builder each window was first shown with.
     builders: BTreeMap<ViewportId, ViewportBuilder>,
+    /// The builder each window was last shown with.
+    last_builders: BTreeMap<ViewportId, ViewportBuilder>,
+    /// The modifiers held, given with the button's events.
+    modifiers: Modifiers,
     /// The commands each window's passes sent, since the test last took them.
     commands: BTreeMap<ViewportId, Vec<ViewportCommand>>,
     positions_hidden: bool,
@@ -109,6 +113,8 @@ impl Multi {
             queued: BTreeMap::new(),
             shown: BTreeSet::new(),
             builders: BTreeMap::new(),
+            last_builders: BTreeMap::new(),
+            modifiers: Modifiers::NONE,
             commands: BTreeMap::new(),
             positions_hidden: false,
             time: 0.0,
@@ -150,6 +156,29 @@ impl Multi {
     /// The builder a window was first shown with.
     pub fn builder(&self, viewport: ViewportId) -> Option<&ViewportBuilder> {
         self.builders.get(&viewport)
+    }
+
+    /// The builder a window was last shown with.
+    pub fn last_builder(&self, viewport: ViewportId) -> Option<&ViewportBuilder> {
+        self.last_builders.get(&viewport)
+    }
+
+    /// Holds `modifiers` from now on, told to a window in its next pass.
+    pub fn hold(&mut self, viewport: ViewportId, modifiers: Modifiers) {
+        self.modifiers = modifiers;
+        self.queue(viewport, Event::ModifiersChanged(modifiers));
+    }
+
+    /// Puts a window's top-left at `physical` on the desktop (physical pixels) on a screen of
+    /// scale `scale`, as the system would after the user moved it there: its size in points is
+    /// kept, as Windows and Wayland keep it across scales.
+    pub fn place(&mut self, viewport: ViewportId, physical: Pos2, scale: f32) {
+        let info = self.info.entry(viewport).or_insert_with(Self::fresh_info);
+        let size = info.inner_rect.map_or(SIZE, |r| r.size());
+        let rect = Rect::from_min_size((physical.to_vec2() / scale).to_pos2(), size);
+        info.native_pixels_per_point = Some(scale);
+        info.outer_rect = Some(rect);
+        info.inner_rect = Some(rect);
     }
 
     /// The commands a window's passes sent since the last call.
@@ -245,7 +274,8 @@ impl Multi {
             self.info
                 .entry(viewport)
                 .or_insert_with(|| Self::opened_info(&builder));
-            self.builders.entry(viewport).or_insert(builder);
+            self.builders.entry(viewport).or_insert(builder.clone());
+            self.last_builders.insert(viewport, builder);
             self.commands.entry(viewport).or_default().extend(commands);
         }
         for (viewport, output) in out.viewport_output {
@@ -276,30 +306,68 @@ impl Multi {
     }
 
     /// Drags in the main window from `from` to `to`, a step at a time, and releases there.
-    pub fn drag(&mut self, from: Pos2, to: Pos2, mut app: impl FnMut(&mut Ui)) {
-        let root = ViewportId::ROOT;
-        let button = |pos, pressed| Event::PointerButton {
+    pub fn drag(&mut self, from: Pos2, to: Pos2, app: impl FnMut(&mut Ui)) {
+        self.drag_in(ViewportId::ROOT, from, to, app);
+    }
+
+    fn button(&self, pos: Pos2, pressed: bool) -> Event {
+        Event::PointerButton {
             pos,
             button: PointerButton::Primary,
             pressed,
-            modifiers: Modifiers::NONE,
-        };
-        self.queue(root, Event::PointerMoved(from));
+            modifiers: self.modifiers,
+        }
+    }
+
+    /// Presses the button at `at` in a window (its points), the pointer moved there first.
+    pub fn press(&mut self, viewport: ViewportId, at: Pos2, mut app: impl FnMut(&mut Ui)) {
+        self.queue(viewport, Event::PointerMoved(at));
         self.pass(&mut app);
-        self.queue(root, button(from, true));
+        let press = self.button(at, true);
+        self.queue(viewport, press);
         self.pass(&mut app);
+    }
+
+    /// Moves the held pointer from `from` to `to` in a window's points, a step at a time, as
+    /// the system tells the window a drag began in (`to` may be past its edges), then holds it
+    /// there a while (a leaf hovered on the way is kept a moment).
+    pub fn move_held(
+        &mut self,
+        viewport: ViewportId,
+        from: Pos2,
+        to: Pos2,
+        mut app: impl FnMut(&mut Ui),
+    ) {
         for step in 1..=10 {
             let at = from + (to - from) * (step as f32 / 10.0);
-            self.queue(root, Event::PointerMoved(at));
+            self.queue(viewport, Event::PointerMoved(at));
             self.pass(&mut app);
         }
-        // Held there a while: a leaf hovered on the way is kept a moment.
         for _ in 0..30 {
-            self.queue(root, Event::PointerMoved(to));
+            self.queue(viewport, Event::PointerMoved(to));
             self.pass(&mut app);
         }
-        self.queue(root, button(to, false));
+    }
+
+    /// Releases the button at `at` in a window's points.
+    pub fn release(&mut self, viewport: ViewportId, at: Pos2, mut app: impl FnMut(&mut Ui)) {
+        let release = self.button(at, false);
+        self.queue(viewport, release);
         self.pass(&mut app);
+    }
+
+    /// Drags in a window from `from` to `to` (its points, `to` maybe past its edges), a step at
+    /// a time, and releases there.
+    pub fn drag_in(
+        &mut self,
+        viewport: ViewportId,
+        from: Pos2,
+        to: Pos2,
+        mut app: impl FnMut(&mut Ui),
+    ) {
+        self.press(viewport, from, &mut app);
+        self.move_held(viewport, from, to, &mut app);
+        self.release(viewport, to, &mut app);
         self.passes(3, &mut app);
     }
 }

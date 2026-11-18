@@ -29,6 +29,9 @@ from this repository's main branch.
   viewports the application hosts through `ViewportHost`), drawn by `FloatsArea`; closing one returns its tabs where
   they came from, or as `ClosePolicy` says, and windows left off every screen are brought back
   ([docs/native-floats.md](docs/native-floats.md)).
+- One drag across native windows (`DockSpace::dragging`): a tab or a group goes from the main window to a float, back,
+  or from float to float, with the same drop zones, veto and Escape, across screens of different scales; where the
+  system hides window positions (Wayland), the windows that could take it are outlined.
 - Several docks sharing one drag (`DockSpace`): side areas and a centre, each drawn where the application puts it,
   with no-drop zones (a toolbar, a status bar) where a released tab goes back instead of floating.
 - A veto on every drop (`dock_drop_allowed`), and full control of the layout from code.
@@ -57,8 +60,6 @@ from this repository's main branch.
 - A `Style`, or a `DockPainter` / `LayoutPainter` that paints tabs, tab bars, bodies, separators, strips, sashes and
   drop overlays itself.
 - Every separator, sash, grip and strip is named for screen readers (`Labels`), and reachable from the keyboard.
-
-Dragging a tab from one native window to another is to come ([docs/native-floats.md](docs/native-floats.md), step 4).
 
 ## Quick start
 
