@@ -1,5 +1,6 @@
 use egui::{
-    Context, CursorIcon, EventFilter, Key, Pos2, Rect, Sense, StrokeKind, Ui, Vec2, WidgetInfo,
+    Context, CursorIcon, Event, EventFilter, Key, Pos2, Rect, Sense, StrokeKind, Ui, Vec2,
+    WidgetInfo,
     accesskit::{Action, ActionData, Orientation, Role},
     pos2,
 };
@@ -197,6 +198,31 @@ impl<Tab> DockArea<'_, Tab> {
         state.tab_in_air = None;
         state.dragged_node = None;
 
+        if self.drag_lost(ui, state) {
+            // Ends as on Escape: nothing dropped, the ghost gone.
+            ui.memory_mut(|mem| {
+                mem.data
+                    .remove_temp::<Option<DragData>>(self.id.with("drag_data"));
+                mem.data
+                    .remove_temp::<Option<HoverData>>(self.id.with("hover_data"));
+            });
+            let viewport = ui.ctx().viewport_id();
+            if let Some(space) = self.space.as_mut()
+                && space
+                    .floating
+                    .session
+                    .as_ref()
+                    .is_some_and(|session| session.source == viewport && session.released.is_none())
+            {
+                space.floating.session = None;
+            }
+            state.reset_drag();
+            self.forget_no_drop();
+            self.forget_verdicts();
+            ui.ctx().request_repaint();
+            return;
+        }
+
         // Where the pointer is now. On a release, where it was released: a mouse moved and
         // released in one frame drops there, not where it was the frame before. On touch screens
         // hover_pos() is None once released, so the release position comes from interact_pos(),
@@ -380,6 +406,45 @@ impl<Tab> DockArea<'_, Tab> {
                 bus.forget_verdicts();
             }
         }
+    }
+
+    /// Whether the drag begun in this area lost its release, which it then cancels: the window
+    /// lost the focus, or the button was pressed again while egui still believed it held. On
+    /// Wayland, a screenshot taken during a drag grabs the pointer, and the button is let go
+    /// while the compositor holds it: the window never sees that release. egui keeps the
+    /// button down until a release comes, and takes the drag up again at each pass meanwhile;
+    /// it stays stopped until the button is let go.
+    ///
+    /// The pointer leaving the window is no sign: a drag goes on past the window's edges, to
+    /// another viewport of the space or to a new float.
+    fn drag_lost(&self, ui: &Ui, state: &mut State) -> bool {
+        let ctx = ui.ctx();
+        if let Some(id) = state.drag_lost {
+            if ctx.input(|i| i.pointer.any_down()) {
+                if ctx.dragged_id() == Some(id) {
+                    ctx.stop_dragging();
+                }
+                return false;
+            }
+            state.drag_lost = None;
+        }
+        let Some(dragged) = ctx.dragged_id() else {
+            return false;
+        };
+        if state.drag_start.is_none() || state.remote {
+            return false;
+        }
+        let lost = ctx.input(|i| {
+            i.pointer.any_pressed()
+                || i.events
+                    .iter()
+                    .any(|event| matches!(event, Event::WindowFocused(false)))
+        });
+        if lost {
+            state.drag_lost = Some(dragged);
+            ctx.stop_dragging();
+        }
+        lost
     }
 
     /// Forgets the space's no-drop zones, strips and bands of this frame, once read (the main

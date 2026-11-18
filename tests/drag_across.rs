@@ -510,6 +510,56 @@ fn escape_cancels_a_drag_across_windows() {
 
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_focus_lost_cancels_a_drag_across_windows() {
+    // On Wayland, a screenshot taken during the drag grabs the pointer: the button is let go
+    // while the compositor holds it, and the drag's window only loses the focus.
+    let mut multi = Multi::new();
+    let mut app = app();
+    let at = with_float(&mut multi, &mut app);
+    let float = viewport("float-1");
+
+    let b = tab_rect(&app, "B").center();
+    let over = float_middle(at, 1.0);
+    multi.press(ViewportId::ROOT, b, frame(&mut app));
+    multi.move_held(ViewportId::ROOT, b, over, frame(&mut app));
+    assert!(app.docked.space.dragging().is_some());
+    assert!(
+        texts(&multi, float).iter().any(|text| text == "B"),
+        "the ghost is shown over the float"
+    );
+
+    multi.queue(ViewportId::ROOT, Event::WindowFocused(false));
+    multi.passes(3, frame(&mut app));
+    assert!(
+        app.docked.space.dragging().is_none(),
+        "the drag is cancelled"
+    );
+    assert!(
+        !texts(&multi, float).iter().any(|text| text == "B"),
+        "no ghost is left over the float"
+    );
+
+    // Back in the window, the pointer moves on, egui still believing the button held, and the
+    // next release comes: neither brings the drag back nor drops the tab.
+    multi.queue(ViewportId::ROOT, Event::WindowFocused(true));
+    multi.move_held(
+        ViewportId::ROOT,
+        over,
+        over + vec2(10.0, 10.0),
+        frame(&mut app),
+    );
+    assert!(app.docked.space.dragging().is_none());
+    multi.release(ViewportId::ROOT, over, frame(&mut app));
+    multi.passes(3, frame(&mut app));
+
+    assert_eq!(tabs(&app, "main"), ["A", "B"]);
+    assert_eq!(tabs(&app, "float-1"), ["C"]);
+    assert!(app.docked.layout.float("float-2").is_none());
+    assert!(app.docked.space.dragging().is_none());
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn released_over_nothing_a_tab_opens_a_new_float_there() {
     let mut multi = Multi::new();
     let mut app = app();
