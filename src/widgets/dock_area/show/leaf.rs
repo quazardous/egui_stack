@@ -531,21 +531,21 @@ impl<Tab> DockArea<'_, Tab> {
             };
 
             let show_close_button = self.show_close_buttons && closeable;
+            // The tab leaves its bar only once its drag is under way, its ghost following the
+            // pointer (`paint_ghost`). Held but not in the air (not yet past the activation
+            // distance, back on its own slot, or carrying its whole group), it stays as at rest.
+            let in_air = is_being_dragged && state.tab_in_air == Some((path, tab_index).into());
             let flags = PartState::NONE
                 .with(PartState::SELECTED, selected)
-                .with(PartState::DRAGGED, is_being_dragged)
+                .with(PartState::DRAGGED, in_air)
                 .with(PartState::LEAF_FOCUSED, Some(path) == focused);
 
-            let (response, title_id) = if is_being_dragged {
-                // Once the drag is under way, the tab's ghost follows the pointer
-                // (`paint_ghost`): the title stays, for its response, but paints nothing.
-                let in_air = state.tab_in_air == Some((path, tab_index).into());
+            let (response, title_id) = if in_air {
+                // The title stays, for its response, but paints nothing.
                 let layer_id = LayerId::new(Order::Tooltip, id);
                 let response = tabs_ui
                     .scope_builder(UiBuilder::new().layer_id(layer_id), |ui| {
-                        if in_air {
-                            ui.set_opacity(0.0);
-                        }
+                        ui.set_opacity(0.0);
                         self.tab_title(
                             ui,
                             &tab_style,
@@ -564,15 +564,6 @@ impl<Tab> DockArea<'_, Tab> {
 
                 let response =
                     tabs_ui.interact(response.rect, id.with("dragged"), Sense::click_and_drag());
-
-                let carries_group = *state
-                    .drag_carries_group
-                    .get_or_insert_with(|| self.modifiers_carry_group(tabs_ui));
-                if carries_group {
-                    self.try_initiate_node_drag(tabs_ui, state, path);
-                } else {
-                    self.try_initiate_tab_drag(tabs_ui, state, path, tab_index);
-                }
 
                 (response, title_id)
             } else {
@@ -680,6 +671,17 @@ impl<Tab> DockArea<'_, Tab> {
 
                 (response, title_id)
             };
+
+            if is_being_dragged {
+                let carries_group = *state
+                    .drag_carries_group
+                    .get_or_insert_with(|| self.modifiers_carry_group(tabs_ui));
+                if carries_group {
+                    self.try_initiate_node_drag(tabs_ui, state, path);
+                } else {
+                    self.try_initiate_tab_drag(tabs_ui, state, path, tab_index);
+                }
+            }
 
             if response.hovered() {
                 tab_hovered = true;
