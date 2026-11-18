@@ -1,0 +1,5 @@
+---
+egui_stack: major
+---
+
+Collapsible docks: a zone with the new `Fold::Collapse` collapses to nothing when folded (`Shown::Collapsed`), keeping its place in the tree, its constraints and its last size, and `DockSpace::collapse_empty` collapses those whose docks are empty, so the zone that grows takes all the room. While a tab is dragged, each collapsed zone shows a thin restore band at its former boundary (on its parent's outer edge when nothing is left between them; several on one boundary stack in tree order), painted by the new `DockPainter::restore_band`; hovered, it previews where the zone comes back (`LaidZone::restore`), and a tab released there, unless vetoed, joins the zone's dock and the zone is named in `DockSpace::take_unfolds` to unfold at its remembered size within its current bounds. A cancelled drag or a release elsewhere leaves the layout unchanged. The band's breadth is the new `OverlayFeel::restore_band`, 8 points by default. Migration: an `OverlayFeel { .. }` literal needs `restore_band` or `..OverlayFeel::default()`; a `match` on `Shown` already has a catch-all arm (the enum is `#[non_exhaustive]`).

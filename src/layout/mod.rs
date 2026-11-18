@@ -57,7 +57,7 @@ pub use fold::{Dismiss, Flyout, FlyoutPaint, Inside, StripPaint};
 
 #[cfg(feature = "serde")]
 pub use saved::{LAYOUT_VERSION, VersionError};
-pub use solve::{Laid, LaidZone, LayoutEvent, Shown, Solve};
+pub use solve::{Laid, LaidZone, LayoutEvent, Restore, Shown, Solve};
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -222,6 +222,18 @@ pub enum Fold {
     Never,
     /// It folds to a strip, which keeps its place in the flow.
     ToStrip,
+    /// It collapses to nothing: folded ([`ZoneState::folded`]), it takes no
+    /// room and shows no strip ([`Shown::Collapsed`]), and keeps its name,
+    /// its constraints and its last size. While a tab is dragged, a thin
+    /// restore band at its former boundary brings it back: a tab released
+    /// there joins the dock it holds, and the zone is reported to unfold
+    /// ([`DockSpace::take_unfolds`](crate::DockSpace::take_unfolds)), at its
+    /// remembered size within its current bounds.
+    /// [`DockSpace::collapse_empty`](crate::DockSpace::collapse_empty)
+    /// collapses those whose docks are empty. A sash never collapses it, and
+    /// [`Constraints::auto_fold`] does not apply. A zone the application
+    /// hides ([`ZoneState::hidden`]) shows no band.
+    Collapse,
 }
 
 /// Whether a dragged item may be dropped in a zone. The layout only
@@ -256,7 +268,7 @@ pub struct Constraints {
     pub fit_content: bool,
     /// Whether the zone may fold to a strip.
     pub fold: Fold,
-    /// With [`Fold::ToStrip`], the zone folds by itself when even the least
+    /// With [`Fold::ToStrip`] (not [`Fold::Collapse`]), the zone folds by itself when even the least
     /// sizes do not fit, and comes back when the room does. Off by default.
     pub auto_fold: bool,
     /// Whether a dragged item may be dropped here.
@@ -284,7 +296,7 @@ pub struct ZoneState {
     /// The size the user gave, in points, kept even while the zone is
     /// shown smaller.
     pub size: Option<f32>,
-    /// Folded to its strip.
+    /// Folded to its strip, or collapsed with [`Fold::Collapse`].
     pub folded: bool,
     /// Open over its neighbour, next to its strip, without taking room.
     pub over: bool,

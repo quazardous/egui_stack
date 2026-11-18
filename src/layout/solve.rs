@@ -45,6 +45,10 @@ pub enum Shown {
     Over,
     /// Not shown, taking no room.
     Hidden,
+    /// Collapsed ([`Fold::Collapse`](super::Fold::Collapse) and
+    /// [`ZoneState::folded`](super::ZoneState::folded)): taking no room and
+    /// showing no strip; [`LaidZone::restore`] says where it would come back.
+    Collapsed,
 }
 
 /// One zone as solved.
@@ -74,8 +78,30 @@ pub struct LaidZone {
     /// ([`Constraints::strip_drops`](super::Constraints::strip_drops)).
     pub strip_drops: bool,
     /// For a split, the docks its leaves hold ([`Content::Dock`]), depth first, leaving out
-    /// the zones hidden or refusing drops; empty for a leaf.
+    /// the zones hidden, collapsed or refusing drops; empty for a leaf.
     pub docks: Vec<String>,
+    /// For a collapsed zone ([`Shown::Collapsed`]), where it would come back.
+    pub restore: Option<Restore>,
+}
+
+/// Where a collapsed zone ([`Shown::Collapsed`]) would come back, in
+/// [`LaidZone::restore`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct Restore {
+    /// Its former boundary: a line across its parent split, where the zone
+    /// lies with no breadth; the parent's outer edge when no zone is left
+    /// between it and that edge.
+    pub line: Rect,
+    /// Its parent split's axis.
+    pub dir: Dir,
+    /// Whether the zone comes back after the line along `dir` (to its right
+    /// or below it), else before it.
+    pub towards_end: bool,
+    /// The rect it would take back: its remembered size
+    /// ([`ZoneState::size`](super::ZoneState::size), else its default) within
+    /// its current bounds, its siblings giving way as when it is unfolded.
+    pub rect: Rect,
 }
 
 impl LaidZone {
@@ -196,6 +222,7 @@ impl Layout {
             drops: self.root.constraints.drops,
             strip_drops: false,
             docks: split_docks(&self.root),
+            restore: None,
         });
         lay_children(&self.root, rect, solve, &mut laid);
         laid
@@ -222,7 +249,7 @@ fn lay_children(zone: &Zone, rect: Rect, solve: &Solve, laid: &mut Laid) {
         return;
     }
     let length = along(*dir, rect.size());
-    let (sized, taker) = sizes(children, length, solve);
+    let (sized, taker) = sizes(children, length, solve, None);
     let mut pos = along(*dir, rect.min.to_vec2());
     let start = pos;
     let end = start + length;
@@ -232,7 +259,7 @@ fn lay_children(zone: &Zone, rect: Rect, solve: &Solve, laid: &mut Laid) {
         let (child_rect, strip) = match s.shown {
             Shown::Open => (flow, None),
             Shown::Folded | Shown::AutoFolded => (flow, Some(flow)),
-            Shown::Hidden => (span(pos, pos), None),
+            Shown::Hidden | Shown::Collapsed => (span(pos, pos), None),
             Shown::Over => {
                 let towards_end = taker.is_none_or(|t| i < t);
                 let body = if towards_end {
@@ -243,6 +270,19 @@ fn lay_children(zone: &Zone, rect: Rect, solve: &Solve, laid: &mut Laid) {
                 (body, Some(flow))
             }
         };
+        let restore = (s.shown == Shown::Collapsed).then(|| {
+            // Solved again with the zone unfolded: where it would come back.
+            let (unfolded, _) = sizes(children, length, solve, Some(i));
+            let from = start + unfolded[..i].iter().map(|u| u.size).sum::<f32>();
+            let rect = span(from, from + unfolded[i].size);
+            let line = span(pos, pos);
+            Restore {
+                line,
+                dir: *dir,
+                towards_end: along(*dir, rect.center().to_vec2()) >= pos,
+                rect,
+            }
+        });
         pos += s.size;
         laid.zones.push(LaidZone {
             name: child.name.clone(),
@@ -255,6 +295,7 @@ fn lay_children(zone: &Zone, rect: Rect, solve: &Solve, laid: &mut Laid) {
             drops: child.constraints.drops,
             strip_drops: child.constraints.strip_drops,
             docks: split_docks(child),
+            restore,
         });
         if matches!(s.shown, Shown::Open | Shown::Over) {
             lay_children(child, child_rect, solve, laid);
@@ -265,13 +306,19 @@ fn lay_children(zone: &Zone, rect: Rect, solve: &Solve, laid: &mut Laid) {
 /// Each child's size along a split of `length`, and the child that takes
 /// the rest (the one that grows, else the last open one): lying-over zones
 /// open towards it.
-fn sizes(children: &[Zone], length: f32, solve: &Solve) -> (Vec<Sized>, Option<usize>) {
+/// With `unfold`, that child is solved as if it were not folded.
+fn sizes(
+    children: &[Zone],
+    length: f32,
+    solve: &Solve,
+    unfold: Option<usize>,
+) -> (Vec<Sized>, Option<usize>) {
     let grow = children
         .iter()
         .position(|c| c.constraints.grow && !c.state.hidden);
     let mut auto_folded: Vec<usize> = Vec::new();
     loop {
-        let (sized, short) = fit(children, length, solve, grow, &auto_folded);
+        let (sized, short) = fit(children, length, solve, grow, &auto_folded, unfold);
         if short <= 0.0 {
             let taker = taker(&sized, grow);
             return (sized, taker);
@@ -319,14 +366,18 @@ fn fit(
     solve: &Solve,
     grow: Option<usize>,
     auto_folded: &[usize],
+    unfold: Option<usize>,
 ) -> (Vec<Sized>, f32) {
+    let folded = |i: usize, c: &Zone| c.state.folded && Some(i) != unfold;
+    // A zone that collapses never lies over its neighbour: it has no strip.
+    let over = |c: &Zone| c.state.over && c.constraints.fold != Fold::Collapse;
     let fixed = |i: usize, c: &Zone| {
-        Some(i) != grow && (c.state.hidden || c.state.folded || auto_folded.contains(&i))
+        Some(i) != grow && (c.state.hidden || folded(i, c) || auto_folded.contains(&i))
     };
     let flexible = children
         .iter()
         .enumerate()
-        .filter(|&(i, c)| !fixed(i, c) && (!c.state.over || Some(i) == grow))
+        .filter(|&(i, c)| !fixed(i, c) && (!over(c) || Some(i) == grow))
         .count()
         .max(1);
     let even = length / flexible as f32;
@@ -353,9 +404,11 @@ fn fit(
                 (Shown::Hidden, 0.0)
             } else if auto_folded.contains(&i) {
                 (Shown::AutoFolded, solve.strip)
-            } else if child.state.folded && !is_grow {
+            } else if folded(i, child) && !is_grow && c.fold == Fold::Collapse {
+                (Shown::Collapsed, 0.0)
+            } else if folded(i, child) && !is_grow {
                 (Shown::Folded, solve.strip)
-            } else if child.state.over && !is_grow {
+            } else if over(child) && !is_grow {
                 (Shown::Over, solve.strip)
             } else {
                 (Shown::Open, open)
@@ -411,11 +464,12 @@ fn fit(
     (sized, short)
 }
 
-/// The docks a split's leaves hold, depth first, but those hidden or refusing drops; none for
-/// a leaf.
+/// The docks a split's leaves hold, depth first, but those hidden, collapsed or refusing drops;
+/// none for a leaf.
 fn split_docks(zone: &Zone) -> Vec<String> {
     fn visit(zone: &Zone, docks: &mut Vec<String>) {
-        if zone.state.hidden || zone.constraints.drops == Drops::Refuse {
+        let collapsed = zone.state.folded && zone.constraints.fold == Fold::Collapse;
+        if zone.state.hidden || collapsed || zone.constraints.drops == Drops::Refuse {
             return;
         }
         match &zone.kind {

@@ -405,3 +405,128 @@ mod serde {
         assert!(error.to_string().contains("99"), "{error}");
     }
 }
+
+fn collapsible() -> Layout {
+    let mut layout = shell();
+    for name in ["left", "right"] {
+        layout.constrain(name, |c| c.fold = Fold::Collapse);
+    }
+    layout
+}
+
+#[test]
+fn a_collapsed_zone_takes_no_room_and_shows_no_strip() {
+    let mut layout = collapsible();
+    layout.set_folded("left", true);
+    let laid = layout.solve(rect(1000.0), &Solve::default());
+    let left = laid.get("left").unwrap();
+    assert_eq!(left.shown, Shown::Collapsed);
+    assert_eq!(left.rect.width(), 0.0);
+    assert_eq!(left.strip, None);
+    assert_eq!(width(&laid, "centre"), 800.0);
+    // It comes back where it was, at its default size, after the line.
+    let restore = left.restore.unwrap();
+    assert_eq!(restore.dir, Dir::Horizontal);
+    assert_eq!(restore.line.min.x, 0.0);
+    assert!(restore.towards_end);
+    assert_eq!(restore.rect.min.x, 0.0);
+    assert_eq!(restore.rect.width(), 200.0);
+    // An open zone has nothing to restore.
+    assert!(laid.get("right").unwrap().restore.is_none());
+}
+
+#[test]
+fn a_collapsed_zone_comes_back_at_its_remembered_size() {
+    let mut layout = collapsible();
+    layout.zone_mut("right").unwrap().state.size = Some(260.0);
+    layout.set_folded("right", true);
+    let laid = layout.solve(rect(1000.0), &Solve::default());
+    let restore = laid.get("right").unwrap().restore.unwrap();
+    assert_eq!(restore.line.min.x, 1000.0);
+    assert!(!restore.towards_end);
+    assert_eq!(
+        restore.rect,
+        Rect::from_min_max(pos2(740.0, 0.0), pos2(1000.0, 100.0))
+    );
+}
+
+#[test]
+fn a_restore_under_tight_bounds_is_clamped() {
+    let mut layout = collapsible();
+    layout.zone_mut("left").unwrap().state.size = Some(600.0);
+    layout.constrain("left", |c| c.max = Some(Size::Points(250.0)));
+    layout.set_folded("left", true);
+    let laid = layout.solve(rect(1000.0), &Solve::default());
+    // Its largest size bounds it.
+    assert_eq!(
+        laid.get("left").unwrap().restore.unwrap().rect.width(),
+        250.0
+    );
+
+    // Short of room, it gives way to the centre's least size, down to its own least size.
+    let laid = layout.solve(rect(560.0), &Solve::default());
+    let restore = laid.get("left").unwrap().restore.unwrap();
+    assert_eq!(restore.rect.width(), 60.0);
+    let laid = layout.solve(rect(450.0), &Solve::default());
+    assert_eq!(
+        laid.get("left").unwrap().restore.unwrap().rect.width(),
+        50.0
+    );
+}
+
+#[test]
+fn a_collapsing_zone_neither_lies_over_nor_folds_by_itself() {
+    let mut layout = collapsible();
+    layout.set_over("left", true);
+    let laid = layout.solve(rect(1000.0), &Solve::default());
+    assert_eq!(laid.get("left").unwrap().shown, Shown::Open);
+    layout.set_over("left", false);
+    layout.set_folded("left", false);
+    layout.constrain("left", |c| c.auto_fold = true);
+    let laid = layout.solve(rect(300.0), &Solve::default());
+    assert_eq!(laid.get("left").unwrap().shown, Shown::Open);
+}
+
+#[test]
+fn a_collapsed_split_lays_none_of_its_zones_and_lends_no_dock() {
+    let mut layout = row(vec![
+        Zone::split(
+            "side",
+            Dir::Vertical,
+            vec![side("top", 100.0, 0.0), side("bottom", 100.0, 0.0)],
+        )
+        .with(|c| {
+            c.fold = Fold::Collapse;
+            c.default = Some(Size::Points(200.0));
+        }),
+        centre(100.0),
+    ]);
+    layout.set_folded("side", true);
+    let laid = layout.solve(rect(1000.0), &Solve::default());
+    assert_eq!(laid.get("side").unwrap().shown, Shown::Collapsed);
+    assert!(laid.get("top").is_none());
+    assert_eq!(laid.get("side").unwrap().docks, ["top", "bottom"]);
+    // A collapsed zone inside a split is not one of the split's docks.
+    layout.set_folded("side", false);
+    layout.constrain("top", |c| c.fold = Fold::Collapse);
+    layout.set_folded("top", true);
+    let laid = layout.solve(rect(1000.0), &Solve::default());
+    assert_eq!(laid.get("side").unwrap().docks, ["bottom"]);
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn a_collapsed_zone_stays_collapsed_across_save_and_load() {
+    let mut layout = collapsible();
+    layout.zone_mut("left").unwrap().state.size = Some(240.0);
+    layout.set_folded("left", true);
+    let saved = serde_json::to_string(&layout).unwrap();
+    let mut loaded: Layout = serde_json::from_str(&saved).unwrap();
+    loaded.reconcile(&collapsible());
+    let laid = loaded.solve(rect(1000.0), &Solve::default());
+    assert_eq!(laid.get("left").unwrap().shown, Shown::Collapsed);
+    assert_eq!(
+        laid.get("left").unwrap().restore.unwrap().rect.width(),
+        240.0
+    );
+}

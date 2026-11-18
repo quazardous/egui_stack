@@ -104,7 +104,7 @@ impl TreeComponent {
     }
 }
 
-fn make_overlay_painter(ui: &Ui) -> Painter {
+pub(super) fn make_overlay_painter(ui: &Ui) -> Painter {
     let id = Id::unique("overlay");
     let layer_id = LayerId::new(Order::Foreground, id);
     ui.ctx().layer_painter(layer_id)
@@ -465,6 +465,22 @@ impl DragDropState {
         reason: Option<Option<WidgetText>>,
         window_bounds: Rect,
     ) {
+        let rect = self.destination_rect(ui, destination, window_bounds);
+        self.paint_preview_in(ui, style, painter, rect, destination, from_buttons, reason);
+    }
+
+    /// Paints `rect` as where the tab would go, or why it may not.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn paint_preview_in(
+        &self,
+        ui: &Ui,
+        style: &Style,
+        painter: &dyn DockPainter,
+        rect: Rect,
+        destination: &TabDestination,
+        from_buttons: bool,
+        reason: Option<Option<WidgetText>>,
+    ) {
         let refusal = reason.map(|reason| DropRefusal {
             reason: reason.map(|reason| {
                 reason.into_galley(
@@ -479,7 +495,7 @@ impl DragDropState {
         painter.drop_preview(
             &make_overlay_painter(ui),
             &DropPaint {
-                rect: self.destination_rect(ui, destination, window_bounds),
+                rect,
                 destination,
                 from_buttons,
                 refusal: refusal.as_ref(),

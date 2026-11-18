@@ -441,6 +441,14 @@ pub struct OverlayFeel {
     ///
     /// By `Default` it's `6.0` along both axes, egui's default click distance.
     pub drag_activation_distance: Vec2,
+
+    /// The breadth in points of a collapsed zone's restore band, shown while a tab is dragged
+    /// ([`Fold::Collapse`](crate::layout::Fold::Collapse), [`DockSpace::bind`](crate::DockSpace::bind)):
+    /// a tab released on it brings the zone back. Bands on the same boundary stack, each this
+    /// wide.
+    ///
+    /// By `Default` it's `8.0`.
+    pub restore_band: f32,
 }
 
 /// Specifies the type of overlay used.
@@ -662,6 +670,7 @@ impl Default for OverlayFeel {
             zone_edges_below_tab_bar: true,
             zone_tab_bar_stack_band: 8.0,
             drag_activation_distance: Vec2::splat(6.0),
+            restore_band: 8.0,
         }
     }
 }
