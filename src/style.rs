@@ -150,6 +150,16 @@ pub struct ButtonsStyle {
 
     /// How much the show tab bar button grows when hovered.
     pub show_tab_bar_hover_expand: f32,
+
+    /// Color of the grip at the end of a tab bar, which moves the whole tab group
+    /// ([`GroupHandles::GRIP`](crate::GroupHandles::GRIP)).
+    pub group_grip_color: Color32,
+
+    /// Color of the group grip when hovered, focused or dragged.
+    pub group_grip_active_color: Color32,
+
+    /// Color of the group grip's background when hovered, focused or dragged.
+    pub group_grip_bg_fill: Color32,
 }
 
 /// Specifies the look and feel of node separators.
@@ -548,6 +558,10 @@ impl Default for ButtonsStyle {
             show_tab_bar_active_color: Color32::WHITE,
             show_tab_bar_size: 10.0,
             show_tab_bar_hover_expand: 1.0,
+
+            group_grip_color: Color32::GRAY,
+            group_grip_active_color: Color32::WHITE,
+            group_grip_bg_fill: Color32::GRAY,
         }
     }
 }
@@ -695,6 +709,7 @@ impl Style {
     pub(crate) const TAB_CLOSE_ALL_SIZE: f32 = 10.0;
     pub(crate) const TAB_COLLAPSE_BUTTON_SIZE: f32 = 24.0;
     pub(crate) const TAB_COLLAPSE_ARROW_SIZE: f32 = 10.0;
+    pub(crate) const TAB_GROUP_GRIP_SIZE: f32 = 16.0;
     pub(crate) const TAB_EXPAND_BUTTON_SIZE: f32 = 24.0;
     pub(crate) const TAB_EXPAND_ARROW_SIZE: f32 = 10.0;
 }
@@ -740,6 +755,9 @@ impl ButtonsStyle {
     /// - [`ButtonsStyle::collapse_tabs_color`]
     /// - [`ButtonsStyle::collapse_tabs_active_color`]
     /// - [`ButtonsStyle::collapse_tabs_border_color`]
+    /// - [`ButtonsStyle::group_grip_color`]
+    /// - [`ButtonsStyle::group_grip_active_color`]
+    /// - [`ButtonsStyle::group_grip_bg_fill`]
     pub fn from_egui(style: &egui::Style) -> Self {
         Self {
             close_tab_bg_fill: style.visuals.widgets.hovered.bg_fill,
@@ -764,6 +782,9 @@ impl ButtonsStyle {
             minimize_window_border_color: style.visuals.widgets.noninteractive.bg_fill,
             show_tab_bar_color: style.visuals.text_color(),
             show_tab_bar_active_color: style.visuals.strong_text_color(),
+            group_grip_color: style.visuals.weak_text_color(),
+            group_grip_active_color: style.visuals.strong_text_color(),
+            group_grip_bg_fill: style.visuals.widgets.hovered.bg_fill,
             ..ButtonsStyle::default()
         }
     }

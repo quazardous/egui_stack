@@ -102,6 +102,24 @@ same way, through the same test.
 They are the space's, not a dock's: a tab may go from any dock to a window and back to any dock,
 unless the dock it leaves has `windows: false` or the viewer's `allowed_in_windows` says no.
 
+### Moving a whole tab group
+
+A tab group (a leaf with all its tabs) moves as one, through the same zones, veto and Escape as a
+single tab, its tabs kept in order and its active tab kept. `DockArea::group_handles` sets which
+handles move it, a set of `GroupHandles` flags, all on by default:
+
+| Flag | Handle |
+|---|---|
+| `EMPTY_SPACE` | The empty part of the tab bar, right of the last tab. A bar full of tabs has none. |
+| `GRIP` | A grip at the end of each tab bar, always there however many tabs it holds. Named "Move group" for screen readers (`Labels::move_group`), painted by `DockPainter::tab_bar_grip`. |
+| `MODIFIER_DRAG` | A tab dragged with `DockArea::group_drag_modifiers` held, Shift by default, carries its group. Shift has no other meaning on a tab drag: egui gives none, Shift on the tab bar's buttons is a click, and Ctrl (Cmd) is a `Sections` pull. |
+| `MENU` | "Move group" in the tab's context menu, and the grip's menu (clicked, right-clicked or opened from the keyboard): a new window and each other dock of the space that takes drops. A place the viewer refuses is greyed, its reason in a tooltip. |
+
+An application narrows the set to what it allows; a user setting narrows it further with
+`GroupHandles::intersection`. A handle that is off is not drawn and does not react.
+`DockArea::drag_group_by` and `DockArea::hidden_tab_bar_drags_group` are handles the application
+asks for itself, outside these flags.
+
 ### Serialisation
 
 With the `serde` feature, a `DockSpace` serialises as one value: its `DockState` (every dock's tree

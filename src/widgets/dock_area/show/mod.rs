@@ -138,6 +138,10 @@ impl<Tab> DockArea<'_, Tab> {
                 .eject_tab(path, mouse_pos.unwrap_or(Pos2::ZERO));
         }
 
+        for (path, destination) in std::mem::take(&mut self.to_move_group) {
+            self.dock_state.move_node(path, destination);
+        }
+
         if let Some(focused) = self.new_focused {
             self.dock_state.set_focused_node_and_surface(focused);
         }
@@ -562,6 +566,18 @@ impl<Tab> DockArea<'_, Tab> {
             TreeComponent::Node(path) => (path, 0..self.dock_state[path].tabs_count()),
             TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
         };
+        self.group_refusal(src, tabs, destination, tab_viewer)
+    }
+
+    /// The viewer's veto for the tabs `tabs` of the leaf at `src` going to `destination`: the
+    /// first refusal said, `None` when allowed.
+    pub(super) fn group_refusal(
+        &self,
+        src: NodePath,
+        tabs: std::ops::Range<usize>,
+        destination: &TabDestination,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+    ) -> Option<Option<egui::WidgetText>> {
         let to = match *destination {
             TabDestination::Node(path, _) => self.dock_name(path.surface),
             TabDestination::EmptySurface(surface) => self.dock_name(surface),

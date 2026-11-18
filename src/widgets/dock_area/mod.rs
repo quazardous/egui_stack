@@ -7,12 +7,14 @@ mod show;
 mod allowed_splits;
 mod drag_and_drop;
 mod drop_zone;
+mod group_handles;
 mod labels;
 mod state;
 mod tab_removal;
 
 pub use allowed_splits::AllowedSplits;
 pub use drop_zone::DropZone;
+pub use group_handles::GroupHandles;
 use std::panic::AssertUnwindSafe;
 
 use egui::{Context, Id, Modifiers, Response, Ui, emath::*};
@@ -42,6 +44,8 @@ pub struct DockArea<'tree, Tab> {
     tab_focus: TabFocus,
     hidable_tab_bars: bool,
     hidden_tab_bar_drags_group: bool,
+    group_handles: GroupHandles,
+    group_drag_modifiers: Modifiers,
     show_tab_name_on_hover: bool,
     show_window_close_buttons: bool,
     show_window_collapse_buttons: bool,
@@ -59,6 +63,8 @@ pub struct DockArea<'tree, Tab> {
 
     to_remove: Vec<TabRemoval>,
     to_detach: Vec<TabPath>,
+    /// Groups moved by their Move group menu, applied once the area is drawn.
+    to_move_group: Vec<(NodePath, crate::TabDestination)>,
     new_focused: Option<NodePath>,
     tab_hover_rect: Option<(Rect, TabIndex)>,
 }
@@ -85,7 +91,7 @@ pub struct DraggedTab {
 }
 
 /// A tab group being dragged in a [`DockArea`], from [`DockArea::dragged_node`]: a leaf with
-/// all its tabs, dragged by the empty part of its tab bar.
+/// all its tabs, dragged by one of its [`GroupHandles`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct DraggedNode {
@@ -113,8 +119,8 @@ impl DockArea<'_, ()> {
     }
 
     /// The tab group being dragged in the [`DockArea`] with this `id`, as of its last
-    /// [`show_inside`](DockArea::show_inside): a leaf dragged whole by the empty part of its tab
-    /// bar, all its tabs moving together and its active tab kept.
+    /// [`show_inside`](DockArea::show_inside): a leaf dragged whole by one of its
+    /// [`GroupHandles`], all its tabs moving together and its active tab kept.
     ///
     /// It counts as dragged once it has moved far enough, until it is released. Use
     /// [`default_id`](Self::default_id) if the [`DockArea`]'s id was not set.
@@ -209,11 +215,14 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             tab_focus: TabFocus::Each,
             hidable_tab_bars: false,
             hidden_tab_bar_drags_group: false,
+            group_handles: GroupHandles::ALL,
+            group_drag_modifiers: Modifiers::SHIFT,
             show_tab_name_on_hover: false,
             allowed_splits: AllowedSplits::default(),
             space: None,
             to_remove: Vec::new(),
             to_detach: Vec::new(),
+            to_move_group: Vec::new(),
             new_focused: None,
             tab_hover_rect: None,
             window_bounds: None,
@@ -419,6 +428,36 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     /// high. [`DockArea::drag_group_by`] makes any widget of the tab's body a handle instead.
     pub fn hidden_tab_bar_drags_group(mut self, drags_group: bool) -> Self {
         self.hidden_tab_bar_drags_group = drags_group;
+        self
+    }
+
+    /// Which handles move a whole tab group: the empty part of the tab bar, a grip at the end of
+    /// each tab bar, a tab dragged with [`group_drag_modifiers`](Self::group_drag_modifiers)
+    /// held, and "Move group" in the tab's context menu. By default all of them
+    /// ([`GroupHandles::ALL`]); an application narrows the set to what it allows, and a user
+    /// setting can narrow it further with [`GroupHandles::intersection`].
+    ///
+    /// No handle moves anything when the tabs are not [`draggable`](Self::draggable_tabs), the
+    /// menu aside, which moves the group without a drag.
+    #[inline(always)]
+    pub fn group_handles(mut self, group_handles: GroupHandles) -> Self {
+        self.group_handles = group_handles;
+        self
+    }
+
+    /// The modifiers that, held when a tab starts being dragged, make the drag carry the tab's
+    /// whole group ([`GroupHandles::MODIFIER_DRAG`]). By default [`Modifiers::SHIFT`].
+    ///
+    /// Shift is free on a tab drag: egui gives a drag no meaning of its own, and egui_stack's
+    /// other modifiers are Shift on the tab bar's buttons, a click, not a drag
+    /// ([`secondary_button_modifiers`](Self::secondary_button_modifiers)), and Ctrl (Cmd on
+    /// macOS) for a [`Sections`](crate::sections::Sections) pull. Applications that dock with
+    /// Ctrl or Alt keep Shift for the group. They are matched as
+    /// [`Modifiers::matches_logically`] does; [`Modifiers::NONE`] turns this handle off, as
+    /// clearing its flag does.
+    #[inline(always)]
+    pub fn group_drag_modifiers(mut self, modifiers: Modifiers) -> Self {
+        self.group_drag_modifiers = modifiers;
         self
     }
 

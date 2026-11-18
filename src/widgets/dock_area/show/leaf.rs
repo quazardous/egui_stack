@@ -11,9 +11,9 @@ use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
-    DockArea, DraggedNode, DraggedTab, NodeIndex, PartState, Style, SurfaceIndex, TabAddAlign,
-    TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabFocus, TabIndex, TabMeasure, TabPaint,
-    TabStyle, TabViewer,
+    DockArea, DraggedNode, DraggedTab, GroupHandles, NodeIndex, PartState, Style, SurfaceIndex,
+    TabAddAlign, TabBarGripPaint, TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose,
+    TabDestination, TabFocus, TabIndex, TabInsert, TabMeasure, TabPaint, TabStyle, TabViewer,
     dock_area::{
         drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
         state::State,
@@ -286,6 +286,11 @@ impl<Tab> DockArea<'_, Tab> {
             available_width -= Style::TAB_COLLAPSE_BUTTON_SIZE;
         }
 
+        let grip = self.shows_group_grip();
+        if grip {
+            available_width -= Style::TAB_GROUP_GRIP_SIZE;
+        }
+
         let (actual_width, tab_hovered) = {
             let leaf = self
                 .dock_state
@@ -358,7 +363,9 @@ impl<Tab> DockArea<'_, Tab> {
             );
             // The rest of the bar drags the whole group, as an editor group is dragged by its tab
             // bar. Registered before the bar's buttons, which keep their clicks.
-            self.tab_bar_tail_drag(ui, state, path, tail);
+            if self.group_handles.contains(GroupHandles::EMPTY_SPACE) {
+                self.tab_bar_tail_drag(ui, state, path, tail);
+            }
 
             // Add button at the ends of the tab bar.
             if self.show_add_buttons {
@@ -412,6 +419,20 @@ impl<Tab> DockArea<'_, Tab> {
 
             if self.show_leaf_collapse_buttons {
                 self.tab_collapse(ui, path, tabbar_outer_rect, fade_style, collapsed, bar)
+            }
+
+            // The grip, right of the tabs' room: always there, however many tabs the bar holds.
+            if grip {
+                let grip_rect = Rect::from_min_max(
+                    pos2(clip_rect.right(), tabbar_outer_rect.top()),
+                    pos2(
+                        clip_rect.right() + Style::TAB_GROUP_GRIP_SIZE,
+                        tabbar_outer_rect.bottom(),
+                    ),
+                );
+                self.group_grip(
+                    ui, state, path, tab_viewer, grip_rect, fade_style, collapsed, bar,
+                );
             }
 
             (tabs_ui.min_rect().width(), tab_hovered)
@@ -515,7 +536,14 @@ impl<Tab> DockArea<'_, Tab> {
                 let response =
                     tabs_ui.interact(response.rect, id.with("dragged"), Sense::click_and_drag());
 
-                if let Some(delta) = self.try_initiate_tab_drag(tabs_ui, state, path, tab_index) {
+                let carries_group = *state
+                    .drag_carries_group
+                    .get_or_insert_with(|| self.modifiers_carry_group(tabs_ui));
+                if carries_group {
+                    self.try_initiate_node_drag(tabs_ui, state, path);
+                } else if let Some(delta) =
+                    self.try_initiate_tab_drag(tabs_ui, state, path, tab_index)
+                {
                     tabs_ui
                         .ctx()
                         .transform_layer_shapes(layer_id, TSTransform::new(delta, 1.0));
@@ -601,6 +629,9 @@ impl<Tab> DockArea<'_, Tab> {
                         }
                         if self.hidable_tab_bars && ui.add(hide_tab_bar_button).clicked() {
                             leaf.tab_bar_hidden = true;
+                        }
+                        if self.group_handles.contains(GroupHandles::MENU) {
+                            self.move_group_menu(ui, path, tab_viewer);
                         }
                     });
                 }
@@ -1112,6 +1143,161 @@ impl<Tab> DockArea<'_, Tab> {
         if dragged {
             ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
             self.try_initiate_node_drag(ui, state, path);
+        }
+    }
+
+    /// Whether tab bars end with a group grip ([`GroupHandles::GRIP`]): it drags, so only
+    /// when tabs are draggable.
+    fn shows_group_grip(&self) -> bool {
+        self.group_handles.contains(GroupHandles::GRIP) && self.draggable_tabs
+    }
+
+    /// Whether a tab drag starting now carries its whole group ([`GroupHandles::MODIFIER_DRAG`]).
+    fn modifiers_carry_group(&self, ui: &Ui) -> bool {
+        self.group_handles.contains(GroupHandles::MODIFIER_DRAG)
+            && !self.group_drag_modifiers.is_none()
+            && ui.input(|i| i.modifiers.matches_logically(self.group_drag_modifiers))
+    }
+
+    /// The grip at the end of a tab bar: dragged, it drags the whole group; clicked, or
+    /// right-clicked, it opens the group's Move group menu ([`GroupHandles::MENU`]).
+    #[allow(clippy::too_many_arguments)]
+    fn group_grip(
+        &mut self,
+        ui: &Ui,
+        state: &mut State,
+        path: NodePath,
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
+        rect: Rect,
+        fade_style: Option<&Style>,
+        folded: bool,
+        bar: (Rect, CornerRadius),
+    ) {
+        let id = self
+            .id
+            .with((path.surface, "surface"))
+            .with((path.node, "node"))
+            .with("group_grip");
+        let response = ui.interact(rect, id, Sense::click_and_drag());
+        let enabled = ui.is_enabled();
+        response
+            .widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.move_group));
+
+        let dragged =
+            ui.ctx().is_being_dragged(id) && ui.input(|i| i.pointer.is_decidedly_dragging());
+        if dragged {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+            self.try_initiate_node_drag(ui, state, path);
+        } else if response.hovered() && ui.ctx().dragged_id().is_none() {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::Grab);
+        }
+
+        let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
+        self.painter.tab_bar_grip(
+            ui.painter(),
+            &TabBarGripPaint {
+                rect,
+                corner_radius: corners_within(rect, bar.0, bar.1),
+                state: PartState::NONE
+                    .with(PartState::HOVERED, response.hovered())
+                    .with(PartState::PRESSED, response.is_pointer_button_down_on())
+                    .with(PartState::FOCUSED, response.has_focus())
+                    .with(PartState::DRAGGED, dragged),
+                folded,
+                style,
+            },
+        );
+
+        if self.group_handles.contains(GroupHandles::MENU) {
+            Popup::menu(&response)
+                .id(id.with("menu"))
+                .show(|ui| self.move_group_targets(ui, path, tab_viewer));
+            response.context_menu(|ui| self.move_group_targets(ui, path, tab_viewer));
+        }
+    }
+
+    /// The Move group submenu of a tab's context menu: where the tab's whole group can go.
+    fn move_group_menu(
+        &mut self,
+        ui: &mut Ui,
+        path: NodePath,
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
+    ) {
+        let label = self
+            .dock_state
+            .translations
+            .tab_context_menu
+            .move_group_menu
+            .clone();
+        ui.menu_button(label, |ui| self.move_group_targets(ui, path, tab_viewer));
+    }
+
+    /// The places the group at `path` can go, one item each: a new window, and the other docks
+    /// of the space. A place the viewer refuses is greyed, its reason in a tooltip; chosen, the
+    /// group moves once the area is drawn.
+    fn move_group_targets(
+        &mut self,
+        ui: &mut Ui,
+        path: NodePath,
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
+    ) {
+        let Some(leaf_rect) = self.dock_state[path].rect() else {
+            return;
+        };
+        let mut targets: Vec<(String, TabDestination)> = Vec::new();
+
+        // A new window, unless the group is already a window of its own.
+        let alone_in_window = self.dock_state.is_window(path.surface)
+            && self.dock_state[path.surface]
+                .iter()
+                .filter(|node| node.is_leaf())
+                .count()
+                == 1;
+        if !alone_in_window && self.node_may_float(path, tab_viewer) {
+            let rect = leaf_rect.translate(vec2(24.0, 24.0));
+            targets.push((
+                self.dock_state
+                    .translations
+                    .tab_context_menu
+                    .move_group_new_window
+                    .clone(),
+                TabDestination::Window(rect),
+            ));
+        }
+
+        // The space's other docks, which take drops.
+        let docks: Vec<String> = self
+            .space
+            .as_ref()
+            .map(|space| {
+                space
+                    .docks
+                    .iter()
+                    .filter(|dock| dock.surface != path.surface && dock.rules.accept_drops)
+                    .map(|dock| dock.name.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for name in docks {
+            let destination = match self.dock_target(&name) {
+                Some(TreeComponent::Node(node)) => TabDestination::Node(node, TabInsert::Append),
+                Some(TreeComponent::Surface(surface)) => TabDestination::EmptySurface(surface),
+                _ => continue,
+            };
+            targets.push((name, destination));
+        }
+
+        let count = self.dock_state[path].tabs_count();
+        for (label, destination) in targets {
+            let refusal = self.group_refusal(path, 0..count, &destination, tab_viewer);
+            let mut response = ui.add_enabled(refusal.is_none(), Button::new(label));
+            if let Some(Some(reason)) = refusal {
+                response = response.on_disabled_hover_text(reason);
+            }
+            if response.clicked() {
+                self.to_move_group.push((path, destination));
+                ui.close();
+            }
         }
     }
 
