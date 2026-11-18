@@ -469,7 +469,8 @@ moves the window.
   cursor, a move never docking by default, `Dock` docking by the handle and by the title bar,
   a refused dock, hidden positions, the handle turned off), `tests/float_chrome.rs` (no title
   bar over the main window by default, `title_bar(true)` and a float without its handle keep
-  it) and `tests/add_button_place.rs`.
+  it, the line under the bar under every button of a float's tab bar, hovered or not) and
+  `tests/add_button_place.rs`.
 
 ## Risks
 

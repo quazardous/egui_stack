@@ -19,29 +19,31 @@ clip [[24.0 0.0] - [160.0 24.0]]
 clip [[24.0 0.0] - [160.0 24.0]]
   LineSegment { points: [[89.8 23.0], [168.5 23.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
 clip [[0.0 0.0] - [200.0 300.0]]
+  LineSegment { points: [[0.0 23.0], [24.0 23.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[0.0 0.0] - [200.0 300.0]]
   LineSegment { points: [[160.0 23.0], [200.0 23.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[0.0 0.0] - [200.0 300.0]]
+  LineSegment { points: [[176.0 0.0], [176.0 22.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
 clip [[0.0 0.0] - [200.0 300.0]]
   LineSegment { points: [[183.0 6.0], [193.0 16.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[0.0 0.0] - [200.0 300.0]]
   LineSegment { points: [[193.0 6.0], [183.0 16.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[0.0 0.0] - [200.0 300.0]]
-  LineSegment { points: [[176.0 0.0], [176.0 22.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+  LineSegment { points: [[24.0 0.0], [24.0 22.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
 clip [[0.0 0.0] - [200.0 300.0]]
-  Path(PathShape { points: [[7.0 7.0], [17.0 7.0], [12.0 17.0]], closed: true, fill: #8C_8C_8C_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
+  Path(PathShape { points: [[7.0 6.0], [17.0 6.0], [12.0 16.0]], closed: true, fill: #8C_8C_8C_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
 clip [[0.0 0.0] - [200.0 300.0]]
-  LineSegment { points: [[24.0 0.0], [24.0 24.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+  Circle(CircleShape { center: [166.0 7.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[0.0 0.0] - [200.0 300.0]]
-  Circle(CircleShape { center: [166.0 8.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [166.0 11.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[0.0 0.0] - [200.0 300.0]]
-  Circle(CircleShape { center: [166.0 12.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [166.0 15.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[0.0 0.0] - [200.0 300.0]]
-  Circle(CircleShape { center: [166.0 16.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [170.0 7.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[0.0 0.0] - [200.0 300.0]]
-  Circle(CircleShape { center: [170.0 8.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [170.0 11.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[0.0 0.0] - [200.0 300.0]]
-  Circle(CircleShape { center: [170.0 12.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
-clip [[0.0 0.0] - [200.0 300.0]]
-  Circle(CircleShape { center: [170.0 16.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [170.0 15.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[0.0 0.0] - [200.0 300.0]]
   Rect(RectShape { rect: [[0.0 24.0] - [200.0 31.5]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, fill: #0A_0A_0A_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[0.0 0.0] - [200.0 300.0]]
@@ -85,29 +87,31 @@ clip [[224.0 0.0] - [660.0 24.0]]
 clip [[224.0 0.0] - [660.0 24.0]]
   LineSegment { points: [[299.2 23.0], [385.4 23.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
 clip [[200.0 0.0] - [700.0 300.0]]
+  LineSegment { points: [[200.0 23.0], [224.0 23.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[200.0 0.0] - [700.0 300.0]]
   LineSegment { points: [[385.4 23.0], [700.0 23.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
+clip [[200.0 0.0] - [700.0 300.0]]
+  LineSegment { points: [[676.0 0.0], [676.0 22.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
 clip [[200.0 0.0] - [700.0 300.0]]
   LineSegment { points: [[683.0 6.0], [693.0 16.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[200.0 0.0] - [700.0 300.0]]
   LineSegment { points: [[693.0 6.0], [683.0 16.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[200.0 0.0] - [700.0 300.0]]
-  LineSegment { points: [[676.0 0.0], [676.0 22.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+  LineSegment { points: [[224.0 0.0], [224.0 22.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
 clip [[200.0 0.0] - [700.0 300.0]]
-  Path(PathShape { points: [[207.0 7.0], [217.0 7.0], [212.0 17.0]], closed: true, fill: #8C_8C_8C_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
+  Path(PathShape { points: [[207.0 6.0], [217.0 6.0], [212.0 16.0]], closed: true, fill: #8C_8C_8C_FF, stroke: PathStroke { width: 0.0, color: Solid(#00_00_00_00), kind: Middle } })
 clip [[200.0 0.0] - [700.0 300.0]]
-  LineSegment { points: [[224.0 0.0], [224.0 24.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+  Circle(CircleShape { center: [666.0 7.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[200.0 0.0] - [700.0 300.0]]
-  Circle(CircleShape { center: [666.0 8.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [666.0 11.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[200.0 0.0] - [700.0 300.0]]
-  Circle(CircleShape { center: [666.0 12.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [666.0 15.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[200.0 0.0] - [700.0 300.0]]
-  Circle(CircleShape { center: [666.0 16.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [670.0 7.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[200.0 0.0] - [700.0 300.0]]
-  Circle(CircleShape { center: [670.0 8.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [670.0 11.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[200.0 0.0] - [700.0 300.0]]
-  Circle(CircleShape { center: [670.0 12.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
-clip [[200.0 0.0] - [700.0 300.0]]
-  Circle(CircleShape { center: [670.0 16.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
+  Circle(CircleShape { center: [670.0 15.0], radius: 1.0, fill: #54_54_54_99, stroke: Stroke { width: 0.0, color: #00_00_00_00 } })
 clip [[200.0 0.0] - [700.0 300.0]]
   Rect(RectShape { rect: [[200.0 24.0] - [700.0 300.0]], corner_radius: CornerRadius { nw: 0, ne: 0, sw: 6, se: 6 }, fill: #1B_1B_1B_FF, stroke: Stroke { width: 0.0, color: #00_00_00_00 }, stroke_kind: Outside, round_to_pixels: None, blur_width: 0.0, brush: None, angle: 0.0 })
 clip [[200.0 24.0] - [700.0 300.0]]
