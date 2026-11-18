@@ -2,7 +2,9 @@
 
 use egui::{Id, Rect};
 
-use crate::layout::{Content, Drops, Laid, Shown, ZoneName};
+use crate::layout::{
+    Content, Drops, Fold, Laid, LaidZone, Layout, Restore, Shown, Zone, ZoneKind, ZoneName,
+};
 use crate::{AllowedSplits, DockState, Surface, SurfaceIndex, Tree};
 
 /// Several named docks, each with its own tree, and floating windows, sharing one drag: a tab
@@ -75,9 +77,22 @@ pub(crate) struct NoDrop {
     /// Folded zones' strips taking drops for a dock ([`DockSpace::bind`]): the strip, and the
     /// dock's name.
     pub(crate) strips: Vec<StripDrop>,
-    /// Folded split zones a tab was dropped on, to unfold ([`DockSpace::take_unfolds`]). Kept
-    /// across frames until taken.
+    /// Collapsed zones' restore bands ([`DockSpace::bind`]), in tree order.
+    pub(crate) restores: Vec<RestoreDrop>,
+    /// Folded split zones and collapsed zones a tab was dropped on, to unfold
+    /// ([`DockSpace::take_unfolds`]). Kept across frames until taken.
     pub(crate) unfolds: Vec<ZoneName>,
+}
+
+/// A collapsed zone ([`Fold::Collapse`]) a dragged tab may bring back ([`DockSpace::bind`]).
+#[derive(Clone, Debug)]
+pub(crate) struct RestoreDrop {
+    /// The zone, to unfold once a tab is dropped on its band.
+    pub(crate) zone: ZoneName,
+    /// Where it lay and where it would come back.
+    pub(crate) restore: Restore,
+    /// The dock a tab released on its band joins.
+    pub(crate) dock: String,
 }
 
 /// A folded zone's strip taking drops for a dock ([`DockSpace::bind`]).
@@ -422,6 +437,17 @@ impl<Tab> DockSpace<Tab> {
     /// with `strip_drops` takes them for one of the docks it holds, the last active one, else the
     /// first accepting drops, and reports the zone to unfold ([`take_unfolds`](Self::take_unfolds)).
     ///
+    /// A collapsed zone ([`Fold::Collapse`]) that accepts drops,
+    /// holding a dock of this space that accepts them (for a split, one of its docks, chosen as
+    /// for a strip), shows a restore band while a tab is dragged: a thin band at its former
+    /// boundary ([`Restore::line`]), [`OverlayFeel::restore_band`](crate::OverlayFeel::restore_band)
+    /// wide, on the side it would come back on. Bands on the same boundary stack in tree order.
+    /// The band wins over whatever lies under it, no-drop zones included, and only inside
+    /// itself; hovered, it previews the rect the zone would take back ([`Restore::rect`]). A tab
+    /// released there joins the dock, unless the dock's rules or the viewer's veto refuse it,
+    /// and the zone is reported to unfold ([`take_unfolds`](Self::take_unfolds)). Released
+    /// anywhere else, or cancelled, the layout is left as it was.
+    ///
     /// Call it every frame, after the layout is drawn: its zones take effect for the docks drawn
     /// next, a frame later for those already drawn, which a drag does not notice.
     ///
@@ -461,6 +487,16 @@ impl<Tab> DockSpace<Tab> {
     /// ```
     pub fn bind(&mut self, laid: &Laid) {
         for zone in &laid.zones {
+            if let (Shown::Collapsed, Some(restore)) = (zone.shown, zone.restore) {
+                if let Some(dock) = self.restore_dock(zone) {
+                    self.no_drop.restores.push(RestoreDrop {
+                        zone: zone.name.clone(),
+                        restore,
+                        dock,
+                    });
+                }
+                continue;
+            }
             let Some(content) = &zone.content else {
                 // A folded split zone's strip: a target for one of its docks, else a no-drop
                 // zone, as a folded leaf's strip is.
@@ -515,13 +551,36 @@ impl<Tab> DockSpace<Tab> {
     /// [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops): of the docks the
     /// split holds that accept drops, the one holding the focused leaf (the last active), else
     /// the first.
-    fn split_strip_dock(&self, zone: &crate::layout::LaidZone) -> Option<String> {
+    fn split_strip_dock(&self, zone: &LaidZone) -> Option<String> {
         if !(zone.strip_drops
             && zone.drops == Drops::Accept
             && matches!(zone.shown, Shown::Folded | Shown::AutoFolded))
         {
             return None;
         }
+        self.split_dock(zone)
+    }
+
+    /// The dock a collapsed zone's restore band takes drops for: the dock a leaf holds, or one
+    /// of a split's, chosen as for a strip ([`split_dock`](Self::split_dock)); none when the
+    /// zone or the dock refuses drops.
+    fn restore_dock(&self, zone: &LaidZone) -> Option<String> {
+        if zone.drops != Drops::Accept {
+            return None;
+        }
+        match &zone.content {
+            Some(Content::Dock(name)) => self
+                .rules(name)
+                .is_some_and(|rules| rules.accept_drops)
+                .then(|| name.clone()),
+            Some(_) => None,
+            None => self.split_dock(zone),
+        }
+    }
+
+    /// Of the docks a split zone holds that accept drops, the one holding the focused leaf (the
+    /// last active), else the first.
+    fn split_dock(&self, zone: &LaidZone) -> Option<String> {
         let candidates: Vec<&String> = zone
             .docks
             .iter()
@@ -535,12 +594,59 @@ impl<Tab> DockSpace<Tab> {
             .map(|name| (*name).clone())
     }
 
-    /// The folded split zones a tab was dropped on since the last call, for the application to
-    /// unfold ([`Layout::set_folded`](crate::layout::Layout::set_folded)): a split zone's strip
-    /// takes drops with [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops)
-    /// ([`bind`](Self::bind)). Call it every frame, after the layout is drawn.
+    /// The zones a tab was dropped on since the last call, for the application to unfold
+    /// ([`Layout::set_folded`](crate::layout::Layout::set_folded)): folded split zones, whose
+    /// strip takes drops with [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops),
+    /// and collapsed zones, through their restore band ([`bind`](Self::bind)). Call it every
+    /// frame, after the layout is drawn.
     pub fn take_unfolds(&mut self) -> Vec<ZoneName> {
         std::mem::take(&mut self.no_drop.unfolds)
+    }
+
+    /// Collapses the zones of `layout` that collapse ([`Fold::Collapse`]) and whose docks are all
+    /// empty: each holds at least one dock ([`Content::Dock`]), and every dock it holds is a dock
+    /// of this space with no tab. Zones hidden, already folded, or that grow are left alone, and
+    /// so are those under a zone it collapses. Returns the zones it collapsed, parents first.
+    ///
+    /// Call it every frame, before the layout is drawn: a dock whose last tab leaves gives its
+    /// room to its neighbours, and a tab dropped on its restore band brings it back
+    /// ([`bind`](Self::bind), [`take_unfolds`](Self::take_unfolds)). A dock that should stay
+    /// collapsible needs [`DockRules::keep_when_empty`], the default.
+    pub fn collapse_empty(&self, layout: &mut Layout) -> Vec<ZoneName> {
+        fn visit<Tab>(space: &DockSpace<Tab>, zone: &mut Zone, out: &mut Vec<ZoneName>) {
+            if zone.state.hidden || zone.state.folded {
+                return;
+            }
+            if zone.constraints.fold == Fold::Collapse && !zone.constraints.grow {
+                let mut docks = Vec::new();
+                zone.visit(&mut |under| {
+                    if let ZoneKind::Leaf {
+                        content: Content::Dock(name),
+                    } = &under.kind
+                    {
+                        docks.push(name.clone());
+                    }
+                });
+                let empty = !docks.is_empty()
+                    && docks
+                        .iter()
+                        .all(|name| space.dock(name).is_some_and(Tree::is_empty));
+                if empty {
+                    zone.state.folded = true;
+                    zone.state.over = false;
+                    out.push(zone.name.clone());
+                    return;
+                }
+            }
+            if let ZoneKind::Split { children, .. } = &mut zone.kind {
+                for child in children {
+                    visit(space, child, out);
+                }
+            }
+        }
+        let mut collapsed = Vec::new();
+        visit(self, &mut layout.root, &mut collapsed);
+        collapsed
     }
 
     /// The dock whose [`DockArea`](crate::DockArea) also draws the floating windows: the one

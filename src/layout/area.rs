@@ -744,7 +744,8 @@ fn sashes(zone: &Zone, laid: &Laid) -> Vec<Sash> {
         let shown: Vec<&LaidZone> = children
             .iter()
             .filter_map(|child| laid.get(&child.name.0))
-            .filter(|at| at.shown != Shown::Hidden)
+            // Collapsed zones take no room either: their neighbours meet.
+            .filter(|at| !matches!(at.shown, Shown::Hidden | Shown::Collapsed))
             .collect();
         let child = |at: &LaidZone| children.iter().find(|c| c.name == at.name);
         let taker = shown

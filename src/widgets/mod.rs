@@ -10,8 +10,8 @@ pub mod tab_viewer;
 pub use dock_area::{AllowedSplits, DockArea, DraggedNode, DraggedTab, DropZone, Labels, TabFocus};
 pub use painter::{
     DockPainter, DropButtonPaint, DropPaint, DropRefusal, DropTargetPaint, PartState,
-    SectionBandPaint, SectionBoundaryPaint, SeparatorAxis, SeparatorPaint, StylePainter,
-    TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabMeasure, TabPaint, ToolItemPaint,
-    ToolMorePaint, ToolSeparatorPaint,
+    RestoreBandPaint, SectionBandPaint, SectionBoundaryPaint, SeparatorAxis, SeparatorPaint,
+    StylePainter, TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabMeasure, TabPaint,
+    ToolItemPaint, ToolMorePaint, ToolSeparatorPaint,
 };
 pub use tab_viewer::{DockDrop, TabViewer};

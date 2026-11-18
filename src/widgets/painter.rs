@@ -349,6 +349,46 @@ pub trait DockPainter {
         }
     }
 
+    /// A collapsed zone's restore band, while a tab is dragged
+    /// ([`Fold::Collapse`](crate::layout::Fold::Collapse)): every band of the layout, the one
+    /// under the pointer hovered. A band restores a zone instead of splitting one, so it looks
+    /// unlike the drop zones: the default paints a dashed line of
+    /// [`OverlayStyle::selection_color`](crate::OverlayStyle::selection_color) along the band,
+    /// filled in when hovered. Where the zone would come back is the
+    /// [`drop_preview`](Self::drop_preview) painted next.
+    fn restore_band(&self, painter: &Painter, band: &RestoreBandPaint<'_>) {
+        let overlay = &band.style.overlay;
+        let color = overlay.selection_color;
+        let rect = band.rect;
+        if band.hovered {
+            painter.rect_filled(rect, CornerRadius::same(2), color);
+            return;
+        }
+        painter.rect_filled(rect, CornerRadius::same(2), color.gamma_multiply(0.25));
+        // Dashes along the band's length, its long side.
+        let along_x = rect.width() >= rect.height();
+        let (len, start) = if along_x {
+            (rect.width(), rect.left())
+        } else {
+            (rect.height(), rect.top())
+        };
+        let (dash, gap) = (6.0, 4.0);
+        let stroke = Stroke::new(2.0, color);
+        let mut at = 0.0;
+        while at < len {
+            let end = (at + dash).min(len);
+            let (a, b) = if along_x {
+                let y = rect.center().y;
+                (Pos2::new(start + at, y), Pos2::new(start + end, y))
+            } else {
+                let x = rect.center().x;
+                (Pos2::new(x, start + at), Pos2::new(x, start + end))
+            };
+            painter.line_segment([a, b], stroke);
+            at += dash + gap;
+        }
+    }
+
     /// The title band of a section in a [`Sections`](crate::sections::Sections) stack: its
     /// background, its disclosure mark, its title and its count. Painted from the band's
     /// [`egui::Style`], as a section stack has no dock [`Style`].
@@ -849,6 +889,20 @@ pub struct TabBodyPaint<'a> {
 pub struct DropTargetPaint<'a> {
     /// The node or surface.
     pub rect: Rect,
+    /// The dock's style.
+    pub style: &'a Style,
+}
+
+/// A collapsed zone's restore band, for [`DockPainter::restore_band`].
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct RestoreBandPaint<'a> {
+    /// The band.
+    pub rect: Rect,
+    /// The zone it brings back.
+    pub zone: &'a crate::layout::ZoneName,
+    /// Whether the dragged tab is over it.
+    pub hovered: bool,
     /// The dock's style.
     pub style: &'a Style,
 }

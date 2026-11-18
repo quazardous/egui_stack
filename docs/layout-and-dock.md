@@ -548,6 +548,29 @@ Where the `layout` module differs from the sketch above:
 - `Layout::from_space(&space, shape)`: `shape` is a `Zone` tree; the docks it does not show get a
   visible leaf each, last under the root.
 
+## As built (collapsible docks, 0.27)
+
+- `Fold::Collapse`, opt-in per zone, next to `Fold::ToStrip`: folded (`ZoneState::folded`), the
+  zone takes no room and has no strip (`Shown::Collapsed`), but stays in the tree with its name,
+  constraints and last size, so it is saved and reloaded like a folded zone. It never lies over,
+  never folds by itself, and a sash does not collapse it. Hidden zones are not touched.
+- `DockSpace::collapse_empty(&mut layout)`, called each frame before the layout is drawn,
+  collapses the `Fold::Collapse` zones whose docks are all empty (the outermost such zone only),
+  so the zone that grows takes their room.
+- The solver gives a collapsed zone `LaidZone::restore`: its former boundary (`Restore::line`,
+  the parent's outer edge when nothing is left between it and that edge), the side it comes back
+  on, and the rect it would take back, found by solving its split again with it unfolded: its
+  remembered size within its current bounds, its siblings giving way as usual.
+- `bind` turns each collapsed zone that accepts drops, and holds a dock of the space accepting
+  them (for a split, one chosen as for a strip), into a restore band shown during a tab drag,
+  `OverlayFeel::restore_band` (8 points) wide, inside the parent on the side it comes back on.
+  Bands on the same boundary stack in tree order. The band is restore, not split: its own look
+  (`DockPainter::restore_band`), priority over anything under it but only inside itself, and a
+  preview of `Restore::rect` while hovered, the layout untouched. A release there runs the
+  viewer's veto like any drop, joins the dock's focused leaf (else its first, else the empty
+  dock) and names the zone in `DockSpace::take_unfolds`, for the application to unfold with
+  `Layout::set_folded`. A cancelled drag, a release elsewhere or a veto change nothing.
+
 ## The minimal contract
 
 What a consumer such as egui-pop should depend on, and nothing else:

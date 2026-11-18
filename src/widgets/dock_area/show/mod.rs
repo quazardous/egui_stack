@@ -5,20 +5,20 @@ use egui::{
 };
 
 use super::{
-    drag_and_drop::{DragData, HoverData, TreeComponent},
+    drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent, make_overlay_painter},
     state::State,
     tab_removal::TabRemoval,
 };
 use crate::NodePath;
 use crate::dock_area::tab_removal::ForcedRemoval;
-use crate::dock_space::{NoDrop, StripDrop, dock_name, remove_empty_docks};
+use crate::dock_space::{NoDrop, RestoreDrop, StripDrop, dock_name, remove_empty_docks};
 use crate::dock_state::tree::node::shares;
-use crate::layout::ZoneName;
+use crate::layout::{Dir, ZoneName};
 use crate::tab_viewer::{DockDrop, DropVerdict, OnCloseResponse};
 use crate::{
     AllowedSplits, DockArea, DockPainter, DockRules, LinearDir, Node, NodeIndex, OverlayType,
-    PartState, SeparatorAxis, SeparatorPaint, Style, SurfaceIndex, TabDestination, TabPath,
-    TabViewer,
+    PartState, RestoreBandPaint, SeparatorAxis, SeparatorPaint, Style, SurfaceIndex,
+    TabDestination, TabPath, TabViewer,
     utils::{expand_to_pixel, fade_dock_style, map_to_pixel},
 };
 
@@ -183,17 +183,42 @@ impl<Tab> DockArea<'_, Tab> {
             )
         });
 
-        // A folded zone's strip taking drops wins over whatever lies under it.
-        let strip = drag_data.as_ref().and_then(|_| self.hover_strip(state));
-        let unfold = strip.as_ref().and_then(|(_, unfold)| unfold.clone());
-        let hover_data = strip
-            .map(|(hover, _)| hover)
+        // A collapsed zone's restore band wins over whatever lies under it, no-drop zones
+        // included; then a folded zone's strip taking drops.
+        let restores = self
+            .space
+            .as_ref()
+            .map(|space| space.no_drop.restores.clone())
+            .unwrap_or_default();
+        let bands = restore_bands(
+            &restores,
+            self.style.as_ref().unwrap().overlay.feel.restore_band,
+        );
+        let restore = drag_data
+            .as_ref()
+            .and_then(|_| self.hover_restore(state, &restores, &bands));
+        if drag_data.is_some() {
+            self.paint_restore_bands(ui, &restores, &bands, restore.as_ref().map(|r| r.2));
+        }
+        let strip = drag_data
+            .as_ref()
+            .filter(|_| restore.is_none())
+            .and_then(|_| self.hover_strip(state));
+        let preview = restore.as_ref().map(|(_, _, i)| restores[*i].restore.rect);
+        let unfold = match &restore {
+            Some((_, zone, _)) => Some(zone.clone()),
+            None => strip.as_ref().and_then(|(_, unfold)| unfold.clone()),
+        };
+        let hover_data = restore
+            .map(|(hover, _, _)| hover)
+            .or_else(|| strip.map(|(hover, _)| hover))
             .or(hover_data)
             .or_else(|| self.hover_outside(dock_rect, state, &drag_data));
         // Where no tab may land, the drag hovers nothing: released, the tab stays where it was.
-        let refused = hover_data
-            .as_ref()
-            .is_some_and(|hover| self.refuses_drop(ui.ctx(), state, hover));
+        let refused = preview.is_none()
+            && hover_data
+                .as_ref()
+                .is_some_and(|hover| self.refuses_drop(ui.ctx(), state, hover));
         let hover_data = if refused {
             state.dnd = None;
             None
@@ -210,17 +235,31 @@ impl<Tab> DockArea<'_, Tab> {
 
         if let (Some(source), Some(hover)) = (drag_data, hover_data) {
             let style = self.style.as_ref().unwrap();
-            state.set_drag_and_drop(source, hover, ui.ctx(), style);
-            // The hover comes from the last pass, or is the preferred leaf's kept a while: the
-            // part of the leaf under the pointer, tab bar or body, is tested again now.
-            if let (Some(dnd), Some(pointer)) = (state.dnd.as_mut(), state.last_hover_pos) {
-                dnd.hover.retarget(pointer);
-            }
-            let tab_dst = self.show_drag_drop_overlay(ui, state, tab_viewer);
+            let tab_dst = if let Some(preview) = preview {
+                // The band is the target, whatever the leaf preference kept.
+                state.dnd = Some(DragDropState {
+                    hover,
+                    drag: source,
+                    pointer: state.last_hover_pos.unwrap_or(Pos2::ZERO),
+                    locked: None,
+                    src_in_window: false,
+                    dst_in_window: false,
+                });
+                self.show_restore_overlay(ui, state, tab_viewer, preview)
+            } else {
+                state.set_drag_and_drop(source, hover, ui.ctx(), style);
+                // The hover comes from the last pass, or is the preferred leaf's kept a while:
+                // the part of the leaf under the pointer, tab bar or body, is tested again now.
+                if let (Some(dnd), Some(pointer)) = (state.dnd.as_mut(), state.last_hover_pos) {
+                    dnd.hover.retarget(pointer);
+                }
+                self.show_drag_drop_overlay(ui, state, tab_viewer)
+            };
             if ui.input(|i| i.pointer.primary_released())
                 && let Some(destination) = tab_dst
             {
-                // Dropped on a folded split zone's strip: the zone is to unfold.
+                // Dropped on a folded split zone's strip, or a collapsed zone's restore band: the
+                // zone is to unfold.
                 if let (Some(zone), Some(space)) = (unfold, &mut self.space) {
                     space.no_drop.unfolds.push(zone);
                 }
@@ -384,16 +423,7 @@ impl<Tab> DockArea<'_, Tab> {
         if over_a_window {
             return None;
         }
-        let surface = space.docks.iter().find(|dock| &dock.name == name)?.surface;
-        let tree = self.dock_state.get_surface(surface)?.node_tree()?;
-        let leaf = tree
-            .focused_leaf()
-            .filter(|&node| tree.iter().nth(node.0).is_some_and(Node::is_leaf))
-            .or_else(|| tree.iter().position(Node::is_leaf).map(NodeIndex));
-        let dst = match leaf {
-            Some(node) => TreeComponent::Node(NodePath::new(surface, node)),
-            None => TreeComponent::Surface(surface),
-        };
+        let dst = self.dock_target(name)?;
         Some((
             HoverData {
                 rect: *strip,
@@ -405,6 +435,152 @@ impl<Tab> DockArea<'_, Tab> {
             },
             unfold.clone(),
         ))
+    }
+
+    /// Where a tab joining the space's dock named `name` without a split goes: its focused leaf,
+    /// else its first, or the dock itself when empty.
+    fn dock_target(&self, name: &str) -> Option<TreeComponent> {
+        let space = self.space.as_ref()?;
+        let surface = space.docks.iter().find(|dock| dock.name == name)?.surface;
+        let tree = self.dock_state.get_surface(surface)?.node_tree()?;
+        let leaf = tree
+            .focused_leaf()
+            .filter(|&node| tree.iter().nth(node.0).is_some_and(Node::is_leaf))
+            .or_else(|| tree.iter().position(Node::is_leaf).map(NodeIndex));
+        Some(match leaf {
+            Some(node) => TreeComponent::Node(NodePath::new(surface, node)),
+            None => TreeComponent::Surface(surface),
+        })
+    }
+
+    /// The restore band under the pointer and under no floating window, of a collapsed zone
+    /// ([`DockSpace::bind`](crate::DockSpace::bind)): hovered as its dock's tab bar, so a tab
+    /// released there joins the dock with no split. With the zone, and the band's index.
+    fn hover_restore(
+        &self,
+        state: &State,
+        restores: &[RestoreDrop],
+        bands: &[Rect],
+    ) -> Option<(HoverData, ZoneName, usize)> {
+        let pointer = state.last_hover_pos?;
+        let index = bands.iter().position(|band| band.contains(pointer))?;
+        let over_a_window = self
+            .dock_state
+            .valid_surface_indices()
+            .iter()
+            .filter_map(|&surface| self.dock_state.get_window_state(surface))
+            .any(|window| window.rect().contains(pointer));
+        if over_a_window {
+            return None;
+        }
+        let restore = &restores[index];
+        let dst = self.dock_target(&restore.dock)?;
+        let band = bands[index];
+        Some((
+            HoverData {
+                rect: band,
+                dst,
+                tab: Some(band),
+                tab_bar: None,
+                outside: false,
+            },
+            restore.zone.clone(),
+            index,
+        ))
+    }
+
+    /// Paints every restore band while a tab is dragged, `hovered` the one under the pointer.
+    fn paint_restore_bands(
+        &self,
+        ui: &Ui,
+        restores: &[RestoreDrop],
+        bands: &[Rect],
+        hovered: Option<usize>,
+    ) {
+        if bands.is_empty() {
+            return;
+        }
+        let style = self.style.as_ref().unwrap();
+        let painter = make_overlay_painter(ui);
+        for (i, (band, restore)) in bands.iter().zip(restores).enumerate() {
+            self.painter.0.restore_band(
+                &painter,
+                &RestoreBandPaint {
+                    rect: *band,
+                    zone: &restore.zone,
+                    hovered: hovered == Some(i),
+                    style,
+                },
+            );
+        }
+    }
+
+    /// Resolves a drag over a restore band: the tab joins the band's dock with no split, unless
+    /// it is already alone in that leaf or the viewer vetoes it; the preview is `rect`, where the
+    /// zone would come back.
+    fn show_restore_overlay(
+        &mut self,
+        ui: &Ui,
+        state: &mut State,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+        rect: Rect,
+    ) -> Option<TabDestination> {
+        let drag_state = state.dnd.as_mut().unwrap();
+        let (src_surface, src_node) = drag_state.drag.src.node_address();
+        drag_state.src_in_window = self.dock_state.is_window(src_surface);
+        let destination = drag_state.hover.dst.as_tab_destination();
+        if (src_surface, src_node) == drag_state.hover.dst.node_address() {
+            return None;
+        }
+        let refusal = self.drop_refusal(state, tab_viewer, &destination);
+        let allowed = refusal.is_none();
+        let style = self.style.as_ref().unwrap();
+        let painter: &dyn DockPainter = self.painter.0;
+        state.dnd.as_ref().unwrap().paint_preview_in(
+            ui,
+            style,
+            painter,
+            rect,
+            &destination,
+            false,
+            refusal,
+        );
+        allowed.then_some(destination)
+    }
+
+    /// The viewer's veto for the dragged tab at `destination`; for a whole leaf, for each of its
+    /// tabs, the first refusal said. `None` when allowed.
+    fn drop_refusal(
+        &self,
+        state: &State,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+        destination: &TabDestination,
+    ) -> Option<Option<egui::WidgetText>> {
+        let drag_state = state.dnd.as_ref()?;
+        let (src, tabs) = match drag_state.drag.src {
+            TreeComponent::Tab(path) => (path.node_path(), path.tab.0..path.tab.0 + 1),
+            TreeComponent::Node(path) => (path, 0..self.dock_state[path].tabs_count()),
+            TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
+        };
+        let to = match *destination {
+            TabDestination::Node(path, _) => self.dock_name(path.surface),
+            TabDestination::EmptySurface(surface) => self.dock_name(surface),
+            TabDestination::Window(_) => None,
+        };
+        let drop = DockDrop {
+            destination,
+            from: self.dock_name(src.surface),
+            to,
+        };
+        let leaf_tabs = self.dock_state[src]
+            .tabs()
+            .expect("drags can only come from leaf nodes");
+        leaf_tabs[tabs]
+            .iter()
+            .find_map(|tab| match tab_viewer.dock_drop_allowed(tab, &drop) {
+                DropVerdict::Allow => None,
+                DropVerdict::Refuse(reason) => Some(reason),
+            })
     }
 
     /// With [`OverlayType::Zones`], a tab dragged outside the dock, where none of its surfaces
@@ -561,34 +737,10 @@ impl<Tab> DockArea<'_, Tab> {
         let destination = destination?;
         let from_buttons = from_buttons && !matches!(destination, TabDestination::Window(_));
 
-        // Last, the viewer's veto for this tab at this destination; for a whole leaf, for each
-        // of its tabs, the first refusal said.
-        let (src, tabs) = match drag_state.drag.src {
-            TreeComponent::Tab(path) => (path.node_path(), path.tab.0..path.tab.0 + 1),
-            TreeComponent::Node(path) => (path, 0..self.dock_state[path].tabs_count()),
-            TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
-        };
-        let to = match destination {
-            TabDestination::Node(path, _) => self.dock_name(path.surface),
-            TabDestination::EmptySurface(surface) => self.dock_name(surface),
-            TabDestination::Window(_) => None,
-        };
-        let drop = DockDrop {
-            destination: &destination,
-            from: self.dock_name(src.surface),
-            to,
-        };
-        let leaf_tabs = self.dock_state[src]
-            .tabs()
-            .expect("drags can only come from leaf nodes");
-        let refusal =
-            leaf_tabs[tabs]
-                .iter()
-                .find_map(|tab| match tab_viewer.dock_drop_allowed(tab, &drop) {
-                    DropVerdict::Allow => None,
-                    DropVerdict::Refuse(reason) => Some(reason),
-                });
+        // Last, the viewer's veto for this tab at this destination.
+        let refusal = self.drop_refusal(state, tab_viewer, &destination);
         let allowed = refusal.is_none();
+        let drag_state = state.dnd.as_ref().unwrap();
         drag_state.paint_preview(
             ui,
             style,
@@ -1135,6 +1287,57 @@ fn boundaries(
         .scan(0.0, |acc, s| {
             *acc += s;
             Some(*acc)
+        })
+        .collect()
+}
+
+/// The restore bands of `restores`, in the same order: each `breadth` wide along its zone's
+/// former boundary, on the side the zone would come back on. Bands on the same boundary, the same
+/// side and overlapping across it stack in tree order, the first nearest the boundary's start.
+pub(crate) fn restore_bands(restores: &[RestoreDrop], breadth: f32) -> Vec<Rect> {
+    let along = |dir: Dir, rect: Rect| match dir {
+        Dir::Horizontal => rect.min.x,
+        Dir::Vertical => rect.min.y,
+    };
+    let across = |dir: Dir, rect: Rect| match dir {
+        Dir::Horizontal => (rect.min.y, rect.max.y),
+        Dir::Vertical => (rect.min.x, rect.max.x),
+    };
+    let same_boundary = |a: &RestoreDrop, b: &RestoreDrop| {
+        let (a, b) = (&a.restore, &b.restore);
+        let (a_min, a_max) = across(a.dir, a.line);
+        let (b_min, b_max) = across(b.dir, b.line);
+        a.dir == b.dir
+            && a.towards_end == b.towards_end
+            && (along(a.dir, a.line) - along(b.dir, b.line)).abs() < 0.5
+            && a_min < b_max
+            && b_min < a_max
+    };
+    restores
+        .iter()
+        .enumerate()
+        .map(|(i, drop)| {
+            let restore = &drop.restore;
+            let before = restores[..i]
+                .iter()
+                .filter(|other| same_boundary(drop, other))
+                .count();
+            let count = restores
+                .iter()
+                .filter(|other| same_boundary(drop, other))
+                .count();
+            let line = along(restore.dir, restore.line);
+            // Laid out from the boundary's start in tree order.
+            let from = if restore.towards_end {
+                line + before as f32 * breadth
+            } else {
+                line - (count - before) as f32 * breadth
+            };
+            let (min, max) = across(restore.dir, restore.line);
+            match restore.dir {
+                Dir::Horizontal => Rect::from_min_max(pos2(from, min), pos2(from + breadth, max)),
+                Dir::Vertical => Rect::from_min_max(pos2(min, from), pos2(max, from + breadth)),
+            }
         })
         .collect()
 }
