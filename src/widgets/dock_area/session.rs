@@ -85,6 +85,17 @@ pub(crate) enum Outcome {
 
 impl DragSession {
     /// A session for `src` dragged in `source`.
+    /// Whether what is dragged is still in `state`, at the same place.
+    pub(crate) fn source_in<Tab>(&self, state: &crate::DockState<Tab>) -> bool {
+        match self.src {
+            TreeComponent::Surface(surface) => state.get_surface(surface).is_some(),
+            TreeComponent::Node(path) => state.leaf(path).is_ok(),
+            TreeComponent::Tab(path) => state
+                .leaf(path.node_path())
+                .is_ok_and(|leaf| path.tab.0 < leaf.tabs.len()),
+        }
+    }
+
     pub(crate) fn new(src: TreeComponent, rect: Rect, source: ViewportId, local: Pos2) -> Self {
         Self {
             src,

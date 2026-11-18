@@ -142,6 +142,20 @@ impl DockArea<'_, ()> {
             .and_then(|state| state.dragged)
     }
 
+    /// The tab bars of the [`DockArea`] with this `id` drawn in the current pass (the last
+    /// one, once the pass ended), each with its leaf, in the area's viewport's points: the
+    /// whole bar, margins included. A hidden tab bar is not listed. The docks of a
+    /// [`DockSpace`] drawn in one viewport share their id, so their bars are listed together;
+    /// a leaf's [`NodePath::surface`] tells its dock ([`DockSpace::dock_surface`]).
+    ///
+    /// An application draws something of its own over a bar with it, such as a button at its
+    /// right end. Use [`default_id`](Self::default_id) if the [`DockArea`]'s id was not set.
+    pub fn tab_bars(ctx: &Context, id: Id) -> Vec<(NodePath, Rect)> {
+        ctx.data(|d| d.get_temp::<state::State>(id))
+            .map(|state| state.tab_bars)
+            .unwrap_or_default()
+    }
+
     /// The tab group being dragged in the [`DockArea`] with this `id`, as of its last
     /// [`show_inside`](DockArea::show_inside): a leaf dragged whole by one of its
     /// [`GroupHandles`], all its tabs moving together and its active tab kept.

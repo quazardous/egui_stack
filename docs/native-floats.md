@@ -175,6 +175,38 @@ the native floats.
 6. Saving: with the `serde` feature, `Docked` saves the floats, their places (per screen, in
    points with their scale), the closed floats' places and each tab's origin; a layout saved
    before floats loads its legacy windows as native floats.
+7. Shaping the floats' docks (step 6): `FloatsArea::painter` paints them with the
+   application's `DockPainter` (tab bars, tabs, and the `window_outline` shown while a tab is
+   dragged out of another window where positions are hidden); `FloatsArea::configure` gets each
+   float and its `DockArea` and returns it with the application's options; and
+   `FloatsArea::decorate` draws over each float once its dock is drawn, in the float's own `Ui`,
+   knowing where its tab bars are:
+
+   ```rust
+   docked
+       .floats()
+       .host(&mut host)
+       .painter(&kit_painter)
+       .configure(|_float, area| {
+           area.allowed_splits(AllowedSplits::None)
+               .show_close_buttons(false)
+               .show_add_buttons(false)
+               .show_leaf_close_all_buttons(false)
+               .show_leaf_collapse_buttons(false)
+       })
+       .decorate(|ui, float| {
+           if let Some((_, bar)) = float.tab_bars.first() {
+               let at = Rect::from_min_size(bar.right_top() - vec2(80.0, 0.0), vec2(80.0, bar.height()));
+               if ui.put(at, egui::Button::new("Dock back")).clicked() { /* ... */ }
+           }
+       })
+       .show(ui.ctx(), &mut tab_viewer);
+   ```
+8. Rebuilding the space: the floats' state (their windows' builders and viewports, the drag in
+   progress, the events) lives in the `DockSpace`. Change the docks in place (`dock_mut`,
+   `add_dock`, `remove_dock`) to keep it; an application that rebuilds its space from a layout
+   of its own gives the new space the old one's id (`with_id`) and calls
+   `new.carry_floats_from(&mut old)` before drawing it.
 
 ## Steps
 
@@ -367,6 +399,35 @@ the native floats.
   no window and no GPU, so no test is platform-specific; Windows is meant as a required
   check, macOS reports only. Real windows (a drag across monitors of different scales on a
   real desktop) are left to manual testing: no CI runner has several monitors.
+
+### As built (step 6)
+
+Additive, for an application that draws the floats' docks its own way (egui-pop's detached
+windows):
+
+- `FloatsArea::painter(&(dyn DockPainter + Sync))`, as `DockArea::painter`: the floats' docks
+  are painted by it, `window_outline` included. The main window's docks keep their own.
+- `FloatsArea::configure(|&Float, DockArea| -> DockArea)`: called for each float, each pass,
+  after egui_stack's settings (style, painter, group handles and modifiers), so the
+  application's options win. The area's id must be left alone (the floats' drags and move
+  handles are keyed by it).
+- `FloatsArea::decorate(|&mut Ui, &FloatShown|)`: called once each float's dock is drawn, in
+  the same pass and the float's `Ui`, so a button added there is drawn and hit above the dock.
+  `FloatShown` (`#[non_exhaustive]`) gives the key, the dock, the viewport, whether it is
+  native, the dock's rect and its tab bars, each with its leaf, in the viewport's points (a
+  bar's rect is the whole bar, margins included, as the painter's `TabBarPaint::rect`).
+- `DockArea::tab_bars(ctx, id)`: the same for any area, as of its last `show_inside` (the
+  docks of a space drawn in one viewport share their id and their bars are listed together;
+  a leaf's surface tells its dock).
+- `DockSpace::carry_floats_from(&mut old)`: the floats' state moves from a space to the one
+  rebuilt to replace it; the drag in progress is dropped if what it drags is not at the same
+  place in the new space, and the tabs' origins the new space lacks are added.
+- Tests: `tests/float_dock_options.rs` on the multi-viewport harness (the application's
+  painter paints a float's tab bar and its outline where positions are hidden, `configure`
+  hides a float's buttons and disables its splits, `decorate` reports the tab bar at scales 1
+  and 2 and over the main window, a space rebuilt during a drag keeps its floats).
+- Not built: the highlight of `FloatMove::Dock` is still painted from the style, not by the
+  painter.
 
 ## Float gestures
 

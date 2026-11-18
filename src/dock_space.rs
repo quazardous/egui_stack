@@ -918,6 +918,35 @@ impl<Tab> DockSpace<Tab> {
         )
     }
 
+    /// Takes over the floats' state of `old`, a space this one replaces: an application that
+    /// rebuilds its space from a layout of its own (rather than changing the docks in place
+    /// with [`dock_mut`](Self::dock_mut), [`add_dock`](Self::add_dock) and
+    /// [`remove_dock`](Self::remove_dock)) calls it on the new space before drawing it, so that
+    /// its open native windows, the drag in progress and the events not taken yet go on.
+    ///
+    /// Carried over: the floats' host, their windows' builders and viewports, the tabs moved
+    /// out waiting for their float, the events, the drag in progress (dropped if what it drags
+    /// is not at the same place in the new space), and the tabs' origins this space does not
+    /// record itself. Not carried over: the id; give the new space the old one's
+    /// ([`with_id`](Self::with_id)), as the floats' areas and move handles are keyed by it.
+    /// `old` keeps its docks and tabs, and no float state.
+    pub fn carry_floats_from(&mut self, old: &mut DockSpace<Tab>) {
+        let mut floating = std::mem::take(&mut old.floating);
+        if floating
+            .session
+            .as_ref()
+            .is_some_and(|session| !session.source_in(&self.state))
+        {
+            floating.session = None;
+        }
+        self.floating = floating;
+        for origin in std::mem::take(&mut old.origins) {
+            if !self.origins.iter().any(|kept| kept.tab == origin.tab) {
+                self.origins.push(origin);
+            }
+        }
+    }
+
     /// The window events since the last call: floats opened from a tab or a group moved out
     /// of a dock, closed (and where their tabs went), moved by the user, or brought back onto
     /// a screen. They come from [`FloatsArea::show`](crate::FloatsArea::show) and from the

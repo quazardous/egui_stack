@@ -243,6 +243,7 @@ impl<Tab> DockArea<'_, Tab> {
             vec2(ui.available_width(), style.tab_bar.height),
             Sense::hover(),
         );
+        state.tab_bars.push((path, tabbar_outer_rect));
         let scrolled = 0.0 - self.dock_state.leaf(path).map_or(0.0, |leaf| leaf.scroll);
         // The bar's outline, which the highlights of its buttons keep to at its corners.
         let attached = if collapsed {
