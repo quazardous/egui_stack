@@ -198,6 +198,11 @@ pub(crate) struct Floating {
     pub(crate) viewports: HashMap<String, ViewportId>,
     /// The float whose window is being moved with [`FloatMove::Dock`].
     pub(crate) window_move: Option<WindowMove>,
+    /// The height a float over the main window takes around its dock (title bar, frame), by
+    /// key, as last drawn.
+    pub(crate) chrome: HashMap<String, f32>,
+    /// The floats over the main window drawn last with all their groups collapsed.
+    pub(crate) collapsed: BTreeSet<String>,
 }
 
 impl Floating {
@@ -249,6 +254,11 @@ pub(crate) struct PendingFloat {
 ///   ([`Layout::repair_floats`], with [`screen_gone`](Self::screen_gone));
 /// - closes the floats whose dock emptied or went;
 /// - keeps each float's place as the user moves and resizes it;
+/// - shrinks a float over the main window whose groups are all collapsed to their tab bars,
+///   without its resize grip, its place keeping the height it gets back once a group is
+///   expanded. A native float keeps its window's size: the system owns the window, whose
+///   frame and resizing are its own, and a collapsed group leaves its body to the other
+///   groups, as in a dock;
 /// - asks what becomes of the tabs of a float the user closes
 ///   ([`TabViewer::close_policy`]) and applies it.
 ///
@@ -797,6 +807,8 @@ fn float_change(change: crate::bus::Change, key: &str) -> crate::bus::LayoutChan
 /// Forgets what was kept of a native float's window, closed: a drag that began in it ends, and
 /// one over it is cancelled.
 fn forget_native<Tab>(space: &mut DockSpace<Tab>, key: &str) {
+    space.floating.chrome.remove(key);
+    space.floating.collapsed.remove(key);
     space.floating.builders.remove(key);
     space.floating.moving.remove(key);
     if space
@@ -882,6 +894,25 @@ fn show_in_window<Tab>(
     // Without a title bar, only the move handle moves the window: its body and the empty
     // part of its tab bars keep their own drags.
     let title_bar = gestures.title_bar || !gestures.handles.contains(GroupHandles::MOVE_WINDOW);
+    // All its groups collapsed, the float is as tall as their tab bars and is not resized: its
+    // place keeps the height it had, given back once a group is expanded.
+    let mut probe = DockArea::dock(space, dock);
+    if let Some(style) = style {
+        probe = probe.style(style.clone());
+    }
+    let collapsed_height = probe.collapsed_dock_height(&ctx.global_style());
+    let chrome = space.floating.chrome.get(key).copied().unwrap_or_else(|| {
+        egui::Frame::window(&ctx.global_style())
+            .total_margin()
+            .sum()
+            .y
+            + if title_bar {
+                ctx.global_style().spacing.interact_size.y
+            } else {
+                0.0
+            }
+    });
+    let was_collapsed = space.floating.collapsed.contains(key);
     let window = egui::Window::new(title)
         .id(id)
         .default_pos(place.rect.min)
@@ -896,6 +927,19 @@ fn show_in_window<Tab>(
             WindowDrag::Off
         })
         .open(&mut open);
+    let window = match collapsed_height {
+        Some(height) => window.fixed_size(vec2(place.rect.width(), height + chrome)),
+        // Expanded again: the height it had, which egui keeps from the next frame on.
+        None if was_collapsed => window
+            .min_height(place.rect.height())
+            .max_height(place.rect.height()),
+        None => window,
+    };
+    if collapsed_height.is_some() {
+        space.floating.collapsed.insert(key.to_owned());
+    } else {
+        space.floating.collapsed.remove(key);
+    }
     // The move handle dragged in the last pass: the window follows the pointer, moved as egui
     // moves it by its title bar (a `current_pos` would be undone by the title-bar-only drag).
     if ctx.read_response(handle).is_some_and(|r| r.dragged()) {
@@ -911,9 +955,11 @@ fn show_in_window<Tab>(
             });
         }
     }
+    let mut content = None;
     let shown = window.show(ctx, |ui| {
         let area_id = space.id();
         let rect = ui.available_rect_before_wrap();
+        content = Some(rect);
         gestures
             .area(&float, DockArea::dock(space, dock), style)
             .show_inside(ui, viewer);
@@ -949,11 +995,22 @@ fn show_in_window<Tab>(
         let rect = shown.response.rect;
         space.floating.layers.push(shown.response.layer_id);
         space.floating.rects.push(rect);
+        if let Some(content) = content {
+            space
+                .floating
+                .chrome
+                .insert(key.to_owned(), rect.height() - content.height());
+        }
         if shown.response.contains_pointer() && ctx.input(|i| i.pointer.any_pressed()) {
             layout.raise_float(key);
         }
         let mut moved = place.clone();
-        moved.rect = rect;
+        moved.rect = if collapsed_height.is_some() {
+            // Collapsed, it keeps the height to expand to.
+            Rect::from_min_size(rect.min, vec2(rect.width(), place.rect.height()))
+        } else {
+            rect
+        };
         track_place(layout, space, key, moved);
     }
     if !open {
