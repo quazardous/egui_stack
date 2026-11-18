@@ -265,7 +265,8 @@ pub use dock_state::*;
 pub use docked::{Docked, DockedRepair};
 pub use egui;
 pub use floats::{
-    ClosePolicy, EguiViewports, FloatClose, FloatEvent, FloatMove, FloatsArea, ViewportHost,
+    ClosePolicy, EguiViewports, FloatClose, FloatEvent, FloatMove, FloatShown, FloatsArea,
+    ViewportHost,
 };
 pub use style::*;
 pub use translations::*;

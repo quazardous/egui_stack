@@ -50,6 +50,9 @@ impl<Tab> DockArea<'_, Tab> {
         let pass = ui.ctx().cumulative_pass_nr();
         let first_in_pass = state.pass != Some(pass);
         state.pass = Some(pass);
+        if first_in_pass {
+            state.tab_bars.clear();
+        }
 
         let dock_rect = ui.available_rect_before_wrap();
         if let Some(space) = &mut self.space

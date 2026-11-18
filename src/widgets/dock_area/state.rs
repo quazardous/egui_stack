@@ -1,10 +1,10 @@
-use egui::{Context, Id, Pos2};
+use egui::{Context, Id, Pos2, Rect};
 
 use super::{
     DraggedNode, DraggedTab,
     drag_and_drop::{DragData, DragDropState, HoverData},
 };
-use crate::{Style, SurfaceIndex, TabPath};
+use crate::{NodePath, Style, SurfaceIndex, TabPath};
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct State {
@@ -27,6 +27,8 @@ pub(super) struct State {
     /// The tab whose drag was under way at the last pass: its ghost follows the pointer, so its
     /// title is left out of its bar.
     pub tab_in_air: Option<TabPath>,
+    /// The tab bars drawn this pass, by leaf, in the area's viewport's points.
+    pub tab_bars: Vec<(NodePath, Rect)>,
 }
 
 impl State {
@@ -43,6 +45,7 @@ impl State {
             pass: None,
             remote: false,
             tab_in_air: None,
+            tab_bars: Vec::new(),
         })
     }
 

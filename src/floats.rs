@@ -10,7 +10,10 @@ use egui::{
 };
 
 use crate::layout::{Float, FloatHost, Layout, Place, Screen, ScreenGone};
-use crate::{DockArea, DockSpace, Docked, GroupHandles, Style, Surface, TabIndex, TabViewer, Tree};
+use crate::{
+    DockArea, DockPainter, DockSpace, Docked, GroupHandles, NodePath, Style, Surface, TabIndex,
+    TabViewer, Tree,
+};
 
 mod gestures;
 
@@ -251,6 +254,11 @@ pub(crate) struct PendingFloat {
 ///
 /// What happened is reported by [`DockSpace::take_float_events`].
 ///
+/// The application shapes the floats' docks: its [`painter`](Self::painter) paints them (tab
+/// bars, outlines), [`configure`](Self::configure) sets each float's [`DockArea`] options (no
+/// splits, no close or add buttons…), and [`decorate`](Self::decorate) draws over each float
+/// once its dock is drawn, knowing where its tab bars are ([`FloatShown`]).
+///
 /// ```
 /// # use egui_stack::{DockArea, DockRules, DockSpace, Docked, FloatsArea, TabViewer};
 /// # use egui_stack::layout::{Content, Layout, Zone};
@@ -281,6 +289,36 @@ pub struct FloatsArea<'a, Tab> {
     handles: GroupHandles,
     modifiers: Modifiers,
     float_move: FloatMove,
+    painter: Option<&'a (dyn DockPainter + Sync)>,
+    configure: Option<Configure<'a, Tab>>,
+    decorate: Option<Decorate<'a>>,
+}
+
+/// A float's [`DockArea`] shaped by the application ([`FloatsArea::configure`]).
+type Configure<'a, Tab> =
+    Box<dyn for<'d> FnMut(&Float, DockArea<'d, Tab>) -> DockArea<'d, Tab> + 'a>;
+
+/// What the application draws over a float ([`FloatsArea::decorate`]).
+type Decorate<'a> = Box<dyn FnMut(&mut Ui, &FloatShown) + 'a>;
+
+/// A float just drawn, for [`FloatsArea::decorate`].
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct FloatShown {
+    /// The float's key.
+    pub key: String,
+    /// The dock it shows.
+    pub dock: String,
+    /// The viewport it is drawn in: its native window's ([`ViewportHost::viewport_id`]), or the
+    /// main window's for a float over it.
+    pub viewport: ViewportId,
+    /// Whether it is a native float ([`FloatHost::Native`]).
+    pub native: bool,
+    /// The rect its dock was drawn in, in the viewport's points.
+    pub rect: Rect,
+    /// Its tab bars, each with its leaf, in the viewport's points: the whole bar, margins
+    /// included, as [`DockArea::tab_bars`] lists them. A hidden tab bar is not listed.
+    pub tab_bars: Vec<(NodePath, Rect)>,
 }
 
 impl<Tab> Docked<Tab> {
@@ -302,7 +340,46 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             handles: GroupHandles::ALL,
             modifiers: Modifiers::SHIFT,
             float_move: FloatMove::Move,
+            painter: None,
+            configure: None,
+            decorate: None,
         }
+    }
+
+    /// Sets what paints the floats' docks ([`DockArea::painter`]): their tab bars and tabs,
+    /// and, while a tab is dragged out of another window where window positions are hidden,
+    /// their [`window_outline`](DockPainter::window_outline). By default the area's own
+    /// ([`StylePainter`](crate::StylePainter)).
+    #[must_use]
+    pub fn painter(mut self, painter: &'a (dyn DockPainter + Sync)) -> Self {
+        self.painter = Some(painter);
+        self
+    }
+
+    /// Shapes each float's [`DockArea`] before it is drawn: `configure` gets the float and the
+    /// area, with egui_stack's settings applied (style, painter, handles, modifiers), and
+    /// returns it, its own options set; for example
+    /// `area.allowed_splits(AllowedSplits::None).show_close_buttons(false)`.
+    ///
+    /// Leave the area's [`id`](DockArea::id) alone: the floats' drags and move handles are
+    /// keyed by it.
+    #[must_use]
+    pub fn configure(
+        mut self,
+        configure: impl for<'d> FnMut(&Float, DockArea<'d, Tab>) -> DockArea<'d, Tab> + 'a,
+    ) -> Self {
+        self.configure = Some(Box::new(configure));
+        self
+    }
+
+    /// Draws over each float once its dock is drawn, in the same pass and the float's own
+    /// [`Ui`] (its native window's, or the `egui::Window`'s): `decorate` gets that `Ui` and
+    /// where the float's tab bars are ([`FloatShown::tab_bars`]), for a button of the
+    /// application at the end of a bar, say. What it adds is drawn and hit above the dock.
+    #[must_use]
+    pub fn decorate(mut self, decorate: impl FnMut(&mut Ui, &FloatShown) + 'a) -> Self {
+        self.decorate = Some(Box::new(decorate));
+        self
     }
 
     /// Sets what hosts the native floats; by default [`EguiViewports`].
@@ -362,11 +439,17 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             handles,
             modifiers,
             float_move,
+            painter,
+            configure,
+            decorate,
         } = self;
-        let gestures = Gestures {
+        let mut gestures = Gestures {
             handles,
             modifiers,
             float_move,
+            painter,
+            configure,
+            decorate,
         };
         let mut default_host = EguiViewports;
         let host: &mut dyn ViewportHost = match host {
@@ -395,27 +478,101 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             match kind {
                 FloatHost::Native => {
                     show_native(
-                        ctx, layout, space, host, viewer, &screens, &key, &dock, &style, &gestures,
+                        ctx,
+                        layout,
+                        space,
+                        host,
+                        viewer,
+                        &screens,
+                        &key,
+                        &dock,
+                        &style,
+                        &mut gestures,
                     );
                 }
-                _ => show_in_window(ctx, layout, space, viewer, &key, &dock, &style, &gestures),
+                _ => show_in_window(
+                    ctx,
+                    layout,
+                    space,
+                    viewer,
+                    &key,
+                    &dock,
+                    &style,
+                    &mut gestures,
+                ),
             }
         }
     }
 }
 
-/// How the floats' docks and windows answer the user's gestures.
-struct Gestures {
+/// How the floats' docks and windows answer the user's gestures, and what the application
+/// sets of them.
+struct Gestures<'a, Tab> {
     handles: GroupHandles,
     modifiers: Modifiers,
     float_move: FloatMove,
+    painter: Option<&'a (dyn DockPainter + Sync)>,
+    configure: Option<Configure<'a, Tab>>,
+    decorate: Option<Decorate<'a>>,
 }
 
-impl Gestures {
-    /// The area drawing a float's dock, with these gestures.
-    fn area<'a, Tab>(&self, area: DockArea<'a, Tab>) -> DockArea<'a, Tab> {
-        area.group_handles(self.handles)
-            .group_drag_modifiers(self.modifiers)
+impl<'a, Tab> Gestures<'a, Tab> {
+    /// The area drawing the dock of `float`, with these gestures, `style`, the application's
+    /// painter and options.
+    fn area<'d>(
+        &mut self,
+        float: &Float,
+        area: DockArea<'d, Tab>,
+        style: &Option<Style>,
+    ) -> DockArea<'d, Tab>
+    where
+        'a: 'd,
+    {
+        let mut area = area
+            .group_handles(self.handles)
+            .group_drag_modifiers(self.modifiers);
+        if let Some(style) = style {
+            area = area.style(style.clone());
+        }
+        if let Some(painter) = self.painter {
+            area = area.painter(painter);
+        }
+        match &mut self.configure {
+            Some(configure) => configure(float, area),
+            None => area,
+        }
+    }
+
+    /// Hands the float `key` (dock `dock`), just drawn by the area `area_id` in `ui`, to the
+    /// application's [`FloatsArea::decorate`].
+    #[allow(clippy::too_many_arguments)]
+    fn decorate(
+        &mut self,
+        ui: &mut Ui,
+        space: &DockSpace<Tab>,
+        area_id: Id,
+        key: &str,
+        dock: &str,
+        native: bool,
+        rect: Rect,
+    ) {
+        let Some(decorate) = &mut self.decorate else {
+            return;
+        };
+        let surface = space.dock_surface(dock);
+        let tab_bars = DockArea::tab_bars(ui.ctx(), area_id)
+            .into_iter()
+            .filter(|(path, _)| Some(path.surface) == surface)
+            .collect();
+        let shown = FloatShown {
+            key: key.to_owned(),
+            dock: dock.to_owned(),
+            viewport: ui.ctx().viewport_id(),
+            native,
+            rect,
+            tab_bars,
+        };
+        decorate(ui, &shown);
     }
 }
 
@@ -693,11 +850,12 @@ fn show_in_window<Tab>(
     key: &str,
     dock: &str,
     style: &Option<Style>,
-    gestures: &Gestures,
+    gestures: &mut Gestures<'_, Tab>,
 ) {
-    let Some(place) = layout.float(key).map(|float| float.place.clone()) else {
+    let Some(float) = layout.float(key).cloned() else {
         return;
     };
+    let place = float.place.clone();
     let title = dock_title(space, viewer, dock);
     let mut open = true;
     let id = space.id().with(("egui_stack.float", key));
@@ -727,11 +885,12 @@ fn show_in_window<Tab>(
         }
     }
     let shown = window.show(ctx, |ui| {
-        let mut area = gestures.area(DockArea::dock(space, dock));
-        if let Some(style) = style {
-            area = area.style(style.clone());
-        }
-        area.show_inside(ui, viewer);
+        let area_id = space.id();
+        let rect = ui.available_rect_before_wrap();
+        gestures
+            .area(&float, DockArea::dock(space, dock), style)
+            .show_inside(ui, viewer);
+        gestures.decorate(ui, space, area_id, key, dock, false, rect);
     });
     if gestures.float_move == FloatMove::Dock {
         // egui's title bar of a window: its drag moves the window.
@@ -790,7 +949,7 @@ fn show_native<Tab>(
     key: &str,
     dock: &str,
     style: &Option<Style>,
-    gestures: &Gestures,
+    gestures: &mut Gestures<'_, Tab>,
 ) {
     let Some(float) = layout.float(key).cloned() else {
         return;
@@ -823,15 +982,17 @@ fn show_native<Tab>(
         });
         seen = Some((ui.ctx().content_rect().size(), maximized, fullscreen));
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
-            let mut area = gestures.area(
-                DockArea::dock(space, dock)
-                    .id(area_id)
-                    .in_native_float(float.z),
-            );
-            if let Some(style) = style {
-                area = area.style(style.clone());
-            }
-            area.show_inside(ui, viewer);
+            let rect = ui.available_rect_before_wrap();
+            gestures
+                .area(
+                    &float,
+                    DockArea::dock(space, dock)
+                        .id(area_id)
+                        .in_native_float(float.z),
+                    style,
+                )
+                .show_inside(ui, viewer);
+            gestures.decorate(ui, space, area_id, key, dock, true, rect);
         });
         if let Some(response) = ui.ctx().read_response(handle) {
             if docks_on_move {
