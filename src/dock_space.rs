@@ -1,12 +1,13 @@
 //! Several named docks sharing one drag: see [`DockSpace`].
 
-use egui::{Id, Rect};
+use egui::{Id, Rect, ViewportId};
 
+use crate::floats::{FloatEvent, Floating, PendingFloat};
 use crate::layout::{
     Content, Drops, Fold, Laid, LaidZone, Layout, Restore, Shown, Zone, ZoneKind, ZoneName,
 };
 use crate::layout::{Float, FloatHost, Place};
-use crate::{AllowedSplits, DockState, Surface, SurfaceIndex, TabPath, Tree};
+use crate::{AllowedSplits, DockState, NodePath, Surface, SurfaceIndex, TabPath, Tree};
 
 /// Several named docks, each with its own tree, and floating windows, sharing one drag: a tab
 /// dragged from any dock to any other gets the same drop zones, preview and veto as inside one
@@ -27,7 +28,7 @@ use crate::{AllowedSplits, DockState, Surface, SurfaceIndex, TabPath, Tree};
 /// # struct Viewer;
 /// # impl TabViewer for Viewer {
 /// #     type Tab = String;
-/// #     fn id(&mut self, tab: &mut String) -> egui::Id { egui::Id::new(tab.as_str()) }
+/// #     fn id(&mut self, tab: &mut String) -> egui::Id { egui::Id::unique(tab.as_str()) }
 /// #     fn title(&mut self, tab: &mut String) -> egui::WidgetText { tab.as_str().into() }
 /// #     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut String) { ui.label(tab.as_str()); }
 /// # }
@@ -54,7 +55,14 @@ use crate::{AllowedSplits, DockState, Surface, SurfaceIndex, TabPath, Tree};
 /// With the `serde` feature, a space is one value: its [`DockState`], its docks with their
 /// rules, and its windows dock. Its [`id`](Self::id) is not saved.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(bound(
+        deserialize = "Tab: serde::Deserialize<'de>",
+        serialize = "Tab: serde::Serialize"
+    ))
+)]
 pub struct DockSpace<Tab> {
     state: DockState<Tab>,
     docks: Vec<Dock>,
@@ -73,6 +81,13 @@ pub struct DockSpace<Tab> {
     /// The rects no tab is dropped in, this frame.
     #[cfg_attr(feature = "serde", serde(skip))]
     no_drop: NoDrop,
+    /// The floats' side of the space: tabs moved out waiting for their float, the events.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) floating: Floating,
+    /// The application's bus, given with [`DockSpace::with_bus`].
+    #[cfg(feature = "bus")]
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) bus: Option<crate::bus::SpaceBus<Tab>>,
 }
 
 /// Where a tab came from before it moved out to a float: its dock, and the tabs next to it in
@@ -151,6 +166,13 @@ pub(crate) struct Dock {
     /// Where it was drawn last, for what counts as outside every dock.
     #[cfg_attr(feature = "serde", serde(skip))]
     pub(crate) rect: Option<Rect>,
+    /// The viewport it was drawn in last: its rect is in that viewport's points.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) viewport: Option<ViewportId>,
+    /// Whether a float of the layout shows it, as the floats were last drawn
+    /// ([`FloatsArea`](crate::FloatsArea)).
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) floating: bool,
 }
 
 /// What a dock of a [`DockSpace`] allows, set when it is added with [`DockSpace::add_dock`] or
@@ -245,6 +267,9 @@ impl<Tab> DockSpace<Tab> {
             origins: Vec::new(),
             id: DockSpace::default_id(),
             no_drop: NoDrop::default(),
+            floating: Floating::default(),
+            #[cfg(feature = "bus")]
+            bus: None,
         }
     }
 
@@ -358,6 +383,8 @@ impl<Tab> DockSpace<Tab> {
             surface,
             rules,
             rect: None,
+            viewport: None,
+            floating: false,
         });
         surface
     }
@@ -523,6 +550,10 @@ impl<Tab> DockSpace<Tab> {
     /// # });
     /// ```
     pub fn bind(&mut self, laid: &Laid) {
+        #[cfg(feature = "bus")]
+        for event in &laid.events {
+            self.emit_change(crate::bus::LayoutChange::of(event));
+        }
         for zone in &laid.zones {
             if let (Shown::Collapsed, Some(restore)) = (zone.shown, zone.restore) {
                 if let Some(dock) = self.restore_dock(zone) {
@@ -689,11 +720,19 @@ impl<Tab> DockSpace<Tab> {
     /// The dock whose [`DockArea`](crate::DockArea) also draws the floating windows: the one
     /// set with [`set_windows_dock`](Self::set_windows_dock) if the space has it, otherwise the
     /// first dock.
+    #[deprecated(
+        since = "0.28.0",
+        note = "legacy floating windows: draw the space's floats with `FloatsArea`, which every dock's tabs move out to"
+    )]
     pub fn windows_dock(&self) -> Option<&str> {
         windows_dock(&self.docks, self.windows_dock.as_deref())
     }
 
     /// Sets which dock's [`DockArea`](crate::DockArea) also draws the floating windows.
+    #[deprecated(
+        since = "0.28.0",
+        note = "legacy floating windows: draw the space's floats with `FloatsArea`, which every dock's tabs move out to"
+    )]
     pub fn set_windows_dock(&mut self, name: impl Into<String>) {
         self.windows_dock = Some(name.into());
     }
@@ -726,6 +765,10 @@ impl<Tab> DockSpace<Tab> {
             origins: self.origins.clone(),
             id: self.id,
             no_drop: self.no_drop.clone(),
+            floating: self.floating.clone(),
+            // The bus names tabs by a function of the old tab type.
+            #[cfg(feature = "bus")]
+            bus: None,
         }
     }
 
@@ -747,18 +790,13 @@ impl<Tab> DockSpace<Tab> {
         path: TabPath,
         mut id_of: impl FnMut(&mut Tab) -> Id,
     ) -> Option<&TabOrigin> {
-        let dock = self.dock_name(path.surface)?.to_owned();
-        let leaf = self.state.leaf_mut(path.node_path()).ok()?;
-        let at = path.tab.0;
-        let tabs = leaf.tabs_mut();
-        if at >= tabs.len() {
-            return None;
-        }
-        let tab = id_of(&mut tabs[at]);
-        let before = at.checked_sub(1).map(|i| id_of(&mut tabs[i]));
-        let after = tabs.get_mut(at + 1).map(&mut id_of);
-        self.origins.retain(|origin| origin.tab != tab);
-        self.origins.push(TabOrigin::new(tab, dock, before, after));
+        record_origin(
+            &mut self.state,
+            &self.docks,
+            &mut self.origins,
+            path,
+            &mut id_of,
+        )?;
         self.origins.last()
     }
 
@@ -820,6 +858,8 @@ impl<Tab> DockSpace<Tab> {
                 surface,
                 rules: DockRules::default(),
                 rect: None,
+                viewport: None,
+                floating: true,
             });
             let mut float = Float::dock(name.clone(), name, FloatHost::Native, Place::new(rect));
             float.minimized = window.is_minimized();
@@ -832,29 +872,221 @@ impl<Tab> DockSpace<Tab> {
         self.docks.iter().position(|dock| dock.name == name)
     }
 
-    /// The parts a [`DockArea`](crate::DockArea) showing the dock named `name` borrows.
-    pub(crate) fn split_for_area(
+    /// Moves the tab at `path` out of its dock into a new float, as dragging it outside every
+    /// dock does: a dock of its own (`float-N`, which keys the float too), its origin recorded
+    /// ([`record_origin`](Self::record_origin), with `id_of` the viewer's
+    /// [`TabViewer::id`](crate::TabViewer::id)). The float opens at `rect` (points: in the main
+    /// window for [`FloatHost::InWindow`], on the first screen for [`FloatHost::Native`]), hosted
+    /// as [`float_host`](Self::float_host) says, at the next
+    /// [`FloatsArea::show`](crate::FloatsArea::show). Returns its key, or `None` when there is
+    /// no tab at `path`.
+    pub fn float_out(
         &mut self,
-        name: &str,
-    ) -> (
-        &mut DockState<Tab>,
-        &mut Vec<Dock>,
-        &mut NoDrop,
-        Option<usize>,
-        bool,
-        Id,
-    ) {
-        let index = self.dock_index(name);
-        let shows_windows = index.is_some() && self.windows_dock() == Some(name);
-        (
+        path: TabPath,
+        rect: Rect,
+        mut id_of: impl FnMut(&mut Tab) -> Id,
+    ) -> Option<String> {
+        self.detach(Detach::Tab(path), rect, &mut id_of)
+    }
+
+    /// Moves the whole group (leaf) at `path` out of its dock into a new float, its tabs kept in
+    /// order; see [`float_out`](Self::float_out).
+    pub fn float_out_group(
+        &mut self,
+        path: NodePath,
+        rect: Rect,
+        mut id_of: impl FnMut(&mut Tab) -> Id,
+    ) -> Option<String> {
+        self.detach(Detach::Group(path), rect, &mut id_of)
+    }
+
+    fn detach(
+        &mut self,
+        source: Detach,
+        rect: Rect,
+        id_of: &mut dyn FnMut(&mut Tab) -> Id,
+    ) -> Option<String> {
+        detach(
             &mut self.state,
             &mut self.docks,
-            &mut self.no_drop,
-            index,
-            shows_windows,
-            self.id,
+            &mut self.origins,
+            &mut self.floating,
+            source,
+            rect,
+            None,
+            id_of,
         )
     }
+
+    /// The window events since the last call: floats opened from a tab or a group moved out
+    /// of a dock, closed (and where their tabs went), moved by the user, or brought back onto
+    /// a screen. They come from [`FloatsArea::show`](crate::FloatsArea::show) and from the
+    /// docks' drags; call it once a frame, after drawing.
+    pub fn take_float_events(&mut self) -> Vec<FloatEvent> {
+        std::mem::take(&mut self.floating.events)
+    }
+
+    /// Sets what hosts the floats made from a tab or a group moved out of a dock (released
+    /// outside every dock, ejected, or moved to a new window from its menu), once the space's
+    /// floats are drawn ([`FloatsArea`](crate::FloatsArea)): [`FloatHost::InWindow`] by
+    /// default, [`FloatHost::Native`] for a native window of their own.
+    pub fn set_float_host(&mut self, host: FloatHost) {
+        self.floating.host = host;
+    }
+
+    /// Sets what hosts the floats made from a tab moved out; see
+    /// [`set_float_host`](Self::set_float_host).
+    #[inline]
+    pub fn with_float_host(mut self, host: FloatHost) -> Self {
+        self.floating.host = host;
+        self
+    }
+
+    /// What hosts the floats made from a tab moved out
+    /// ([`set_float_host`](Self::set_float_host)).
+    pub fn float_host(&self) -> FloatHost {
+        self.floating.host
+    }
+
+    /// The parts a [`DockArea`](crate::DockArea) showing the dock named `name` borrows.
+    pub(crate) fn split_for_area(&mut self, name: &str) -> SpaceParts<'_, Tab> {
+        let index = self.dock_index(name);
+        let shows_windows = index.is_some()
+            && windows_dock(&self.docks, self.windows_dock.as_deref()) == Some(name);
+        SpaceParts {
+            state: &mut self.state,
+            docks: &mut self.docks,
+            no_drop: &mut self.no_drop,
+            floating: &mut self.floating,
+            origins: &mut self.origins,
+            #[cfg(feature = "bus")]
+            bus: self.bus.as_ref(),
+            dock: index,
+            shows_windows,
+            id: self.id,
+        }
+    }
+
+    /// The docks, mutably, for the floats' drawing.
+    pub(crate) fn docks_mut(&mut self) -> &mut Vec<Dock> {
+        &mut self.docks
+    }
+
+    /// The docks.
+    pub(crate) fn docks(&self) -> &[Dock] {
+        &self.docks
+    }
+}
+
+/// What a [`DockArea`](crate::DockArea) showing a dock of a space borrows of it.
+pub(crate) struct SpaceParts<'a, Tab> {
+    pub(crate) state: &'a mut DockState<Tab>,
+    pub(crate) docks: &'a mut Vec<Dock>,
+    pub(crate) no_drop: &'a mut NoDrop,
+    pub(crate) floating: &'a mut Floating,
+    pub(crate) origins: &'a mut Vec<TabOrigin>,
+    #[cfg(feature = "bus")]
+    pub(crate) bus: Option<&'a crate::bus::SpaceBus<Tab>>,
+    pub(crate) dock: Option<usize>,
+    pub(crate) shows_windows: bool,
+    pub(crate) id: Id,
+}
+
+/// What moves out of a dock to a new float.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Detach {
+    /// A tab.
+    Tab(TabPath),
+    /// A whole group: a leaf and all its tabs.
+    Group(NodePath),
+}
+
+/// Moves `source` into a new dock (`float-N`), records where its tabs came from (unless they
+/// leave another float: they keep the origin they had), and asks for a float showing it at
+/// `rect`, `physical` on the desktop when known. Returns the new dock's name, which keys the
+/// float.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn detach<Tab>(
+    state: &mut DockState<Tab>,
+    docks: &mut Vec<Dock>,
+    origins: &mut Vec<TabOrigin>,
+    floating: &mut Floating,
+    source: Detach,
+    rect: Rect,
+    physical: Option<Rect>,
+    id_of: &mut dyn FnMut(&mut Tab) -> Id,
+) -> Option<String> {
+    let (node, tabs) = match source {
+        Detach::Tab(path) => (path.node_path(), path.tab.0..path.tab.0 + 1),
+        Detach::Group(path) => (path, 0..state.leaf(path).ok()?.tabs.len()),
+    };
+    let from_float = state.is_window(node.surface)
+        || docks
+            .iter()
+            .any(|dock| dock.surface == node.surface && dock.floating);
+    let leaf = state.leaf_mut(node).ok()?;
+    if tabs.end > leaf.tabs.len() || tabs.is_empty() {
+        return None;
+    }
+    let ids: Vec<Id> = tabs.clone().map(|i| id_of(&mut leaf.tabs[i])).collect();
+    if !from_float {
+        for i in tabs {
+            let path = TabPath::new(node.surface, node.node, crate::TabIndex(i));
+            record_origin(state, docks, origins, path, id_of);
+        }
+    }
+    let name = loop {
+        floating.next += 1;
+        let name = format!("float-{}", floating.next);
+        if !docks.iter().any(|dock| dock.name == name) {
+            break name;
+        }
+    };
+    let surface = state.add_docked_surface(Tree::default());
+    docks.push(Dock {
+        name: name.clone(),
+        surface,
+        // Emptied, it goes, and its float closes with it.
+        rules: DockRules::default().keep_when_empty(false),
+        rect: None,
+        viewport: None,
+        floating: true,
+    });
+    match source {
+        Detach::Tab(path) => state.move_tab(path, crate::TabDestination::EmptySurface(surface)),
+        Detach::Group(path) => state.move_node(path, crate::TabDestination::EmptySurface(surface)),
+    }
+    floating.pending.push(PendingFloat {
+        dock: name.clone(),
+        rect,
+        physical,
+        tabs: ids,
+    });
+    Some(name)
+}
+
+/// Records where the tab at `path` is, in a dock of `docks`, in `origins`: see
+/// [`DockSpace::record_origin`]. Returns `None` when `path` is not a tab of a dock.
+pub(crate) fn record_origin<Tab>(
+    state: &mut DockState<Tab>,
+    docks: &[Dock],
+    origins: &mut Vec<TabOrigin>,
+    path: TabPath,
+    id_of: &mut dyn FnMut(&mut Tab) -> Id,
+) -> Option<()> {
+    let dock = dock_name(docks, path.surface)?.to_owned();
+    let leaf = state.leaf_mut(path.node_path()).ok()?;
+    let at = path.tab.0;
+    let tabs = leaf.tabs_mut();
+    if at >= tabs.len() {
+        return None;
+    }
+    let tab = id_of(&mut tabs[at]);
+    let before = at.checked_sub(1).map(|i| id_of(&mut tabs[i]));
+    let after = tabs.get_mut(at + 1).map(|t| id_of(t));
+    origins.retain(|origin| origin.tab != tab);
+    origins.push(TabOrigin::new(tab, dock, before, after));
+    Some(())
 }
 
 /// The name of the dock of `docks` whose surface is `surface`.

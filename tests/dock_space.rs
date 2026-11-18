@@ -3,6 +3,8 @@
 //! middle of a leaf, its four edge bands, a slot in its tab bar; the viewer's veto and each
 //! dock's rules hold across docks.
 
+#![allow(deprecated)] // The legacy windows dock, tested until it goes.
+
 use std::{cell::RefCell, fmt::Write as _, sync::Mutex};
 
 use egui::epaint::ClippedShape;

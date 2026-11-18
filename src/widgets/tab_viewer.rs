@@ -1,5 +1,6 @@
 use egui::{Id, Ui, WidgetText};
 
+use crate::floats::{ClosePolicy, FloatClose};
 use crate::{NodePath, TabDestination, TabPath, TabStyle};
 
 /// Defines how a tab should behave and be rendered inside a [`Tree`](crate::Tree).
@@ -117,6 +118,17 @@ pub trait TabViewer {
     /// overrides one or the other.
     fn dock_drop_allowed(&self, tab: &Self::Tab, drop: &DockDrop<'_>) -> DropVerdict {
         self.drop_allowed(tab, drop.destination)
+    }
+
+    /// What becomes of the tabs of a float the user closes (its close button, or its native
+    /// window's): `close` names the float, its dock and its tabs. By default
+    /// [`ClosePolicy::ReturnToOrigin`]: each tab goes back where it came from.
+    /// [`ClosePolicy::Keep`] cancels the close.
+    ///
+    /// With the `bus` feature and a bus given to the space, the answer is the start value of the
+    /// `stack.window.close` request, whose listeners may change it.
+    fn close_policy(&mut self, _close: &FloatClose) -> ClosePolicy {
+        ClosePolicy::default()
     }
 
     /// Whether the tab body will be cleared with the color specified in

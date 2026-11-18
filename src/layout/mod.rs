@@ -479,14 +479,19 @@ impl Layout {
         floats
     }
 
-    /// Brings every float back onto `screens` ([`Place::repair`]): the
-    /// floats moved get their new place; those whose screen is gone, with
-    /// [`ScreenGone::DockBack`], are closed (their place kept) and returned
-    /// for the application to put their tabs back.
+    /// Brings every native float ([`FloatHost::Native`]) back onto
+    /// `screens` ([`Place::repair`]): the floats moved get their new place;
+    /// those whose screen is gone, with [`ScreenGone::DockBack`], are closed
+    /// (their place kept) and returned for the application to put their
+    /// tabs back. Floats over the main window are left alone: their place is
+    /// in the window, not on a screen.
     pub fn repair_floats(&mut self, screens: &[Screen], gone: ScreenGone) -> FloatsRepair {
         let mut repair = FloatsRepair::default();
         let mut back = Vec::new();
         for float in &mut self.floats {
+            if float.host != FloatHost::Native {
+                continue;
+            }
             match float.place.repair(screens, gone) {
                 Repaired::Unchanged => (),
                 Repaired::Moved(place) => {

@@ -23,9 +23,15 @@ default = []
 # Enable serialization of `Tree`.
 serde = ["dep:serde", "egui/serde"]
 
+# Declare egui_stack's points (`stack.*`) on an application's bus
+# (bus-contract): the drop veto, the close policy and the layout and
+# window events. See `DockSpace::with_bus`.
+bus = ["dep:bus-contract"]
+
 [dependencies]
 egui = { version = "0.37", default-features = false }
 serde = { version = "1", optional = true, features = ["derive"] }
+bus-contract = { version = "0.3.2", optional = true }
 
 duplicate = "2.0"
 paste = "1.0"

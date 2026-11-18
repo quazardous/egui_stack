@@ -22,6 +22,7 @@ use crate::{
     utils::{expand_to_pixel, fade_dock_style, map_to_pixel},
 };
 
+mod float_out;
 mod leaf;
 mod main_surface;
 mod window_surface;
@@ -51,6 +52,10 @@ impl<Tab> DockArea<'_, Tab> {
             && let Some(dock) = space.dock
         {
             space.docks[dock].rect = Some(dock_rect);
+            space.docks[dock].viewport = Some(ui.ctx().viewport_id());
+        }
+        if let Some(space) = &mut self.space {
+            space.viewport = Some(ui.ctx().viewport_id());
         }
 
         if first_in_pass {
@@ -132,14 +137,32 @@ impl<Tab> DockArea<'_, Tab> {
             }
         }
 
-        for path in self.to_detach.drain(..).rev() {
-            let mouse_pos = state.last_hover_pos;
-            self.dock_state
-                .eject_tab(path, mouse_pos.unwrap_or(Pos2::ZERO));
+        for path in std::mem::take(&mut self.to_detach).into_iter().rev() {
+            let mouse_pos = state.last_hover_pos.unwrap_or(Pos2::ZERO);
+            if self.floats_on() {
+                let size = self.dock_state[path.node_path()]
+                    .rect()
+                    .map_or(Vec2::new(100., 150.), |rect| rect.size());
+                self.to_float.push((
+                    TreeComponent::Tab(path),
+                    Rect::from_min_size(mouse_pos, size),
+                ));
+            } else {
+                self.dock_state.eject_tab(path, mouse_pos);
+            }
         }
 
         for (path, destination) in std::mem::take(&mut self.to_move_group) {
-            self.dock_state.move_node(path, destination);
+            match destination {
+                TabDestination::Window(rect) if self.floats_on() => {
+                    self.to_float.push((TreeComponent::Node(path), rect));
+                }
+                destination => self.dock_state.move_node(path, destination),
+            }
+        }
+
+        for (source, rect) in std::mem::take(&mut self.to_float) {
+            self.float_out(ui.ctx(), source, rect, tab_viewer);
         }
 
         if let Some(focused) = self.new_focused {
@@ -192,6 +215,7 @@ impl<Tab> DockArea<'_, Tab> {
         let restores = self
             .space
             .as_ref()
+            .filter(|space| !space.native)
             .map(|space| space.no_drop.restores.clone())
             .unwrap_or_default();
         let bands = restore_bands(
@@ -229,7 +253,9 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             hover_data
         };
-        if let Some(space) = &mut self.space {
+        if let Some(space) = &mut self.space
+            && !space.native
+        {
             let unfolds = std::mem::take(&mut space.no_drop.unfolds);
             *space.no_drop = NoDrop {
                 unfolds,
@@ -267,9 +293,21 @@ impl<Tab> DockArea<'_, Tab> {
                 if let (Some(zone), Some(space)) = (unfold, &mut self.space) {
                     space.no_drop.unfolds.push(zone);
                 }
+                if let TabDestination::Window(rect) = destination
+                    && self.floats_on()
+                {
+                    // Out of every dock, once the space's floats are drawn: a float.
+                    let source = state.dnd.as_ref().unwrap().drag.src.clone();
+                    self.to_float.push((source, rect));
+                    ui.ctx().request_repaint();
+                    state.reset_drag();
+                    return;
+                }
                 let source = match state.dnd.as_ref().unwrap().drag.src {
                     TreeComponent::Tab(src) => src,
                     TreeComponent::Node(src) => {
+                        #[cfg(feature = "bus")]
+                        self.emit_moved(&destination);
                         self.dock_state.move_node(src, destination);
                         ui.ctx().request_repaint();
                         state.reset_drag();
@@ -278,6 +316,8 @@ impl<Tab> DockArea<'_, Tab> {
                     TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
                 };
                 let src_tab_count = self.dock_state[source.node_path()].tabs_count();
+                #[cfg(feature = "bus")]
+                self.emit_moved(&destination);
                 self.dock_state.move_tab(source, destination);
                 // unhide tab bar on the source leaf when a tab is dragged out
                 if self.hidable_tab_bars
@@ -292,6 +332,10 @@ impl<Tab> DockArea<'_, Tab> {
 
         if ui.input(|i| i.pointer.primary_released()) {
             state.reset_drag();
+            #[cfg(feature = "bus")]
+            if let Some(bus) = self.space.as_ref().and_then(|space| space.bus) {
+                bus.forget_verdicts();
+            }
         }
     }
 
@@ -334,6 +378,10 @@ impl<Tab> DockArea<'_, Tab> {
         }
         if !hover.outside && self.dock_rules(surface).is_some_and(|r| !r.accept_drops) {
             return true;
+        }
+        // The space's zones are the main window's; a float over them takes the tab.
+        if space.native || (!hover.outside && self.is_float_dock(surface)) {
+            return false;
         }
         let Some(pointer) = state.last_hover_pos else {
             return false;
@@ -391,15 +439,20 @@ impl<Tab> DockArea<'_, Tab> {
         let Some(top) = ui.ctx().layer_id_at(pointer) else {
             return false;
         };
+        let over_a_float = self
+            .space
+            .as_ref()
+            .is_some_and(|space| !space.native && space.floating.layers.contains(&top));
         top != ui.layer_id()
-            && self
-                .dock_state
-                .valid_surface_indices()
-                .iter()
-                .any(|&surface| {
-                    self.dock_state.is_window(surface)
-                        && window_surface::window_layer_id(surface) == top
-                })
+            && (over_a_float
+                || self
+                    .dock_state
+                    .valid_surface_indices()
+                    .iter()
+                    .any(|&surface| {
+                        self.dock_state.is_window(surface)
+                            && window_surface::window_layer_id(surface) == top
+                    }))
     }
 
     /// A strip of a folded zone that takes drops for one of the space's docks
@@ -536,7 +589,8 @@ impl<Tab> DockArea<'_, Tab> {
         if (src_surface, src_node) == drag_state.hover.dst.node_address() {
             return None;
         }
-        let refusal = self.drop_refusal(state, tab_viewer, &destination);
+        let released = ui.input(|i| i.pointer.primary_released());
+        let refusal = self.drop_refusal(state, tab_viewer, &destination, released);
         let allowed = refusal.is_none();
         let style = self.style.as_ref().unwrap();
         let painter: &dyn DockPainter = self.painter.0;
@@ -559,14 +613,15 @@ impl<Tab> DockArea<'_, Tab> {
         state: &State,
         tab_viewer: &impl TabViewer<Tab = Tab>,
         destination: &TabDestination,
+        fresh: bool,
     ) -> Option<Option<egui::WidgetText>> {
         let drag_state = state.dnd.as_ref()?;
-        let (src, tabs) = match drag_state.drag.src {
-            TreeComponent::Tab(path) => (path.node_path(), path.tab.0..path.tab.0 + 1),
-            TreeComponent::Node(path) => (path, 0..self.dock_state[path].tabs_count()),
+        let (src, tabs, group) = match drag_state.drag.src {
+            TreeComponent::Tab(path) => (path.node_path(), path.tab.0..path.tab.0 + 1, false),
+            TreeComponent::Node(path) => (path, 0..self.dock_state[path].tabs_count(), true),
             TreeComponent::Surface(_) => unreachable!("surfaces can't be dragged (yet)"),
         };
-        self.group_refusal(src, tabs, destination, tab_viewer)
+        self.group_refusal_asked(src, tabs, group, destination, tab_viewer, fresh)
     }
 
     /// The viewer's veto for the tabs `tabs` of the leaf at `src` going to `destination`: the
@@ -577,12 +632,63 @@ impl<Tab> DockArea<'_, Tab> {
         tabs: std::ops::Range<usize>,
         destination: &TabDestination,
         tab_viewer: &impl TabViewer<Tab = Tab>,
+        fresh: bool,
+    ) -> Option<Option<egui::WidgetText>> {
+        let group = tabs.start == 0 && tabs.end == self.dock_state[src].tabs_count();
+        self.group_refusal_asked(src, tabs, group, destination, tab_viewer, fresh)
+    }
+
+    /// The veto for the tabs `tabs` of the leaf at `src` (the whole leaf when `group`) going to
+    /// `destination`: the space's bus, when it has one (asked again only when `fresh` or for a
+    /// destination not asked since the last release), else the viewer's.
+    fn group_refusal_asked(
+        &self,
+        src: NodePath,
+        tabs: std::ops::Range<usize>,
+        group: bool,
+        destination: &TabDestination,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+        fresh: bool,
     ) -> Option<Option<egui::WidgetText>> {
         let to = match *destination {
             TabDestination::Node(path, _) => self.dock_name(path.surface),
             TabDestination::EmptySurface(surface) => self.dock_name(surface),
             TabDestination::Window(_) => None,
         };
+        #[cfg(feature = "bus")]
+        if let Some(bus) = self.space.as_ref().and_then(|space| space.bus) {
+            use crate::bus::{DropAsk, DropTarget};
+            let target = match *destination {
+                TabDestination::Window(_) => DropTarget::NewWindow,
+                TabDestination::EmptySurface(_) => DropTarget::EmptyDock,
+                TabDestination::Node(_, crate::TabInsert::Append) => DropTarget::Append,
+                TabDestination::Node(_, crate::TabInsert::Insert(index)) => {
+                    DropTarget::Insert(index.0)
+                }
+                TabDestination::Node(_, crate::TabInsert::Split(split)) => DropTarget::Split(split),
+            };
+            let to_surface = match *destination {
+                TabDestination::Node(path, _) => Some(path.surface),
+                TabDestination::EmptySurface(surface) => Some(surface),
+                TabDestination::Window(_) => None,
+            };
+            let leaf_tabs = self.dock_state[src]
+                .tabs()
+                .expect("drags can only come from leaf nodes");
+            let ask = DropAsk {
+                tabs: leaf_tabs[tabs].iter().map(bus.key).collect(),
+                group,
+                from: self.dock_name(src.surface).map(str::to_owned),
+                to: to.map(str::to_owned),
+                from_float: self.is_float_dock(src.surface),
+                to_float: to_surface.is_some_and(|surface| self.is_float_dock(surface)),
+                target,
+            };
+            return bus
+                .drop_refusal(ask, fresh)
+                .map(|reason| (!reason.is_empty()).then(|| reason.into()));
+        }
+        let _ = (group, fresh);
         let drop = DockDrop {
             destination,
             from: self.dock_name(src.surface),
@@ -613,20 +719,31 @@ impl<Tab> DockArea<'_, Tab> {
             return None;
         }
         let pointer = state.last_hover_pos?;
+        let viewport = self.space.as_ref().and_then(|space| space.viewport);
         let in_a_dock = match &self.space {
             None => dock_rect.contains(pointer),
             Some(space) => space
                 .docks
                 .iter()
+                .filter(|dock| dock.viewport.is_none_or(|v| Some(v) == viewport))
                 .filter_map(|dock| dock.rect)
                 .any(|rect| rect.contains(pointer)),
         };
-        let over_a_window = self
-            .dock_state
-            .valid_surface_indices()
-            .iter()
-            .filter_map(|&surface| self.dock_state.get_window_state(surface))
-            .any(|window| window.rect().contains(pointer));
+        let over_a_float = self.space.as_ref().is_some_and(|space| {
+            !space.native
+                && space
+                    .floating
+                    .rects
+                    .iter()
+                    .any(|rect| rect.contains(pointer))
+        });
+        let over_a_window = over_a_float
+            || self
+                .dock_state
+                .valid_surface_indices()
+                .iter()
+                .filter_map(|&surface| self.dock_state.get_window_state(surface))
+                .any(|window| window.rect().contains(pointer));
         (!in_a_dock && !over_a_window).then_some(HoverData {
             rect: Rect::NOTHING,
             dst: TreeComponent::Surface(SurfaceIndex::main()),
@@ -753,8 +870,9 @@ impl<Tab> DockArea<'_, Tab> {
         let destination = destination?;
         let from_buttons = from_buttons && !matches!(destination, TabDestination::Window(_));
 
-        // Last, the viewer's veto for this tab at this destination.
-        let refusal = self.drop_refusal(state, tab_viewer, &destination);
+        // Last, the viewer's veto for this tab at this destination; asked afresh at release.
+        let released = ui.input(|i| i.pointer.primary_released());
+        let refusal = self.drop_refusal(state, tab_viewer, &destination, released);
         let allowed = refusal.is_none();
         let drag_state = state.dnd.as_ref().unwrap();
         drag_state.paint_preview(

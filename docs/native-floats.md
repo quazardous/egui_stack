@@ -1,6 +1,7 @@
 # Native floating docks (design note)
 
-Status: step 2 built (the model); steps 3 to 5 to come. Tracks [#105](https://github.com/quazardous/egui_stack/issues/105).
+Status: steps 2 (the model) and 3 (floats drawn, close policy, events, bus points) built;
+steps 4 and 5 to come. Tracks [#105](https://github.com/quazardous/egui_stack/issues/105).
 
 Docks in native OS windows (egui viewports) that stay part of one
 logical workspace: the same layout tree, the same panel ids, groups,
@@ -186,6 +187,69 @@ the native floats.
   float shows.
 - Left for step 3: `ClosePolicy` (the return to origin uses
   `TabOrigin`), drawing, `ViewportHost`, events and the bus points.
+
+### As built (step 3)
+
+- `FloatsArea::new(&mut layout, &mut space)` (or `Docked::floats()`), `.host(&mut dyn
+  ViewportHost)`, `.screen_gone(ScreenGone)`, `.style(Style)`, `.show(ctx, viewer)`: called
+  once a frame in the main window's pass, after the zones' docks. It draws `InWindow` floats as
+  `egui::Window`s over the main window and `Native` floats through the host, back to front, each
+  showing its dock with a `DockArea`. Once it has run, the space's floats are on: a tab or a
+  group moved out of every dock (released outside them, "Eject", or "Move group" to a new
+  window) becomes a float, never a legacy `Surface::Window`, and a legacy window found in the
+  space becomes a float too.
+- `ViewportHost` as sketched, every method with a default on egui's immediate viewports
+  (`EguiViewports`): `viewport_id(key)` (`ViewportId::from_hash_of(("egui_stack.float", key))`),
+  `builder(float)`, `show(ctx, id, builder, body)`, `screens()` (none by default: nothing is
+  repaired), and `outer_rect(ctx, id)`, which takes the context so its default can read egui's
+  `ViewportInfo` (physical pixels; `None` where positions are hidden).
+- A native float's builder is made once, from the host's, with the place's position (only on a
+  known screen), size and states where the host left them unset, and given again unchanged, so
+  egui never moves the window back. Its place follows the window (`outer_rect`, else the size
+  only) and `FloatEvent::Moved` is reported once it stops changing. A repair forgets the
+  builder, so the window is told to move.
+- A tab moved out goes into a dock of its own, `float-N` (rules: kept only while it has tabs),
+  which keys the float; its origin is recorded unless it leaves another float. Its place is
+  the release point on the desktop (`Place::from_physical` on the host's screens) for a native
+  float, else the rect in the main window. `DockSpace::float_out(path, rect, id_of)` and
+  `float_out_group` do the same from code. `DockSpace::set_float_host` chooses the host of new
+  floats (`InWindow` by default).
+- `ClosePolicy::{ReturnToOrigin (default), Into(dock), CloseTabs, Keep}`, asked through
+  `TabViewer::close_policy(&FloatClose)` when the user closes a float (its window's close
+  button, or the `egui::Window`'s). `Keep` cancels the close (`ViewportCommand::CancelClose`).
+  `ReturnToOrigin` puts each tab after the tab it followed (else before the one it preceded,
+  else in its dock's focused or first leaf); a tab with no origin, or whose dock is gone, goes
+  to the first dock no float shows. `Into` a dock the space has not falls back to the origins.
+  A closed float's place is kept (`Layout::closed`).
+- `DockSpace::take_float_events() -> Vec<FloatEvent>`: `Detached { key, dock, tabs, host }`,
+  `Closed { key, dock, policy, moved }` (`policy` `None` when its dock emptied or went),
+  `Moved { key, place }`, `Repaired { key, from, to }` (`to` `None` when docked back).
+- Screens: the host's screens are compared with those of the last repair; a change runs
+  `Layout::repair_floats`, which now leaves `InWindow` floats alone. Floats docked back
+  (`ScreenGone::DockBack`) return their tabs to their origins.
+- The docks a float shows are marked; the space's no-drop zones, strips and restore bands are
+  the main window's: a dock drawn in a native float's viewport keeps its own drag state (an id
+  of its own) and ignores them, and docks drawn in another viewport do not count as "inside a
+  dock". A drag from one viewport to another is step 4.
+- The `bus` feature (`bus-contract` 0.3.2), `DockSpace::with_bus(Arc<dyn Bus>, key)` /
+  `set_bus`: the module `egui_stack::bus` holds the points (`DockDrop`, `LayoutChanged`,
+  `WindowDetached`, `WindowClose`, `WindowClosed`, `WindowRepaired`), their plain payloads
+  (`DropAsk`, `LayoutChange`, `DetachedInfo`, `CloseAsk`, `ClosedInfo`, `RepairedInfo`), and
+  the contract table `POINTS`, declared with `declare_all` (a second space on the same bus
+  shares them). `stack.dock.drop` replaces `dock_drop_allowed`; its verdicts are kept per ask
+  until the next release, so it is asked when the destination changes, again at release, and
+  again when a "Move group" item is chosen. `stack.window.close` starts from the viewer's
+  policy; a failure or a refusal gives the default. `stack.layout.changed` carries the
+  `LayoutArea` events (through `DockSpace::bind`), tab moves between docks, and float changes.
+  Events are also kept for `take_float_events`.
+- Deprecated: `DockSpace::windows_dock` and `set_windows_dock` (the legacy windows); they still
+  work for a space whose floats are not drawn.
+- Not built: groups dragged back into their own leaf (a group returns into its origin dock's
+  leaf, not as a leaf of its own), splits inside a float from a drag across windows, a drag
+  across viewports (step 4), position snapping and joined groups (layout steps 6 to 8).
+- Tests: `tests/native_floats.rs` on a small multi-viewport harness (`tests/support/multi.rs`,
+  immediate viewports run as eframe runs them, a close request, positions hidden, windows
+  moved), and `tests/bus_points.rs` on a minimal bus (`tests/support/test_bus.rs`).
 
 ## Risks
 
