@@ -433,8 +433,16 @@ windows):
 
 In a floating window a drag does what the place it starts says: a tab drags the tab, the group
 grip or the group modifier (`FloatsArea::group_drag_modifiers`, Shift by default) drags the
-group, and the title bar moves the window. The empty part of a tab bar never moves the window
-(an `egui::Window` float is moved by its title bar only, `WindowDrag::TitleBar`).
+group, and the move handle (or a title bar) moves the window. The empty part of a tab bar never
+moves the window.
+
+- **No title bar over the main window** (`FloatsArea::title_bar`, off by default): a float over
+  the main window has no title bar of its own above its dock; its top tab bar is its top, the
+  move handle moves it, and the close all button of its tab bars closes it. With
+  `title_bar(true)` the `egui::Window` keeps its title bar (the dock's title and a close
+  button), which moves it too (`WindowDrag::TitleBar`); so does a float whose move handle is
+  turned off, which could not be moved otherwise. A native float keeps the system's decoration
+  either way.
 
 - **Move handle** (`GroupHandles::MOVE_WINDOW`, on by default, `FloatsArea::group_handles`): at
   the right end of the float's top tab bar (the rightmost if several are on top), apart from the
@@ -453,13 +461,15 @@ group, and the title bar moves the window. The empty part of a tab bar never mov
     handle moves the window itself (`ViewportCommand::OuterPosition`, from the pointer on the
     desktop), and where positions are hidden (Wayland) the handle falls back to the system's
     move, which never docks. A native window's own title bar is moved by the system, which
-    tells nothing of the release: it only moves. Over the main window, both the title bar and
-    the handle dock.
+    tells nothing of the release: it only moves. Over the main window, the handle docks, and the
+    title bar too when there is one.
 - Not built: docking a moved window into another float, or into a split zone (the whole float
   joins a leaf's tabs; dragging its group by the grip offers the zones).
 - Tests: `tests/float_gestures.rs` on the multi-viewport harness (the handle's system move and
   cursor, a move never docking by default, `Dock` docking by the handle and by the title bar,
-  a refused dock, hidden positions, the handle turned off) and `tests/add_button_place.rs`.
+  a refused dock, hidden positions, the handle turned off), `tests/float_chrome.rs` (no title
+  bar over the main window by default, `title_bar(true)` and a float without its handle keep
+  it) and `tests/add_button_place.rs`.
 
 ## Risks
 

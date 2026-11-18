@@ -25,8 +25,9 @@ from this repository's main branch.
 - Dragging a single tab, or a whole tab group by a grip at the end of its tab bar, the empty part of the bar, a tab
   dragged with Shift held, or "Move group" in its menu, each handle switchable (`GroupHandles`); a drag starts only
   past an activation distance.
-- Floating windows split gestures by where a drag starts: a tab, the group grip (or Shift), or the title bar and a
-  move handle that moves the window, with the move cursor; moving a window only moves it, or docks it whole as in
+- Floating windows split gestures by where a drag starts: a tab, the group grip (or Shift), or a move handle at the
+  end of the top tab bar that moves the window, with the move cursor (a float over the main window has no title bar of
+  its own unless `FloatsArea::title_bar` asks for one); moving a window only moves it, or docks it whole as in
   Visual Studio with `FloatMove::Dock`.
 - Floating docks for tabs and groups dragged out: over the main window, or in native windows of their own (egui
   viewports the application hosts through `ViewportHost`), drawn by `FloatsArea`; closing one returns its tabs where
