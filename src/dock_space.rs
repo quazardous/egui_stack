@@ -948,6 +948,22 @@ impl<Tab> DockSpace<Tab> {
         self.floating.host
     }
 
+    /// The drag in progress across the space's viewports, if any: what it carries (a tab or a
+    /// whole group), the viewport it began in, and the other viewport under the pointer.
+    ///
+    /// A space has one drag, whichever viewport its docks are drawn in: the main window's, or a
+    /// native float's ([`FloatsArea`](crate::FloatsArea)). The viewport it began in keeps the
+    /// pointer, even past its edges, and sees the release; every other viewport converts the
+    /// pointer to its own points (from the desktop's physical pixels, where the system tells
+    /// where windows are), shows where the tab would land, and the move is applied once, by the
+    /// viewport the drag began in. Escape cancels it, and so does closing the window under the
+    /// pointer. Where window positions are hidden (Wayland), each other window outlines its
+    /// docks ([`DockPainter::window_outline`](crate::DockPainter::window_outline)), and the first
+    /// that sees the pointer over one of its docks shortly after the release takes the drop.
+    pub fn dragging(&self) -> Option<crate::SpaceDrag> {
+        self.floating.session.as_ref()?.dragged()
+    }
+
     /// The parts a [`DockArea`](crate::DockArea) showing the dock named `name` borrows.
     pub(crate) fn split_for_area(&mut self, name: &str) -> SpaceParts<'_, Tab> {
         let index = self.dock_index(name);

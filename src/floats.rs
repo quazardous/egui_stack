@@ -181,6 +181,28 @@ pub(crate) struct Floating {
     pub(crate) screens: Option<Vec<Screen>>,
     /// The last number given to a float's dock (`float-N`).
     pub(crate) next: u32,
+    /// The drag in progress across the space's viewports.
+    pub(crate) session: Option<crate::dock_area::session::DragSession>,
+    /// The viewport of each native float drawn, by key.
+    pub(crate) viewports: HashMap<String, ViewportId>,
+}
+
+impl Floating {
+    /// The viewport `viewport` closed (a float's window): a drag that began there ends, and one
+    /// over it is cancelled (nothing moves at its release).
+    pub(crate) fn viewport_closed(&mut self, viewport: ViewportId) {
+        let Some(session) = &mut self.session else {
+            return;
+        };
+        if session.source == viewport {
+            self.session = None;
+        } else if let Some(report) = session.reports.remove(&viewport)
+            && report.stamp + 1 >= session.pass
+        {
+            session.cancelled = true;
+            session.reports.clear();
+        }
+    }
 }
 
 /// A tab or a group moved out of a dock, waiting for its float.
@@ -534,10 +556,14 @@ fn float_change(change: crate::bus::Change, key: &str) -> crate::bus::LayoutChan
     change
 }
 
-/// Forgets what was kept of a native float's window.
+/// Forgets what was kept of a native float's window, closed: a drag that began in it ends, and
+/// one over it is cancelled.
 fn forget_native<Tab>(space: &mut DockSpace<Tab>, key: &str) {
     space.floating.builders.remove(key);
     space.floating.moving.remove(key);
+    if let Some(viewport) = space.floating.viewports.remove(key) {
+        space.floating.viewport_closed(viewport);
+    }
 }
 
 /// The float `key`'s place changed to `place` (or not): kept, and reported once it stops
@@ -652,6 +678,7 @@ fn show_native<Tab>(
         return;
     };
     let id = host.viewport_id(key);
+    space.floating.viewports.insert(key.to_owned(), id);
     let builder = match space.floating.builders.get(key) {
         Some(builder) => builder.clone(),
         None => {
@@ -673,7 +700,9 @@ fn show_native<Tab>(
         });
         seen = Some((ui.ctx().content_rect().size(), maximized, fullscreen));
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
-            let mut area = DockArea::dock(space, dock).id(area_id).in_native_float();
+            let mut area = DockArea::dock(space, dock)
+                .id(area_id)
+                .in_native_float(float.z);
             if let Some(style) = style {
                 area = area.style(style.clone());
             }

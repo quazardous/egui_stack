@@ -9,6 +9,7 @@ mod drag_and_drop;
 mod drop_zone;
 mod group_handles;
 mod labels;
+pub(crate) mod session;
 mod state;
 mod tab_removal;
 
@@ -19,6 +20,7 @@ use std::panic::AssertUnwindSafe;
 
 use egui::{Context, Id, Modifiers, Response, Ui, emath::*};
 pub use labels::Labels;
+pub use session::{DragPayload, SpaceDrag};
 use tab_removal::TabRemoval;
 
 use crate::{
@@ -95,6 +97,9 @@ struct SpaceDock<'a, Tab> {
     native: bool,
     /// The viewport the area is drawn in, this frame.
     viewport: Option<egui::ViewportId>,
+    /// The rank of the area's viewport for a drag across viewports: 0 in the main window, a
+    /// native float's z order plus one in its window.
+    rank: u32,
 }
 
 /// A tab being dragged in a [`DockArea`], from [`DockArea::dragged_tab`].
@@ -281,16 +286,19 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             shows_windows: parts.shows_windows,
             native: false,
             viewport: None,
+            rank: 0,
         });
         area
     }
 
-    /// Marks the area as drawing a dock in a native float's viewport: it keeps its own drag
-    /// state and leaves the main window's no-drop zones alone.
-    pub(crate) fn in_native_float(mut self) -> Self {
+    /// Marks the area as drawing a dock in a native float's viewport, the float's z order
+    /// `z`: it keeps its own drag state, takes part in the space's drag across viewports, and
+    /// leaves the main window's no-drop zones alone.
+    pub(crate) fn in_native_float(mut self, z: u32) -> Self {
         if let Some(space) = &mut self.space {
             space.native = true;
             space.shows_windows = false;
+            space.rank = z.saturating_add(1);
         }
         self
     }

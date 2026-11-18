@@ -3,7 +3,10 @@
 //! Native floating docks: drag a tab out of the window (or use "Eject" in its menu) and it
 //! opens in a native window of its own, drawn with egui's immediate viewports. Close that
 //! window and its tabs go back where they came from; the checkbox in the status bar sends them
-//! to the right dock instead. The status bar lists the windows' events.
+//! to the right dock instead. Drag tabs (or whole groups, Shift held) between the main window
+//! and the native windows, or from one native window to another: one drag across them all,
+//! with the same drop zones and Escape to cancel. The status bar lists the windows' events and
+//! the drag in progress.
 //!
 //! Floats over the main window instead: start with `--in-window`.
 
@@ -121,6 +124,13 @@ impl ZoneViewer for Viewer<'_> {
                     &mut self.tabs.to_right,
                     "A closed window sends its tabs to the right dock",
                 );
+                if let Some(drag) = self.space.dragging() {
+                    let over = match drag.over {
+                        Some(_) => "over another window",
+                        None => "",
+                    };
+                    ui.small(format!("Dragging {:?} {over}", drag.payload));
+                }
                 for line in self.log.iter().rev().take(2) {
                     ui.small(line);
                 }

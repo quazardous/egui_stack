@@ -60,13 +60,13 @@ impl HoverData {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct DragData {
+pub(crate) struct DragData {
     pub src: TreeComponent,
     pub rect: Rect,
 }
 
-#[derive(Debug, Clone)]
-pub(super) enum TreeComponent {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum TreeComponent {
     Surface(SurfaceIndex),
     Node(NodePath),
     Tab(TabPath),

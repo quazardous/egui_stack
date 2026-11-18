@@ -21,6 +21,9 @@ pub(super) struct State {
     pub drag_carries_group: Option<bool>,
     /// The pass the drag was last resolved in: the docks of a space resolve it once a pass.
     pub pass: Option<u64>,
+    /// Whether this area's viewport shows, as a target, the drag of a space begun in another
+    /// viewport: its pointer and drag start are the session's.
+    pub remote: bool,
 }
 
 impl State {
@@ -35,6 +38,7 @@ impl State {
             dragged_node: None,
             drag_carries_group: None,
             pass: None,
+            remote: false,
         })
     }
 
