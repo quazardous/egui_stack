@@ -294,7 +294,7 @@ the native floats.
 - A float moved to a screen of another scale is never resized or moved by egui_stack: its
   builder is given unchanged, and its place follows the window (`FloatEvent::Moved` once it
   settles). A drop lands where it is released, on the new scale.
-- `TabDestination` and `TabInsert` are `Clone`, `Copy`, `Debug` and `PartialEq` now.
+- `TabDestination` and `TabInsert` are `Clone`, `Debug` and `PartialEq` (not `Copy`: semver-checks counts it as a break) now.
 - Tests: `tests/drag_across.rs` on the multi-viewport harness (main to float, float to main,
   float to float, a group, a veto, Escape, released over nothing, refused, a tear-off, the
   target closed during the drag, positions hidden with a taker and without, scales 1 and 2,
