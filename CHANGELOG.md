@@ -1,5 +1,16 @@
 # egui_stack changelog
 
+## egui_stack 0.28.3 - 2026-11-18
+
+### Added
+
+- `TabViewer::ghost_size` and `TabViewer::ghost_body` let an application size the ghost of a dragged tab or group and paint its body, a live preview of the tab's content under the ghost's tab bar for instance (a group shows its active tab). By default neither changes anything; a body the application paints replaces the painter's plain hint, inside the same frame and shadow.
+- A dragged tab leaves its bar and shows the same ghost as a dragged group, with just that tab: shadow, translucency, tab bar, body hint and size limits, painted by the new `DockPainter::dragged_tab`, whose default paints it as `dragged_group` paints a one-tab group (`DraggedGroupPaint` has a new field, `body_painted`). In a space, the window under the pointer paints it, and the window the drag began in paints nothing of it meanwhile. A tab dragged by the body of a leaf whose tab bar is hidden gets the ghost too.
+
+### Fixed
+
+- The buttons at the right end of a tab bar sit side by side again: with the add button after the last tab (the default since 0.28.2), its empty slot no longer leaves a gap between the group grip and the close-all button. The slot is now left of the grip, where the add button goes once the tabs fill the bar or with `TabAddAlign::Right`.
+
 ## egui_stack 0.28.2 - 2026-11-18
 
 ### Added
