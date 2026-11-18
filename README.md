@@ -96,6 +96,10 @@ is rebuilt on each push to the main branch.
 Its Inspect button (Ctrl+Shift+F12) picks a part of the dock (a tab, a tab bar, a body, a separator) and says what it is
 and which `Style` fields drew it, with a Copy button for bug reports; a second view holds egui's own inspection.
 
+On both its pages, One dock and Dock space, a tab or a group dragged out of every dock opens a `FloatsArea` float, moved
+by the handle at the right end of its top tab bar; the toolbar's Floats choice opens the next ones natively (not in the
+browser).
+
 ## History and credits
 
 `egui_stack` continues [`egui_dock`](https://github.com/anhosh/egui_dock): a docking system for `egui`, originally

@@ -1,17 +1,21 @@
 //! The egui_stack demo: a dock to play with, natively or in the browser.
 //!
 //! Drag a tab over a leaf: the band along each edge splits the leaf on that side, the rest
-//! adds the tab to the leaf's tabs, and outside the dock the tab opens in a window. The
-//! toolbar switches the overlay, sets the width of the edge bands, arranges the focused
-//! leaf's container as a grid, a row or a column, opens windows, and saves and restores the
-//! layout. Its Inspect button picks a part of the dock and says what it is (see [`picker`]),
-//! and its Focus border toggle shows a custom [`DockPainter`] outlining the focused leaf.
+//! adds the tab to the leaf's tabs, and outside the dock the tab opens in a floating window.
+//! The toolbar switches the overlay, sets the width of the edge bands, arranges the focused
+//! leaf's container as a grid, a row or a column, opens floating windows, and saves and
+//! restores the layout. Its Inspect button picks a part of the dock and says what it is (see
+//! [`picker`]), and its Focus border toggle shows a custom [`DockPainter`] outlining the
+//! focused leaf.
 //!
-//! Its second page, Dock space, shows a [`DockSpace`]: a dock in a left side panel, one in a
-//! right side panel and one in the centre, each drawn by its own [`DockArea`], with tabs dragged
-//! between them into the same zones. A tab or a group moved out of every dock (or the toolbar's
-//! Float group) opens in a floating window, drawn by a [`FloatsArea`] over the window or in a
-//! native window of its own: the handle at the right end of its top tab bar moves it.
+//! Its second page, Dock space, shows a [`DockSpace`] of three docks: one in a left side panel,
+//! one in a right side panel and one in the centre, each drawn by its own [`DockArea`], with
+//! tabs dragged between them into the same zones.
+//!
+//! On both pages, the dock is a [`DockSpace`] (the first page's has one dock) and a tab or a
+//! group moved out of every dock (or the toolbar's Float group or New float) opens in a
+//! floating window, drawn by a [`FloatsArea`] over the window or, natively, in a window of its
+//! own: the handle at the right end of its top tab bar moves it.
 
 use egui::{
     Color32, Id, Panel, Rect, RichText, Slider, Stroke, Ui, UiBuilder, WidgetText, pos2, vec2,
@@ -20,7 +24,7 @@ use egui_stack::layout::{Content, FloatHost, Layout, Zone};
 use egui_stack::{
     AllowedSplits, DockArea, DockPainter, DockRules, DockSpace, DockState, EguiViewports,
     FloatsArea, GridLayout, GroupHandles, LinearDir, NodeIndex, NodePath, OverlayType, PartState,
-    Style, StylePainter, TabAddAlign, TabBodyPaint, TabViewer,
+    Style, StylePainter, TabAddAlign, TabBodyPaint, TabViewer, Tree,
 };
 
 pub mod picker;
@@ -31,8 +35,11 @@ use picker::Picker;
 pub struct DemoApp {
     /// The page shown: one dock, or a space of three docks.
     pub page: Page,
-    /// The layout of the first page: the main surface and the windows.
-    pub dock_state: DockState<String>,
+    /// The layout of the first page: one dock, `main`, and the floats' docks.
+    pub dock: DockSpace<String>,
+    /// The floating windows of the first page, over the window or native ([`FloatsArea`]).
+    /// Its zones are not drawn: the page's dock fills the window.
+    pub dock_floats: Layout,
     /// The layout of the second page: three docks and the floats' docks.
     pub space: DockSpace<String>,
     /// The floating windows of the second page, over the window or native ([`FloatsArea`]).
@@ -81,7 +88,8 @@ impl Default for DemoApp {
     fn default() -> Self {
         Self {
             page: Page::Dock,
-            dock_state: initial_layout(),
+            dock: initial_dock(),
+            dock_floats: initial_dock_floats(),
             space: initial_space(),
             floats: initial_floats(),
             tabs: Tabs {
@@ -108,10 +116,11 @@ impl Default for DemoApp {
     }
 }
 
-/// A row of three leaves: the guide, an editor with a console and notes, and a preview.
-fn initial_layout() -> DockState<String> {
-    let mut dock_state = DockState::new(vec!["Guide".to_owned()]);
-    let tree = dock_state.main_surface_mut();
+/// The first page's space, of one dock, `main`: a row of three leaves, the guide, an editor
+/// with a console and notes, and a preview. It has an id of its own, apart from the second
+/// page's space.
+pub fn initial_dock() -> DockSpace<String> {
+    let mut tree = Tree::new(vec!["Guide".to_owned()]);
     let [_, middle] = tree.split_right(
         NodeIndex::root(),
         0.3,
@@ -122,7 +131,14 @@ fn initial_layout() -> DockState<String> {
         ],
     );
     tree.split_right(middle, 0.55, vec!["Preview".to_owned()]);
-    dock_state
+    let mut space = DockSpace::new().with_id(Id::unique("egui_stack_demo_one_dock"));
+    space.add_dock_tree("main", DockRules::default(), tree);
+    space
+}
+
+/// The floats of the first page: none at first.
+fn initial_dock_floats() -> Layout {
+    Layout::new(Zone::leaf("main", Content::Dock("main".into())))
 }
 
 /// The floats of the second page: none at first.
@@ -180,17 +196,25 @@ impl DemoApp {
         self.picker.panel(ui);
 
         let dock_rect = ui.available_rect_before_wrap();
-        DockArea::new(&mut self.dock_state)
+        DockArea::dock(&mut self.dock, "main")
             .style(style.clone())
             .painter(painter)
             .group_handles(self.group_handles)
             .show_add_buttons(true)
             .show_leaf_collapse_buttons(true)
             .show_inside(ui, &mut self.tabs);
+        // The floats, after the dock: their top tab bar ends with the window's move handle.
+        FloatsArea::new(&mut self.dock_floats, &mut self.dock)
+            .host(&mut EguiViewports)
+            .style(style.clone())
+            .painter(painter)
+            .group_handles(self.group_handles)
+            .show(ui.ctx(), &mut self.tabs);
+        self.dock.take_float_events();
         self.picker.after_dock(
             ui,
             dock_rect,
-            &self.dock_state,
+            self.dock.state(),
             &self.tabs.tab_rects,
             &style,
         );
@@ -229,16 +253,39 @@ impl DemoApp {
         FloatsArea::new(&mut self.floats, &mut self.space)
             .host(&mut EguiViewports)
             .style(style.clone())
+            .painter(painter)
             .group_handles(self.group_handles)
             .show(ui.ctx(), &mut self.tabs);
         self.space.take_float_events();
     }
 
-    /// Moves the focused group of the second page into a float of its own.
+    /// The space of the page shown.
+    fn page_space(&mut self) -> &mut DockSpace<String> {
+        match self.page {
+            Page::Dock => &mut self.dock,
+            Page::Space => &mut self.space,
+        }
+    }
+
+    /// Moves the focused group of the page shown into a float of its own.
     fn float_focused_group(&mut self) {
-        if let Some(path) = self.space.state().focused_leaf() {
-            self.space
-                .float_out_group(path, FLOAT_RECT, |tab| Id::unique(tab.as_str()));
+        let space = self.page_space();
+        if let Some(path) = space.state().focused_leaf() {
+            space.float_out_group(path, FLOAT_RECT, |tab| Id::unique(tab.as_str()));
+        }
+    }
+
+    /// Opens a new tab in a float of its own, on the page shown.
+    fn new_float(&mut self) {
+        self.opened += 1;
+        let tab = format!("Tab {}", self.opened);
+        let space = self.page_space();
+        let dock = space.dock_names().next().map(str::to_owned);
+        if let Some(tree) = dock.and_then(|dock| space.dock_mut(&dock)) {
+            tree.push_to_first_leaf(tab.clone());
+        }
+        if let Some(path) = space.state().find_tab(&tab) {
+            space.float_out(path, FLOAT_RECT, |tab| Id::unique(tab.as_str()));
         }
     }
 
@@ -256,7 +303,7 @@ impl DemoApp {
     /// The layout of the page shown.
     fn state(&self) -> &DockState<String> {
         match self.page {
-            Page::Dock => &self.dock_state,
+            Page::Dock => self.dock.state(),
             Page::Space => self.space.state(),
         }
     }
@@ -264,7 +311,7 @@ impl DemoApp {
     /// The layout of the page shown, mutably.
     fn state_mut(&mut self) -> &mut DockState<String> {
         match self.page {
-            Page::Dock => &mut self.dock_state,
+            Page::Dock => self.dock.state_mut(),
             Page::Space => self.space.state_mut(),
         }
     }
@@ -324,36 +371,38 @@ impl DemoApp {
                 }
             }
 
-            if self.page == Page::Space {
-                ui.separator();
-                ui.label("Floats:");
-                let mut host = self.space.float_host();
+            ui.separator();
+            ui.label("Floats:");
+            // Native windows where the platform has them: not in the browser.
+            if cfg!(not(target_arch = "wasm32")) {
+                let space = self.page_space();
+                let mut host = space.float_host();
                 ui.selectable_value(&mut host, FloatHost::InWindow, "In the window")
                     .on_hover_text("Floating windows drawn over this window");
                 ui.selectable_value(&mut host, FloatHost::Native, "Native")
                     .on_hover_text("Floating windows of their own, on the desktop");
-                if host != self.space.float_host() {
-                    self.space.set_float_host(host);
-                }
-                let focused = self.space.state().focused_leaf().is_some();
-                if ui
-                    .add_enabled(focused, egui::Button::new("Float group"))
-                    .on_hover_text(
-                        "Move the focused group into a floating window, moved by the handle at \
-                         the end of its tab bar",
-                    )
-                    .on_disabled_hover_text("Click a tab first")
-                    .clicked()
-                {
-                    self.float_focused_group();
+                if host != space.float_host() {
+                    space.set_float_host(host);
                 }
             }
-
-            ui.separator();
-            if ui.button("New window").clicked() {
-                self.opened += 1;
-                let tab = format!("Tab {}", self.opened);
-                self.state_mut().add_window(vec![tab]);
+            let focused = self.state().focused_leaf().is_some();
+            if ui
+                .add_enabled(focused, egui::Button::new("Float group"))
+                .on_hover_text(
+                    "Move the focused group into a floating window, moved by the handle at the \
+                     end of its tab bar",
+                )
+                .on_disabled_hover_text("Click a tab first")
+                .clicked()
+            {
+                self.float_focused_group();
+            }
+            if ui
+                .button("New float")
+                .on_hover_text("Open a new tab in a floating window")
+                .clicked()
+            {
+                self.new_float();
             }
 
             ui.separator();
@@ -385,8 +434,7 @@ impl DemoApp {
                     (
                         GroupHandles::MOVE_WINDOW,
                         "Window move handle",
-                        "At the end of a floating window's top tab bar (Dock space page), it \
-                         moves the window",
+                        "At the end of a floating window's top tab bar, it moves the window",
                     ),
                 ] {
                     let mut on = self.group_handles.contains(flag);
@@ -424,7 +472,7 @@ impl DemoApp {
             ui.separator();
             if ui.button("Save layout").clicked() {
                 let json = match self.page {
-                    Page::Dock => serde_json::to_string(&self.dock_state),
+                    Page::Dock => serde_json::to_string(&(&self.dock, &self.dock_floats)),
                     Page::Space => serde_json::to_string(&(&self.space, &self.floats)),
                 };
                 match json {
@@ -441,7 +489,10 @@ impl DemoApp {
                 && let Some(json) = &self.saved
             {
                 let restored = match self.page {
-                    Page::Dock => serde_json::from_str(json).map(|state| self.dock_state = state),
+                    Page::Dock => serde_json::from_str(json).map(|(dock, floats)| {
+                        self.dock = dock;
+                        self.dock_floats = floats;
+                    }),
                     Page::Space => serde_json::from_str(json).map(|(space, floats)| {
                         self.space = space;
                         self.floats = floats;
@@ -454,7 +505,10 @@ impl DemoApp {
             }
             if ui.button("Reset").clicked() {
                 match self.page {
-                    Page::Dock => self.dock_state = initial_layout(),
+                    Page::Dock => {
+                        self.dock = initial_dock();
+                        self.dock_floats = initial_dock_floats();
+                    }
                     Page::Space => {
                         self.space = initial_space();
                         self.floats = initial_floats();
@@ -603,7 +657,9 @@ fn guide(ui: &mut Ui) {
     for line in [
         "Drag a tab by its title onto another leaf: near an edge, the leaf splits on that side; \
          in the middle, the tab joins its tabs.",
-        "Drag a tab out of the dock: it opens in a floating window, which takes drops too.",
+        "Drag a tab out of the dock: it opens in a floating window, which takes drops too. \
+         The handle at the right end of its top tab bar moves the window; the toolbar's Floats \
+         choice opens the next ones in native windows of their own.",
         "Drag the separators between leaves to resize them.",
         "Click a leaf, then Arrange: its row becomes a grid, a column, or a row again.",
         "Switch the overlay to the cross (egui_dock's former default) or highlighted areas.",
