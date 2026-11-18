@@ -151,6 +151,20 @@ impl<Tab> DockArea<'_, Tab> {
         }
     }
 
+    /// The height of the space dock this area shows when all its groups are collapsed: its
+    /// tab bars, the separators between them and the dock's padding. `None` when a group is
+    /// expanded, the dock is empty, or the area shows no dock of a space.
+    pub(crate) fn collapsed_dock_height(mut self, style: &egui::Style) -> Option<f32> {
+        let space = self.space.as_ref()?;
+        let surface = space.docks.get(space.dock?)?.surface;
+        let tree = &self.dock_state[surface];
+        if tree.is_empty() || !tree.is_collapsed() {
+            return None;
+        }
+        self.style.get_or_insert(Style::from_egui(style));
+        Some(self.window_min_size(surface).y)
+    }
+
     /// The least size of the content of the window `surface`: each leaf keeps its tab bar's
     /// buttons and some of its tabs, and a body below its bar unless it is folded; the
     /// separators and the dock's padding come on top.
