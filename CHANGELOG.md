@@ -1,5 +1,15 @@
 # egui_stack changelog
 
+## egui_stack 0.28.7 - 2026-11-18
+
+### Added
+
+- A float over the main window no longer wears a title bar of its own above its dock: its top tab bar is its top, its move handle moves it and the close all button of its tab bars closes it, as the legacy windows looked before the demo's first page moved to `FloatsArea` in 0.28.5. `FloatsArea::title_bar(true)` brings the title bar back (the dock's title and a close button, which moves the window too); a float whose move handle is turned off keeps it, to be moved by. Native floats keep the system's decoration.
+
+### Fixed
+
+- Every button of a tab bar paints the same way, through one helper: the line under the bar now runs under the collapse button and a float's move handle too (it stopped short of them), no button's highlight covers it any more (the group grip's, the collapse button's and the move handle's did), and the move handle has the left border the add and close all buttons have. The group grip and the collapse button's symbol sit a point higher, centred above that line like the others'; `DockPainter::tab_bar_tail` is also called for the collapse button's slot, and `TabBarGripPaint::rect` leaves out the line.
+
 ## egui_stack 0.28.6 - 2026-11-18
 
 ### Added
