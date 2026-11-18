@@ -1,6 +1,8 @@
 /// The handles that move a whole tab group (a leaf with all its tabs), set with
 /// [`DockArea::group_handles`](crate::DockArea::group_handles). A set of flags: combine them
-/// with `|`. By default every handle is on ([`ALL`](Self::ALL)).
+/// with `|`. By default every handle is on ([`ALL`](Self::ALL)). A floating window's move
+/// handle ([`MOVE_WINDOW`](Self::MOVE_WINDOW)) is set here too: it moves the window, not a
+/// group.
 ///
 /// A group moved by any handle goes through the same drop zones as a dragged tab, keeps its tabs
 /// in order and its active tab, follows the viewer's veto
@@ -37,8 +39,15 @@ impl GroupHandles {
     /// "Move group" in the tab's context menu (and the grip's): the places the group can go,
     /// a new window and, in a [`DockSpace`](crate::DockSpace), its other docks.
     pub const MENU: Self = Self(1 << 3);
+    /// A move handle at the end of a floating window's top tab bar, apart from the group grip:
+    /// it moves the window, not a group. On a native float the system moves it
+    /// ([`egui::ViewportCommand::StartDrag`]), on a float over the main window the
+    /// `egui::Window` moves; the pointer shows [`egui::CursorIcon::Move`] over it. Whether the
+    /// move can also dock the window is [`FloatsArea::float_move`](crate::FloatsArea::float_move).
+    /// Only floats drawn by a [`FloatsArea`](crate::FloatsArea) have one.
+    pub const MOVE_WINDOW: Self = Self(1 << 4);
     /// Every handle.
-    pub const ALL: Self = Self(0b1111);
+    pub const ALL: Self = Self(0b1_1111);
 
     /// Whether every flag of `other` is set.
     #[inline]
@@ -126,7 +135,10 @@ mod tests {
         assert_eq!(!GroupHandles::ALL, GroupHandles::NONE);
         assert_eq!(
             all & !GroupHandles::MENU,
-            GroupHandles::EMPTY_SPACE | GroupHandles::GRIP | GroupHandles::MODIFIER_DRAG
+            GroupHandles::EMPTY_SPACE
+                | GroupHandles::GRIP
+                | GroupHandles::MODIFIER_DRAG
+                | GroupHandles::MOVE_WINDOW
         );
         assert_eq!(
             all.intersection(GroupHandles::GRIP),

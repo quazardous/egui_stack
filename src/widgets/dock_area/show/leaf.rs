@@ -264,12 +264,21 @@ impl<Tab> DockArea<'_, Tab> {
             },
         );
 
-        let tabbar_outer_rect = tabbar_outer_rect - style.tab_bar.inner_margin;
+        let full_bar = tabbar_outer_rect - style.tab_bar.inner_margin;
+        // A float's move handle takes the right end of its top bar; the rest of the bar is laid
+        // out left of it.
+        let move_handle = self.move_handle_rect(path, full_bar);
+        let tabbar_outer_rect = match move_handle {
+            Some(handle) => {
+                Rect::from_min_max(full_bar.min, pos2(handle.left(), full_bar.bottom()))
+            }
+            None => full_bar,
+        };
 
         let mut available_width = tabbar_outer_rect.width();
         let scroll_bar_width = available_width;
         if available_width == 0.0 {
-            return tabbar_outer_rect;
+            return full_bar;
         }
 
         // Reserve space for the buttons at the ends of the tab bar.
@@ -369,16 +378,23 @@ impl<Tab> DockArea<'_, Tab> {
 
             // Add button at the ends of the tab bar.
             if self.show_add_buttons {
-                let offset = match style.buttons.add_tab_align {
+                // Its slot, reserved at the end of the bar: right of the grip, left of the
+                // close-all button.
+                let slot = clip_rect.right()
+                    + if grip {
+                        Style::TAB_GROUP_GRIP_SIZE
+                    } else {
+                        0.0
+                    };
+                let left = match style.buttons.add_tab_align {
+                    // Right after the last tab, or in its slot once the tabs fill the bar.
                     TabAddAlign::Left => {
-                        (clip_rect.width() - tabs_ui.min_rect().width()).at_least(0.0)
+                        (clip_rect.left() + tabs_ui.min_rect().width()).at_most(slot)
                     }
-                    TabAddAlign::Right => 0.0,
-                } + if self.show_leaf_close_all_buttons {
-                    Style::TAB_CLOSE_ALL_BUTTON_SIZE
-                } else {
-                    0.0
+                    TabAddAlign::Right => slot,
                 };
+                let offset =
+                    (tabbar_outer_rect.right() - Style::TAB_ADD_BUTTON_SIZE - left).at_least(0.0);
                 self.tab_plus(
                     ui,
                     path,
@@ -435,6 +451,10 @@ impl<Tab> DockArea<'_, Tab> {
                 );
             }
 
+            if let Some(rect) = move_handle {
+                self.window_move_handle(ui, path, rect, fade_style, bar);
+            }
+
             (tabs_ui.min_rect().width(), tab_hovered)
         };
 
@@ -450,7 +470,7 @@ impl<Tab> DockArea<'_, Tab> {
             fade_style,
         );
 
-        tabbar_outer_rect
+        full_bar
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1144,6 +1164,100 @@ impl<Tab> DockArea<'_, Tab> {
         if dragged {
             ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
             self.try_initiate_node_drag(ui, state, path);
+        }
+    }
+
+    /// Where the move handle of the float showing `path` is drawn, at the right end of `bar`:
+    /// on the float's top tab bar (its rightmost if several are on top), when
+    /// [`GroupHandles::MOVE_WINDOW`] is on.
+    fn move_handle_rect(&self, path: NodePath, bar: Rect) -> Option<Rect> {
+        if !self.group_handles.contains(GroupHandles::MOVE_WINDOW)
+            || !self.is_float_dock(path.surface)
+        {
+            return None;
+        }
+        let tree = &self.dock_state[path.surface];
+        let (top_right, _) = tree
+            .breadth_first_index_iter()
+            .filter_map(|node| {
+                let leaf = tree.leaf(node).ok()?;
+                if leaf.tabs.is_empty() || (self.hidable_tab_bars && leaf.tab_bar_hidden) {
+                    return None;
+                }
+                Some((node, tree[node].rect()?))
+            })
+            .min_by(|(_, a), (_, b)| {
+                a.top()
+                    .total_cmp(&b.top())
+                    .then(b.right().total_cmp(&a.right()))
+            })?;
+        let size = Style::TAB_GROUP_GRIP_SIZE;
+        if top_right != path.node || bar.width() < 2.0 * size {
+            return None;
+        }
+        Some(Rect::from_min_max(
+            pos2(bar.right() - size, bar.top()),
+            bar.right_bottom(),
+        ))
+    }
+
+    /// A float's move handle: dragged, it moves the float's window, which the
+    /// [`FloatsArea`](crate::FloatsArea) drawing the float does (it reads this response by its
+    /// id). The pointer shows the move cursor over it.
+    fn window_move_handle(
+        &self,
+        ui: &Ui,
+        path: NodePath,
+        rect: Rect,
+        fade_style: Option<&Style>,
+        bar: (Rect, CornerRadius),
+    ) {
+        let Some(space) = self.space.as_ref() else {
+            return;
+        };
+        let Some(dock) = self.dock_name(path.surface) else {
+            return;
+        };
+        let id = crate::floats::move_handle_id(space.space_id, dock);
+        let response = ui.interact(rect, id, Sense::drag());
+        let enabled = ui.is_enabled();
+        response
+            .widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.move_window));
+        let active = response.hovered() || response.dragged();
+        if active {
+            ui.output_mut(|o| o.cursor_icon = CursorIcon::Move);
+        }
+
+        let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
+        let color = if active || response.has_focus() {
+            ui.painter().rect_filled(
+                rect,
+                corners_within(rect, bar.0, bar.1),
+                style.buttons.add_tab_bg_fill,
+            );
+            style.buttons.add_tab_active_color
+        } else {
+            style.buttons.add_tab_color
+        };
+        // Four arrows from the middle, the move cursor's shape.
+        let center = rect.center();
+        let reach = (rect.width().min(rect.height()) * 0.3).max(3.0);
+        let head = reach * 0.4;
+        let stroke = Stroke::new(1.0, color);
+        for dir in [
+            vec2(1.0, 0.0),
+            vec2(-1.0, 0.0),
+            vec2(0.0, 1.0),
+            vec2(0.0, -1.0),
+        ] {
+            let tip = center + dir * reach;
+            ui.painter().line_segment([center, tip], stroke);
+            let side = vec2(-dir.y, dir.x) * head;
+            ui.painter().add(Shape::convex_polygon(
+                vec![tip, tip - dir * head + side, tip - dir * head - side],
+                color,
+                Stroke::NONE,
+            ));
         }
     }
 

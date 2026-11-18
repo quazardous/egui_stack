@@ -47,11 +47,11 @@ clip [[32.0 8.0] - [336.0 32.0]]
 clip [[8.0 8.0] - [400.0 392.0]]
   LineSegment { points: [[258.7 31.0], [400.0 31.0]], stroke: Stroke { width: 1.0, color: #3C_3C_3C_FF } }
 clip [[8.0 8.0] - [400.0 392.0]]
-  LineSegment { points: [[364.0 13.0], [364.0 25.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+  LineSegment { points: [[270.7 13.0], [270.7 25.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[8.0 8.0] - [400.0 392.0]]
-  LineSegment { points: [[370.0 19.0], [358.0 19.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+  LineSegment { points: [[276.7 19.0], [264.7 19.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[8.0 8.0] - [400.0 392.0]]
-  LineSegment { points: [[352.0 8.0], [352.0 30.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+  LineSegment { points: [[258.7 8.0], [258.7 30.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
 clip [[8.0 8.0] - [400.0 392.0]]
   LineSegment { points: [[383.0 14.0], [393.0 24.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[8.0 8.0] - [400.0 392.0]]
@@ -95,11 +95,11 @@ clip [[425.0 8.0] - [728.0 32.0]]
 clip [[425.0 8.0] - [728.0 32.0]]
   LineSegment { points: [[487.5 15.5], [478.5 24.5]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[401.0 8.0] - [792.0 392.0]]
-  LineSegment { points: [[756.0 13.0], [756.0 25.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+  LineSegment { points: [[507.0 13.0], [507.0 25.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[401.0 8.0] - [792.0 392.0]]
-  LineSegment { points: [[762.0 19.0], [750.0 19.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
+  LineSegment { points: [[513.0 19.0], [501.0 19.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[401.0 8.0] - [792.0 392.0]]
-  LineSegment { points: [[744.0 8.0], [744.0 30.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
+  LineSegment { points: [[495.0 8.0], [495.0 30.0]], stroke: Stroke { width: 1.0, color: #1B_1B_1B_FF } }
 clip [[401.0 8.0] - [792.0 392.0]]
   LineSegment { points: [[775.0 14.0], [785.0 24.0]], stroke: Stroke { width: 1.0, color: #8C_8C_8C_FF } }
 clip [[401.0 8.0] - [792.0 392.0]]

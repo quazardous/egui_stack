@@ -120,6 +120,22 @@ An application narrows the set to what it allows; a user setting narrows it furt
 `DockArea::drag_group_by` and `DockArea::hidden_tab_bar_drags_group` are handles the application
 asks for itself, outside these flags.
 
+In a floating window, a drag does what the place it starts says: a tab drags the tab, the group
+grip or the group modifier drags the group, and the window's title bar moves the window. The
+empty part of a tab bar never moves the window (it drags the group when `EMPTY_SPACE` is on).
+One more flag is a floats' handle:
+
+| Flag | Handle |
+|---|---|
+| `MOVE_WINDOW` | A move handle at the right end of a float's top tab bar, apart from the grip. It moves the window, with the move cursor: through the system on a native float (`ViewportCommand::StartDrag`), as the `egui::Window` on a float over the main window. Named "Move window" (`Labels::move_window`). |
+
+`FloatsArea::group_handles` and `FloatsArea::group_drag_modifiers` set them for the floats'
+docks; `FloatsArea::float_move` sets what moving a window does (see
+[native-floats.md](native-floats.md#float-gestures)).
+
+The add tab button sits right after the last tab (`ButtonsStyle::add_tab_align`,
+`TabAddAlign::Left` by default); `TabAddAlign::Right` puts it at the end of the bar.
+
 ### Serialisation
 
 With the `serde` feature, a `DockSpace` serialises as one value: its `DockState` (every dock's tree

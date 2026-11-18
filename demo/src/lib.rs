@@ -15,7 +15,7 @@ use egui::{Color32, Id, Panel, Rect, RichText, Slider, Stroke, Ui, WidgetText, p
 use egui_stack::{
     AllowedSplits, DockArea, DockPainter, DockRules, DockSpace, DockState, GridLayout,
     GroupHandles, LinearDir, NodeIndex, NodePath, OverlayType, PartState, Style, StylePainter,
-    TabBodyPaint, TabViewer,
+    TabAddAlign, TabBodyPaint, TabViewer,
 };
 
 pub mod picker;
@@ -42,6 +42,8 @@ pub struct DemoApp {
     pub focus_border: bool,
     /// The handles that move a whole tab group: all of them by default.
     pub group_handles: GroupHandles,
+    /// Where the add tab button sits: right after the last tab by default.
+    pub add_tab_align: TabAddAlign,
     saved: Option<String>,
     status: String,
     opened: usize,
@@ -86,6 +88,7 @@ impl Default for DemoApp {
             picker: Picker::default(),
             focus_border: false,
             group_handles: GroupHandles::ALL,
+            add_tab_align: TabAddAlign::Left,
             saved: None,
             status: String::new(),
             opened: 0,
@@ -142,6 +145,7 @@ impl DemoApp {
         let mut style = Style::from_egui(ui.style());
         style.overlay.overlay_type = self.overlay_type;
         style.overlay.feel.zone_edge_coverage = self.zone_edge_coverage;
+        style.buttons.add_tab_align = self.add_tab_align;
         let painter: &(dyn DockPainter + Sync) = if self.focus_border {
             &FocusBorder
         } else {
@@ -327,6 +331,21 @@ impl DemoApp {
             })
             .response
             .on_hover_text("What moves a whole tab group");
+
+            let mut at_end = self.add_tab_align == TabAddAlign::Right;
+            if ui
+                .toggle_value(&mut at_end, "+ at the end")
+                .on_hover_text(
+                    "The add tab button at the end of the tab bar, not after the last tab",
+                )
+                .changed()
+            {
+                self.add_tab_align = if at_end {
+                    TabAddAlign::Right
+                } else {
+                    TabAddAlign::Left
+                };
+            }
 
             if self.page == Page::Dock {
                 ui.separator();

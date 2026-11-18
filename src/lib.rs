@@ -108,7 +108,7 @@
 //!
 //! // Modify a few fields.
 //! style.overlay.overlay_type = OverlayType::HighlightedAreas;
-//! style.buttons.add_tab_align = TabAddAlign::Left;
+//! style.buttons.add_tab_align = TabAddAlign::Right;
 //!
 //! // Use the style with the `DockArea`.
 //! DockArea::new(&mut dock_state)
@@ -264,7 +264,9 @@ pub use dock_space::{DockRules, DockSpace, TabOrigin};
 pub use dock_state::*;
 pub use docked::{Docked, DockedRepair};
 pub use egui;
-pub use floats::{ClosePolicy, EguiViewports, FloatClose, FloatEvent, FloatsArea, ViewportHost};
+pub use floats::{
+    ClosePolicy, EguiViewports, FloatClose, FloatEvent, FloatMove, FloatsArea, ViewportHost,
+};
 pub use style::*;
 pub use translations::*;
 pub use tree::*;
