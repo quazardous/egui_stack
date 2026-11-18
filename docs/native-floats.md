@@ -368,6 +368,38 @@ the native floats.
   check, macOS reports only. Real windows (a drag across monitors of different scales on a
   real desktop) are left to manual testing: no CI runner has several monitors.
 
+## Float gestures
+
+In a floating window a drag does what the place it starts says: a tab drags the tab, the group
+grip or the group modifier (`FloatsArea::group_drag_modifiers`, Shift by default) drags the
+group, and the title bar moves the window. The empty part of a tab bar never moves the window
+(an `egui::Window` float is moved by its title bar only, `WindowDrag::TitleBar`).
+
+- **Move handle** (`GroupHandles::MOVE_WINDOW`, on by default, `FloatsArea::group_handles`): at
+  the right end of the float's top tab bar (the rightmost if several are on top), apart from the
+  group grip, with the move cursor. A window drawn without system decorations can still be
+  moved. On a native float the system moves the window (`ViewportCommand::StartDrag`); on a
+  float over the main window the `egui::Window` follows the pointer.
+- **What a move does** (`FloatsArea::float_move`):
+  - `FloatMove::Move`, the default: the window only moves, and never docks.
+  - `FloatMove::Dock`, as in Visual Studio: while the window moves, the dock of the main window
+    under the pointer is highlighted (its leaf under the pointer, red where refused); released
+    there, every tab of the float joins that leaf (or the dock's focused or first leaf, or the
+    empty dock), in order, after the veto (`TabViewer::dock_drop_allowed`, or `stack.dock.drop`
+    with the bus, asked when the target changes and again at the release; refused, the float
+    stays where it was moved). The float closes (`FloatEvent::Closed`, policy `None`) and its
+    tabs forget their origins. It needs to know where the window is: on a native float the
+    handle moves the window itself (`ViewportCommand::OuterPosition`, from the pointer on the
+    desktop), and where positions are hidden (Wayland) the handle falls back to the system's
+    move, which never docks. A native window's own title bar is moved by the system, which
+    tells nothing of the release: it only moves. Over the main window, both the title bar and
+    the handle dock.
+- Not built: docking a moved window into another float, or into a split zone (the whole float
+  joins a leaf's tabs; dragging its group by the grip offers the zones).
+- Tests: `tests/float_gestures.rs` on the multi-viewport harness (the handle's system move and
+  cursor, a move never docking by default, `Dock` docking by the handle and by the title bar,
+  a refused dock, hidden positions, the handle turned off) and `tests/add_button_place.rs`.
+
 ## Risks
 
 - Wayland: no window positions and no placing at the pointer.

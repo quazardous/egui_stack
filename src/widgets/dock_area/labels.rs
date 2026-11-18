@@ -44,6 +44,9 @@ pub struct Labels {
     /// The grip at the end of a tab bar, which moves the whole tab group
     /// ([`GroupHandles::GRIP`](crate::GroupHandles::GRIP)).
     pub move_group: Cow<'static, str>,
+    /// A floating window's move handle, which moves the window
+    /// ([`GroupHandles::MOVE_WINDOW`](crate::GroupHandles::MOVE_WINDOW)).
+    pub move_window: Cow<'static, str>,
     /// A separator between two nodes, which resizes them, when they have no names: a line of
     /// a grid, or a neighbour with no tab.
     pub separator: Cow<'static, str>,
@@ -85,6 +88,7 @@ impl Labels {
         restore_window: Cow::Borrowed("Restore window"),
         show_tab_bar: Cow::Borrowed("Show tab bar"),
         move_group: Cow::Borrowed("Move group"),
+        move_window: Cow::Borrowed("Move window"),
         separator: Cow::Borrowed("Resize"),
         separator_between: Cow::Borrowed("Resize between {first} and {second}"),
         resize_section: Cow::Borrowed("Resize {section}"),

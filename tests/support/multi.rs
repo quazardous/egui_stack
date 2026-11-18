@@ -30,6 +30,32 @@ struct Immediate {
     inputs: BTreeMap<ViewportId, RawInput>,
     shown: Vec<(ViewportId, ViewportBuilder, Vec<ViewportCommand>)>,
     shapes: BTreeMap<ViewportId, Vec<ClippedShape>>,
+    /// The labelled widgets of each window's last pass, from AccessKit.
+    labels: BTreeMap<ViewportId, Vec<(String, Rect)>>,
+    /// The cursor each window asked for in its last pass.
+    cursors: BTreeMap<ViewportId, egui::CursorIcon>,
+}
+
+/// The labelled widgets of a pass's AccessKit update, with their bounds (scale 1).
+fn labels_of(output: &egui::PlatformOutput) -> Vec<(String, Rect)> {
+    let Some(update) = &output.accesskit_update else {
+        return Vec::new();
+    };
+    update
+        .nodes
+        .iter()
+        .filter_map(|(_, node)| {
+            let label = node.label()?;
+            let b = node.bounds()?;
+            Some((
+                label.to_owned(),
+                Rect::from_min_max(
+                    Pos2::new(b.x0 as f32, b.y0 as f32),
+                    Pos2::new(b.x1 as f32, b.y1 as f32),
+                ),
+            ))
+        })
+        .collect()
 }
 
 thread_local! {
@@ -62,6 +88,11 @@ fn render_immediate(ctx: &Context, viewport: ImmediateViewport<'_>) {
     let mut out = ctx.run_ui(input, &mut viewport_ui_cb);
     out.textures_delta.clear();
     if let Some(h) = harness {
+        {
+            let mut h = h.borrow_mut();
+            h.labels.insert(ids.this, labels_of(&out.platform_output));
+            h.cursors.insert(ids.this, out.platform_output.cursor_icon);
+        }
         let commands = out
             .viewport_output
             .get(&ids.this)
@@ -105,6 +136,7 @@ impl Multi {
     pub fn new() -> Self {
         let ctx = Context::default();
         ctx.set_embed_viewports(false);
+        ctx.enable_accesskit();
         let immediate = Rc::new(RefCell::new(Immediate::default()));
         IMMEDIATE.with_borrow_mut(|h| *h = Some(immediate.clone()));
         Context::set_immediate_viewport_renderer(render_immediate);
@@ -194,6 +226,27 @@ impl Multi {
         info.inner_rect = Some(rect);
     }
 
+    /// Where the widget labelled `label` was in a window's last pass (its points, scale 1).
+    pub fn find(&self, viewport: ViewportId, label: &str) -> Option<Rect> {
+        self.immediate
+            .borrow()
+            .labels
+            .get(&viewport)?
+            .iter()
+            .find(|(l, _)| l == label)
+            .map(|(_, rect)| *rect)
+    }
+
+    /// Where a window's content is on the desktop (points at scale 1), as the system tells.
+    pub fn inner_rect(&self, viewport: ViewportId) -> Option<Rect> {
+        self.info.get(&viewport)?.inner_rect
+    }
+
+    /// The cursor a window asked for in its last pass.
+    pub fn cursor(&self, viewport: ViewportId) -> Option<egui::CursorIcon> {
+        self.immediate.borrow().cursors.get(&viewport).copied()
+    }
+
     /// The commands a window's passes sent since the last call.
     pub fn take_commands(&mut self, viewport: ViewportId) -> Vec<ViewportCommand> {
         self.commands.remove(&viewport).unwrap_or_default()
@@ -273,6 +326,15 @@ impl Multi {
         let input = self.input(ViewportId::ROOT);
         let mut out = self.ctx.run_ui(input, &mut app);
         out.textures_delta.clear();
+        {
+            let mut immediate = self.immediate.borrow_mut();
+            immediate
+                .labels
+                .insert(ViewportId::ROOT, labels_of(&out.platform_output));
+            immediate
+                .cursors
+                .insert(ViewportId::ROOT, out.platform_output.cursor_icon);
+        }
         // Events are told once.
         for info in self.info.values_mut() {
             info.events.clear();
@@ -292,10 +354,21 @@ impl Multi {
                 .or_insert_with(|| Self::opened_info(&builder));
             self.builders.entry(viewport).or_insert(builder.clone());
             self.last_builders.insert(viewport, builder);
+            // The system moves a window told to.
+            for command in &commands {
+                if let ViewportCommand::OuterPosition(at) = command {
+                    self.set_outer_position(viewport, *at);
+                }
+            }
             self.commands.entry(viewport).or_default().extend(commands);
         }
         for (viewport, output) in out.viewport_output {
             if viewport != ViewportId::ROOT && !output.commands.is_empty() {
+                for command in &output.commands {
+                    if let ViewportCommand::OuterPosition(at) = command {
+                        self.set_outer_position(viewport, *at);
+                    }
+                }
                 self.commands
                     .entry(viewport)
                     .or_default()

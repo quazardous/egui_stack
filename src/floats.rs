@@ -4,10 +4,18 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use egui::{Context, Id, LayerId, Rect, Ui, ViewportBuilder, ViewportCommand, ViewportId, vec2};
+use egui::{
+    Context, Id, LayerId, Modifiers, Rect, Ui, ViewportBuilder, ViewportCommand, ViewportId,
+    WindowDrag, vec2,
+};
 
 use crate::layout::{Float, FloatHost, Layout, Place, Screen, ScreenGone};
-use crate::{DockArea, DockSpace, Docked, Style, Surface, TabIndex, TabViewer, Tree};
+use crate::{DockArea, DockSpace, Docked, GroupHandles, Style, Surface, TabIndex, TabViewer, Tree};
+
+mod gestures;
+
+pub use gestures::FloatMove;
+pub(crate) use gestures::{WindowMove, move_handle_id};
 
 /// What hosts the native windows of [`FloatHost::Native`] floats: the application, which
 /// creates them, places them and renders them (egui_stack never creates a window or a
@@ -185,6 +193,8 @@ pub(crate) struct Floating {
     pub(crate) session: Option<crate::dock_area::session::DragSession>,
     /// The viewport of each native float drawn, by key.
     pub(crate) viewports: HashMap<String, ViewportId>,
+    /// The float whose window is being moved with [`FloatMove::Dock`].
+    pub(crate) window_move: Option<WindowMove>,
 }
 
 impl Floating {
@@ -268,6 +278,9 @@ pub struct FloatsArea<'a, Tab> {
     host: Option<&'a mut dyn ViewportHost>,
     gone: ScreenGone,
     style: Option<Style>,
+    handles: GroupHandles,
+    modifiers: Modifiers,
+    float_move: FloatMove,
 }
 
 impl<Tab> Docked<Tab> {
@@ -286,6 +299,9 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             host: None,
             gone: ScreenGone::default(),
             style: None,
+            handles: GroupHandles::ALL,
+            modifiers: Modifiers::SHIFT,
+            float_move: FloatMove::Move,
         }
     }
 
@@ -311,6 +327,30 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
         self
     }
 
+    /// Sets the handles of the floats' docks ([`DockArea::group_handles`]), the window's move
+    /// handle ([`GroupHandles::MOVE_WINDOW`]) included; by default [`GroupHandles::ALL`].
+    #[must_use]
+    pub fn group_handles(mut self, handles: GroupHandles) -> Self {
+        self.handles = handles;
+        self
+    }
+
+    /// Sets the modifiers that make a tab's drag carry its group in the floats' docks
+    /// ([`DockArea::group_drag_modifiers`]); by default [`Modifiers::SHIFT`].
+    #[must_use]
+    pub fn group_drag_modifiers(mut self, modifiers: Modifiers) -> Self {
+        self.modifiers = modifiers;
+        self
+    }
+
+    /// Sets what moving a float's window does, by its title bar or its move handle; by
+    /// default [`FloatMove::Move`]: it only moves, and never docks.
+    #[must_use]
+    pub fn float_move(mut self, float_move: FloatMove) -> Self {
+        self.float_move = float_move;
+        self
+    }
+
     /// Draws the floats, back to front, and keeps the model up to date (see [`FloatsArea`]).
     pub fn show(self, ctx: &Context, viewer: &mut impl TabViewer<Tab = Tab>) {
         let Self {
@@ -319,7 +359,15 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             host,
             gone,
             style,
+            handles,
+            modifiers,
+            float_move,
         } = self;
+        let gestures = Gestures {
+            handles,
+            modifiers,
+            float_move,
+        };
         let mut default_host = EguiViewports;
         let host: &mut dyn ViewportHost = match host {
             Some(host) => host,
@@ -347,12 +395,27 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             match kind {
                 FloatHost::Native => {
                     show_native(
-                        ctx, layout, space, host, viewer, &screens, &key, &dock, &style,
+                        ctx, layout, space, host, viewer, &screens, &key, &dock, &style, &gestures,
                     );
                 }
-                _ => show_in_window(ctx, layout, space, viewer, &key, &dock, &style),
+                _ => show_in_window(ctx, layout, space, viewer, &key, &dock, &style, &gestures),
             }
         }
+    }
+}
+
+/// How the floats' docks and windows answer the user's gestures.
+struct Gestures {
+    handles: GroupHandles,
+    modifiers: Modifiers,
+    float_move: FloatMove,
+}
+
+impl Gestures {
+    /// The area drawing a float's dock, with these gestures.
+    fn area<'a, Tab>(&self, area: DockArea<'a, Tab>) -> DockArea<'a, Tab> {
+        area.group_handles(self.handles)
+            .group_drag_modifiers(self.modifiers)
     }
 }
 
@@ -561,6 +624,14 @@ fn float_change(change: crate::bus::Change, key: &str) -> crate::bus::LayoutChan
 fn forget_native<Tab>(space: &mut DockSpace<Tab>, key: &str) {
     space.floating.builders.remove(key);
     space.floating.moving.remove(key);
+    if space
+        .floating
+        .window_move
+        .as_ref()
+        .is_some_and(|moving| moving.key == key)
+    {
+        space.floating.window_move = None;
+    }
     if let Some(viewport) = space.floating.viewports.remove(key) {
         space.floating.viewport_closed(viewport);
     }
@@ -611,7 +682,9 @@ fn dock_title<Tab>(
     }
 }
 
-/// A float over the main window, as an `egui::Window`.
+/// A float over the main window, as an `egui::Window`: moved by its title bar only (never by
+/// the empty part of a tab bar), or by its move handle.
+#[allow(clippy::too_many_arguments)]
 fn show_in_window<Tab>(
     ctx: &Context,
     layout: &mut Layout,
@@ -620,6 +693,7 @@ fn show_in_window<Tab>(
     key: &str,
     dock: &str,
     style: &Option<Style>,
+    gestures: &Gestures,
 ) {
     let Some(place) = layout.float(key).map(|float| float.place.clone()) else {
         return;
@@ -627,21 +701,64 @@ fn show_in_window<Tab>(
     let title = dock_title(space, viewer, dock);
     let mut open = true;
     let id = space.id().with(("egui_stack.float", key));
-    let shown = egui::Window::new(title)
+    let handle = move_handle_id(space.id(), dock);
+    let window = egui::Window::new(title)
         .id(id)
         .default_pos(place.rect.min)
         .default_size(place.rect.size())
         .min_size(vec2(120.0, 80.0))
         .collapsible(false)
         .resizable(true)
-        .open(&mut open)
-        .show(ctx, |ui| {
-            let mut area = DockArea::dock(space, dock);
-            if let Some(style) = style {
-                area = area.style(style.clone());
+        .drag_area(WindowDrag::TitleBar)
+        .open(&mut open);
+    // The move handle dragged in the last pass: the window follows the pointer, moved as egui
+    // moves it by its title bar (a `current_pos` would be undone by the title-bar-only drag).
+    if ctx.read_response(handle).is_some_and(|r| r.dragged()) {
+        let delta = ctx.input(|i| i.pointer.delta());
+        if delta != egui::Vec2::ZERO
+            && let Some(mut state) = egui::AreaState::load(ctx, id)
+            && let Some(pivot) = state.pivot_pos.as_mut()
+        {
+            *pivot += delta;
+            ctx.memory_mut(|mem| {
+                mem.areas_mut()
+                    .set_state(LayerId::new(egui::Order::Middle, id), state);
+            });
+        }
+    }
+    let shown = window.show(ctx, |ui| {
+        let mut area = gestures.area(DockArea::dock(space, dock));
+        if let Some(style) = style {
+            area = area.style(style.clone());
+        }
+        area.show_inside(ui, viewer);
+    });
+    if gestures.float_move == FloatMove::Dock {
+        // egui's title bar of a window: its drag moves the window.
+        let title_bar = ctx.read_response(id.with("__title_click"));
+        let handle = ctx.read_response(handle);
+        let moving = [&title_bar, &handle]
+            .iter()
+            .any(|r| r.as_ref().is_some_and(|r| r.dragged()));
+        let released = [&title_bar, &handle]
+            .iter()
+            .any(|r| r.as_ref().is_some_and(|r| r.drag_stopped()));
+        let ours = space
+            .floating
+            .window_move
+            .as_ref()
+            .is_some_and(|moving| moving.key == key);
+        if moving || (released && ours) {
+            let pointer = ctx.input(|i| i.pointer.latest_pos());
+            gestures::track(
+                ctx, layout, space, viewer, style, key, dock, pointer, released,
+            );
+            if layout.float(key).is_none() {
+                // Docked.
+                return;
             }
-            area.show_inside(ui, viewer);
-        });
+        }
+    }
     if let Some(shown) = shown {
         let rect = shown.response.rect;
         space.floating.layers.push(shown.response.layer_id);
@@ -673,11 +790,17 @@ fn show_native<Tab>(
     key: &str,
     dock: &str,
     style: &Option<Style>,
+    gestures: &Gestures,
 ) {
     let Some(float) = layout.float(key).cloned() else {
         return;
     };
     let id = host.viewport_id(key);
+    // Docking while moving needs to know where the window is; else the handle only moves it.
+    let docks_on_move =
+        gestures.float_move == FloatMove::Dock && host.outer_rect(ctx, id).is_some();
+    let handle = move_handle_id(space.id(), dock);
+    let mut moved_by_handle = None;
     space.floating.viewports.insert(key.to_owned(), id);
     let builder = match space.floating.builders.get(key) {
         Some(builder) => builder.clone(),
@@ -700,14 +823,24 @@ fn show_native<Tab>(
         });
         seen = Some((ui.ctx().content_rect().size(), maximized, fullscreen));
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
-            let mut area = DockArea::dock(space, dock)
-                .id(area_id)
-                .in_native_float(float.z);
+            let mut area = gestures.area(
+                DockArea::dock(space, dock)
+                    .id(area_id)
+                    .in_native_float(float.z),
+            );
             if let Some(style) = style {
                 area = area.style(style.clone());
             }
             area.show_inside(ui, viewer);
         });
+        if let Some(response) = ui.ctx().read_response(handle) {
+            if docks_on_move {
+                moved_by_handle = handle_move(ui.ctx(), space, key, &response);
+            } else if response.drag_started() {
+                // The system moves the window, as by its title bar.
+                ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
+            }
+        }
         if close {
             let policy = ask_close(space, viewer, key, dock);
             if policy == ClosePolicy::Keep {
@@ -720,6 +853,21 @@ fn show_native<Tab>(
     if let Some(policy) = closing {
         close_with(layout, space, viewer, key, policy);
         return;
+    }
+    if let Some((desktop, released)) = moved_by_handle {
+        // The pointer in the main window's points, where the system tells where it is.
+        let ppp = ctx.pixels_per_point();
+        let pointer = desktop.and_then(|desktop| {
+            let origin = ctx.input(|i| i.viewport().inner_rect)?.min;
+            Some((desktop.to_vec2() / ppp - origin.to_vec2()).to_pos2())
+        });
+        gestures::track(
+            ctx, layout, space, viewer, style, key, dock, pointer, released,
+        );
+        if layout.float(key).is_none() {
+            // Docked.
+            return;
+        }
     }
     let mut place = float.place.clone();
     if let Some(physical) = host.outer_rect(ctx, id)
@@ -737,6 +885,54 @@ fn show_native<Tab>(
         place.fullscreen = fullscreen.unwrap_or(place.fullscreen);
     }
     track_place(layout, space, key, place);
+}
+
+/// The move handle of the native float `key` moving its window itself ([`FloatMove::Dock`],
+/// window positions known): the window follows the pointer. Returns, while the handle is
+/// dragged or on its release, the pointer on the desktop (physical pixels) and whether it was
+/// released.
+fn handle_move<Tab>(
+    ctx: &Context,
+    space: &mut DockSpace<Tab>,
+    key: &str,
+    response: &egui::Response,
+) -> Option<(Option<egui::Pos2>, bool)> {
+    let released = response.drag_stopped();
+    if !response.dragged() && !released {
+        return None;
+    }
+    let ppp = ctx.pixels_per_point();
+    let (inner, outer, pointer) = ctx.input(|i| {
+        let info = i.viewport();
+        (info.inner_rect, info.outer_rect, i.pointer.latest_pos())
+    });
+    let desktop = inner
+        .zip(pointer)
+        .map(|(inner, pointer)| ((inner.min.to_vec2() + pointer.to_vec2()) * ppp).to_pos2());
+    let moving = space
+        .floating
+        .window_move
+        .get_or_insert_with(|| WindowMove::new(key));
+    if moving.key != key {
+        *moving = WindowMove::new(key);
+    }
+    if moving.grab.is_none()
+        && let (Some(desktop), Some(outer)) = (desktop, outer)
+    {
+        moving.grab = Some(desktop - (outer.min.to_vec2() * ppp).to_pos2());
+    }
+    // Only when the pointer moved: the system tells the pointer again, in the window's new
+    // points, once the window has moved under it.
+    let pointer_moved = ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO);
+    if let (Some(desktop), Some(grab)) = (desktop, moving.grab)
+        && !released
+        && pointer_moved
+    {
+        let corner = ((desktop - grab).to_vec2() / ppp).to_pos2();
+        ctx.send_viewport_cmd(ViewportCommand::OuterPosition(corner));
+    }
+    moving.desktop = desktop.or(moving.desktop);
+    Some((moving.desktop, released))
 }
 
 /// The builder a native float's window opens with: the host's, with the place's position (on

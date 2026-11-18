@@ -8,6 +8,10 @@
 //! with the same drop zones and Escape to cancel. The status bar lists the windows' events and
 //! the drag in progress.
 //!
+//! The status bar also turns the floats' move handle on or off, and docking while a window
+//! moves (`FloatMove::Dock`: move a window by its handle, or by its title bar over the main
+//! window, onto a dock and release it there).
+//!
 //! Floats over the main window instead: start with `--in-window`.
 
 use eframe::NativeOptions;
@@ -17,7 +21,7 @@ use egui_stack::layout::{
 };
 use egui_stack::{
     ClosePolicy, DockArea, DockRules, DockSpace, Docked, EguiViewports, FloatClose, FloatEvent,
-    TabViewer,
+    FloatMove, GroupHandles, TabViewer,
 };
 
 fn main() -> eframe::Result<()> {
@@ -75,7 +79,11 @@ impl App {
         ));
         Self {
             docked: Docked::new(layout, space),
-            tabs: Tabs { to_right: false },
+            tabs: Tabs {
+                to_right: false,
+                move_handle: true,
+                dock_on_move: false,
+            },
             log: Vec::new(),
         }
     }
@@ -84,6 +92,10 @@ impl App {
 struct Tabs {
     /// Closed windows send their tabs to the right dock.
     to_right: bool,
+    /// The floats have a move handle.
+    move_handle: bool,
+    /// Moving a float's window over a dock docks it.
+    dock_on_move: bool,
 }
 
 impl TabViewer for Tabs {
@@ -120,10 +132,14 @@ impl ZoneViewer for Viewer<'_> {
     fn ui(&mut self, ui: &mut Ui, zone: &ZoneName) {
         match zone.0.as_str() {
             "status" => {
-                ui.checkbox(
-                    &mut self.tabs.to_right,
-                    "A closed window sends its tabs to the right dock",
-                );
+                ui.horizontal(|ui| {
+                    ui.checkbox(
+                        &mut self.tabs.to_right,
+                        "A closed window sends its tabs to the right dock",
+                    );
+                    ui.checkbox(&mut self.tabs.move_handle, "Move handle");
+                    ui.checkbox(&mut self.tabs.dock_on_move, "Moving a window docks it");
+                });
                 if let Some(drag) = self.space.dragging() {
                     let over = match drag.over {
                         Some(_) => "over another window",
@@ -152,9 +168,17 @@ impl eframe::App for App {
         );
         self.docked.space.bind(&laid);
         // The floats, after the docks: native windows through egui's immediate viewports.
+        let handles = GroupHandles::ALL.with(GroupHandles::MOVE_WINDOW, self.tabs.move_handle);
+        let float_move = if self.tabs.dock_on_move {
+            FloatMove::Dock
+        } else {
+            FloatMove::Move
+        };
         self.docked
             .floats()
             .host(&mut EguiViewports)
+            .group_handles(handles)
+            .float_move(float_move)
             .show(ui.ctx(), &mut self.tabs);
         for event in self.docked.space.take_float_events() {
             self.log.push(match event {

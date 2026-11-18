@@ -3,9 +3,10 @@ use egui::{CornerRadius, Margin, Stroke, Vec2, ecolor::*};
 /// Left or right alignment for tab add button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[allow(missing_docs)]
 pub enum TabAddAlign {
+    /// Right after the last tab, the default; at the end of the bar when the tabs fill it.
     Left,
+    /// At the end of the tab bar, past its empty part (the former default).
     Right,
 }
 
@@ -37,7 +38,7 @@ pub enum TabAddAlign {
 ///
 /// // Modify a few fields.
 /// style.overlay.overlay_type = OverlayType::HighlightedAreas;
-/// style.buttons.add_tab_align = TabAddAlign::Left;
+/// style.buttons.add_tab_align = TabAddAlign::Right;
 ///
 /// // Use the style with the `DockArea`.
 /// DockArea::new(&mut dock_state)
@@ -85,7 +86,8 @@ pub struct ButtonsStyle {
     /// Color of the background close tab button.
     pub close_tab_bg_fill: Color32,
 
-    /// Left or right aligning of the add tab button.
+    /// Where the add tab button sits: right after the last tab ([`TabAddAlign::Left`], the
+    /// default) or at the end of the tab bar ([`TabAddAlign::Right`]).
     pub add_tab_align: TabAddAlign,
 
     /// Color of the add tab button.
@@ -532,7 +534,7 @@ impl Default for ButtonsStyle {
             close_tab_active_color: Color32::WHITE,
             close_tab_bg_fill: Color32::GRAY,
 
-            add_tab_align: TabAddAlign::Right,
+            add_tab_align: TabAddAlign::Left,
             add_tab_color: Color32::WHITE,
             add_tab_active_color: Color32::WHITE,
             add_tab_bg_fill: Color32::GRAY,

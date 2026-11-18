@@ -88,6 +88,8 @@ struct SpaceDock<'a, Tab> {
     bus: Option<&'a crate::bus::SpaceBus<Tab>>,
     #[cfg(not(feature = "bus"))]
     _tab: std::marker::PhantomData<fn(&Tab)>,
+    /// The space's id, which keys its floats' move handles.
+    space_id: Id,
     /// The dock shown, as an index in `docks`; `None` if the space has no dock of that name.
     dock: Option<usize>,
     /// Whether this area also shows the floating windows.
@@ -282,6 +284,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             bus: parts.bus,
             #[cfg(not(feature = "bus"))]
             _tab: std::marker::PhantomData,
+            space_id: parts.id,
             dock: parts.dock,
             shows_windows: parts.shows_windows,
             native: false,
