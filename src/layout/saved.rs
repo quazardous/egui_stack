@@ -5,11 +5,19 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Constraints, Content, Dir, Layout, Zone, ZoneKind, ZoneName, ZoneState};
+use super::{Constraints, Content, Dir, Float, Layout, Place, Zone, ZoneKind, ZoneName, ZoneState};
 
 /// The version a layout is saved with. A saved layout of a later version
 /// does not load ([`VersionError`]).
-pub const LAYOUT_VERSION: u32 = 1;
+///
+/// - 1: the zone tree and the flyout widths (0.22 to 0.27).
+/// - 2: the floats and the places of the closed ones. A layout of version 1
+///   loads with none; loaded in a [`Docked`](crate::Docked), the floating
+///   windows its dock space kept from then become native floats.
+pub const LAYOUT_VERSION: u32 = 2;
+
+/// The first version with floats.
+pub(crate) const FLOATS_VERSION: u32 = 2;
 
 /// A saved layout's version is newer than this egui_stack reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
@@ -20,11 +28,15 @@ pub struct VersionError {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(super) struct SavedLayout {
-    version: u32,
+pub(crate) struct SavedLayout {
+    pub(crate) version: u32,
     root: SavedZone,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     flyouts: BTreeMap<String, f32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    floats: Vec<Float>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    closed: BTreeMap<String, Place>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -49,6 +61,8 @@ impl From<Layout> for SavedLayout {
             version: LAYOUT_VERSION,
             root: layout.root.into(),
             flyouts: layout.flyouts,
+            floats: layout.floats,
+            closed: layout.closed,
         }
     }
 }
@@ -80,6 +94,8 @@ impl TryFrom<SavedLayout> for Layout {
         }
         let mut layout = Self::new(saved.root.into());
         layout.flyouts = saved.flyouts;
+        layout.floats = saved.floats;
+        layout.closed = saved.closed;
         Ok(layout)
     }
 }

@@ -384,7 +384,7 @@ mod serde {
         layout.zone_mut("bottom").unwrap().state.folded = true;
         layout.zone_mut("right").unwrap().state.over = true;
         let json = serde_json::to_string(&layout).unwrap();
-        assert!(json.contains("\"version\":1"), "{json}");
+        assert!(json.contains("\"version\":2"), "{json}");
         assert!(!json.contains("priority"), "{json}");
         let mut loaded: Layout = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.names(), layout.names());
@@ -400,7 +400,7 @@ mod serde {
     fn a_later_version_does_not_load() {
         let json = serde_json::to_string(&Layout::single("main"))
             .unwrap()
-            .replace("\"version\":1", "\"version\":99");
+            .replace("\"version\":2", "\"version\":99");
         let error = serde_json::from_str::<Layout>(&json).unwrap_err();
         assert!(error.to_string().contains("99"), "{error}");
     }

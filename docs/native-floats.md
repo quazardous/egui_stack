@@ -1,6 +1,6 @@
 # Native floating docks (design note)
 
-Status: proposed. Tracks [#105](https://github.com/quazardous/egui_stack/issues/105).
+Status: step 2 built (the model); steps 3 to 5 to come. Tracks [#105](https://github.com/quazardous/egui_stack/issues/105).
 
 Docks in native OS windows (egui viewports) that stay part of one
 logical workspace: the same layout tree, the same panel ids, groups,
@@ -147,6 +147,45 @@ the native floats.
    closed during the drag, hidden positions, scales 1 and 2).
 5. An example with an application-owned wgpu surface, docs, and a
    Windows CI job.
+
+### As built (step 2)
+
+- `layout::Float { key, content, host, place, z, minimized }` and
+  `Place { screen, rect, scale, maximized, fullscreen }` as sketched,
+  `#[non_exhaustive]`, built with `Float::dock(key, dock, host, place)`,
+  `Place::new(rect)` (no screen) or `Place::on(&screen, rect)`.
+  `FloatHost::InWindow` is the default host. Nothing draws a float yet.
+- `Layout` gains `floats` and `closed`: `open_float` (in front, taking
+  the closed place of its key if any), `close_float` (keeps the place),
+  `closed_place`, `float`, `float_mut`, `float_of_dock`, `raise_float`,
+  `floats_back_to_front`, `repair_floats(&screens, gone)`.
+- `Screen { name, rect, scale }`: `rect` in desktop physical pixels.
+  `Place::physical(&screen)` and `Place::from_physical(rect, &screens)`
+  convert; the offset from the screen's corner is kept in physical
+  pixels at the saved scale, the size in points at the screen's scale.
+- `Place::repair(&screens, ScreenGone) -> Repaired::{Unchanged,
+  Moved(place), DockBack}`, pure: re-projected to its screen's current
+  scale, shrunk to fit (then moved inside), moved as little as needed for
+  `Place::TITLE_BAR` points of title bar, `Place::GRAB` wide, to lie on
+  some screen (a neighbouring screen counts). A place with no screen is
+  read on the first screen, at its scale, and never docks back. With no
+  screens known, nothing changes.
+- `DockSpace::record_origin(path, id_of)` keeps a `TabOrigin { tab,
+  dock, before, after }` (tabs named by `TabViewer::id`); `origin`,
+  `take_origin`, `origins`. Saved with the space.
+- The layout's saved version is 2 (`LAYOUT_VERSION`). A version 1 layout
+  loads with no floats; a `Docked` of version 1 runs
+  `Docked::windows_to_floats`, which turns each `Surface::Window` into a
+  dock `window-N` and a `Native` float keyed alike, at the window's last
+  rect with no screen, minimized kept. `DockSpace::windows_to_floats`
+  does the space's half for a space saved apart.
+- `reconcile` keeps the loaded floats and closed places (also when the
+  root changes) and adds the code's floats whose key the loaded layout
+  does not know. `Docked::repair` drops floats whose dock is gone
+  (`DockedRepair::floats_removed`) and gives no hidden zone to a dock a
+  float shows.
+- Left for step 3: `ClosePolicy` (the return to origin uses
+  `TabOrigin`), drawing, `ViewportHost`, events and the bus points.
 
 ## Risks
 

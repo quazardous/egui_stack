@@ -74,6 +74,17 @@ impl WindowState {
         self.screen_rect.unwrap_or(Rect::NOTHING)
     }
 
+    /// The rect it was last shown at, if it was.
+    pub(crate) fn shown_rect(&self) -> Option<Rect> {
+        self.screen_rect
+            .filter(|rect| rect.is_finite() && rect.is_positive())
+    }
+
+    /// The position it is to be shown at next, if one was set.
+    pub(crate) fn position(&self) -> Option<Pos2> {
+        self.next_position
+    }
+
     /// Returns whether this window was being dragged when last shown.
     pub fn dragged(&self) -> bool {
         self.dragged

@@ -32,8 +32,20 @@ use crate::layout::{Content, Layout, Zone, ZoneKind, ZoneName};
 /// assert_eq!(repair.added, [ZoneName::from("log")]);
 /// assert!(docked.layout.zone("log").unwrap().state.hidden);
 /// ```
+///
+/// # Serialization
+///
+/// Loading a pair saved before floats (layout version 1, up to 0.27) turns the space's floating
+/// windows into native floats ([`Docked::windows_to_floats`]).
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(
+        try_from = "SavedDocked<Tab>",
+        bound(deserialize = "Tab: serde::Deserialize<'de>")
+    )
+)]
 pub struct Docked<Tab> {
     /// Where the docks go.
     pub layout: Layout,
@@ -47,14 +59,16 @@ pub struct Docked<Tab> {
 pub struct DockedRepair {
     /// The zones dropped: they showed a dock the space has not.
     pub removed: Vec<ZoneName>,
-    /// The hidden zones added, one per dock no zone showed, named after it.
+    /// The hidden zones added, one per dock no zone or float showed, named after it.
     pub added: Vec<ZoneName>,
+    /// The keys of the floats dropped: they showed a dock the space has not.
+    pub floats_removed: Vec<String>,
 }
 
 impl DockedRepair {
     /// Whether the layout and the space already agreed.
     pub fn is_empty(&self) -> bool {
-        self.removed.is_empty() && self.added.is_empty()
+        self.removed.is_empty() && self.added.is_empty() && self.floats_removed.is_empty()
     }
 }
 
@@ -69,10 +83,18 @@ impl<Tab> Docked<Tab> {
     /// zone shows gets a hidden leaf zone named after it, last under the root, so the
     /// application can show it again ([`ZoneState::hidden`](crate::layout::ZoneState::hidden)).
     /// A dock whose name a zone already has, or a root that is a leaf, gets no zone; the dock
-    /// stays in the space.
+    /// stays in the space. A float showing a dock the space has not is dropped, and a dock a
+    /// float shows needs no zone.
     pub fn repair(&mut self) -> DockedRepair {
         let mut repair = DockedRepair::default();
         let space = &self.space;
+        self.layout.floats.retain(|float| match float.dock_name() {
+            Some(dock) if !space.has_dock(dock) => {
+                repair.floats_removed.push(float.key.clone());
+                false
+            }
+            _ => true,
+        });
         drop_unknown_docks(&mut self.layout.root, space, &mut repair.removed);
         if let ZoneKind::Leaf { content } = &mut self.layout.root.kind
             && let Content::Dock(name) = content
@@ -82,6 +104,42 @@ impl<Tab> Docked<Tab> {
         }
         repair.added = add_unplaced_docks(&mut self.layout, space, true);
         repair
+    }
+}
+
+impl<Tab> Docked<Tab> {
+    /// Turns the space's floating windows ([`Surface::Window`](crate::Surface::Window)) into docks
+    /// of their own shown by native floats ([`DockSpace::windows_to_floats`]), opened in the
+    /// layout in front of its floats. Returns their keys.
+    pub fn windows_to_floats(&mut self) -> Vec<String> {
+        self.space
+            .windows_to_floats()
+            .into_iter()
+            .map(|float| self.layout.open_float(float).key.clone())
+            .collect()
+    }
+}
+
+/// A pair as saved: the layout's version decides whether windows migrate.
+#[cfg(feature = "serde")]
+#[derive(serde::Deserialize)]
+#[serde(bound(deserialize = "Tab: serde::Deserialize<'de>"))]
+struct SavedDocked<Tab> {
+    layout: crate::layout::saved::SavedLayout,
+    space: DockSpace<Tab>,
+}
+
+#[cfg(feature = "serde")]
+impl<Tab> TryFrom<SavedDocked<Tab>> for Docked<Tab> {
+    type Error = crate::layout::VersionError;
+
+    fn try_from(saved: SavedDocked<Tab>) -> Result<Self, Self::Error> {
+        let version = saved.layout.version;
+        let mut docked = Self::new(Layout::try_from(saved.layout)?, saved.space);
+        if version < crate::layout::saved::FLOATS_VERSION {
+            docked.windows_to_floats();
+        }
+        Ok(docked)
     }
 }
 
@@ -158,7 +216,13 @@ fn add_unplaced_docks<Tab>(
     space: &DockSpace<Tab>,
     hidden: bool,
 ) -> Vec<ZoneName> {
-    let shown = shown_docks(&layout.root);
+    let mut shown = shown_docks(&layout.root);
+    shown.extend(
+        layout
+            .floats
+            .iter()
+            .filter_map(|float| float.dock_name().map(str::to_owned)),
+    );
     let names = layout.names();
     let mut added = Vec::new();
     let ZoneKind::Split { children, .. } = &mut layout.root.kind else {

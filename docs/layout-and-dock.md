@@ -591,6 +591,21 @@ Where the `layout` module differs from the sketch above:
   dock) and names the zone in `DockSpace::take_unfolds`, for the application to unfold with
   `Layout::set_folded`. A cancelled drag, a release elsewhere or a veto change nothing.
 
+## As built (float model, 0.28)
+
+Native floating docks have their own note, [native-floats.md](native-floats.md); its step 2 puts
+the floats' model in the layout, ahead of their drawing:
+
+- `Layout` holds `floats: Vec<Float>` and `closed: BTreeMap<String, Place>` beside `root` and
+  `flyouts`. A `Float` has a key, a `Content`, a host (`FloatHost::InWindow` or `Native`), a
+  `Place` (screen name, rect in points local to that screen, the scale it was taken at,
+  maximized, full screen), a z and a minimized flag. Groups and joints (above) are not built.
+- The saved layout is version 2. The `WindowState` migration of the table above is done, with a
+  difference: a window becomes a dock of its own (`window-N`) and a `Native` float keyed alike,
+  when a `Docked` saved before floats loads (`Docked::windows_to_floats`). A version 2 pair keeps
+  any legacy `Surface::Window`, still drawn as an `egui::Window` until floats are drawn.
+- `reconcile` keeps the loaded floats; `Docked::repair` drops the floats whose dock is gone.
+
 ## The minimal contract
 
 What a consumer such as egui-pop should depend on, and nothing else:

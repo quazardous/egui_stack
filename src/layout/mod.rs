@@ -44,15 +44,17 @@
 //! ```
 
 mod area;
+mod float;
 mod fold;
 #[cfg(feature = "serde")]
-mod saved;
+pub(crate) mod saved;
 mod solve;
 
 pub use area::{
     DefaultLayoutPainter, LayoutArea, LayoutPainter, LayoutStyle, SashPaint, SnapGuidePaint,
     SnapKind, ZoneViewer,
 };
+pub use float::{Float, FloatHost, Place, Repaired, Screen, ScreenGone};
 pub use fold::{
     Dismiss, Flyout, FlyoutPaint, Inside, StripOrientation, StripPaint, StripTitle, VerticalReading,
 };
@@ -116,6 +118,12 @@ pub struct Layout {
     /// Each flyout's breadth, by its key ([`Flyout::key`]), once the user
     /// resized it.
     pub flyouts: BTreeMap<String, f32>,
+    /// The floating roots, by their order of opening; [`Float::z`] orders
+    /// them front to back. Saved with their place.
+    pub floats: Vec<Float>,
+    /// The places of the floats closed, by key, so a float opened again
+    /// with [`open_float`](Self::open_float) comes back where it was.
+    pub closed: BTreeMap<String, Place>,
 }
 
 /// One zone of the tree: a split of zones, or a leaf with content.
@@ -394,7 +402,114 @@ impl Layout {
         Self {
             root,
             flyouts: BTreeMap::new(),
+            floats: Vec::new(),
+            closed: BTreeMap::new(),
         }
+    }
+
+    /// The float keyed `key`.
+    pub fn float(&self, key: &str) -> Option<&Float> {
+        self.floats.iter().find(|float| float.key == key)
+    }
+
+    /// The float keyed `key`, mutably.
+    pub fn float_mut(&mut self, key: &str) -> Option<&mut Float> {
+        self.floats.iter_mut().find(|float| float.key == key)
+    }
+
+    /// The float showing the dock named `dock`.
+    pub fn float_of_dock(&self, dock: &str) -> Option<&Float> {
+        self.floats
+            .iter()
+            .find(|float| float.dock_name() == Some(dock))
+    }
+
+    /// Opens `float` in front of the others, replacing a float of the same
+    /// key. When a float of that key was closed ([`close_float`](Self::close_float)),
+    /// it comes back at that place, not `float`'s.
+    pub fn open_float(&mut self, mut float: Float) -> &mut Float {
+        if let Some(place) = self.closed.remove(&float.key) {
+            float.place = place;
+        }
+        self.floats.retain(|open| open.key != float.key);
+        float.z = self.front_z();
+        self.floats.push(float);
+        let last = self.floats.len() - 1;
+        &mut self.floats[last]
+    }
+
+    /// Closes the float keyed `key` and returns it; its place is kept in
+    /// [`closed`](Self::closed) for when it opens again.
+    pub fn close_float(&mut self, key: &str) -> Option<Float> {
+        let index = self.floats.iter().position(|float| float.key == key)?;
+        let float = self.floats.remove(index);
+        self.closed.insert(float.key.clone(), float.place.clone());
+        Some(float)
+    }
+
+    /// The place the float keyed `key` had when it was closed.
+    pub fn closed_place(&self, key: &str) -> Option<&Place> {
+        self.closed.get(key)
+    }
+
+    /// Brings the float keyed `key` in front of the others; says whether it
+    /// exists.
+    pub fn raise_float(&mut self, key: &str) -> bool {
+        let behind = self
+            .floats
+            .iter()
+            .filter(|float| float.key != key)
+            .map(|float| float.z)
+            .max();
+        let Some(float) = self.float_mut(key) else {
+            return false;
+        };
+        if let Some(behind) = behind
+            && float.z <= behind
+        {
+            float.z = behind.saturating_add(1);
+        }
+        true
+    }
+
+    /// The floats, back to front.
+    pub fn floats_back_to_front(&self) -> Vec<&Float> {
+        let mut floats: Vec<&Float> = self.floats.iter().collect();
+        floats.sort_by_key(|float| float.z);
+        floats
+    }
+
+    /// Brings every float back onto `screens` ([`Place::repair`]): the
+    /// floats moved get their new place; those whose screen is gone, with
+    /// [`ScreenGone::DockBack`], are closed (their place kept) and returned
+    /// for the application to put their tabs back.
+    pub fn repair_floats(&mut self, screens: &[Screen], gone: ScreenGone) -> FloatsRepair {
+        let mut repair = FloatsRepair::default();
+        let mut back = Vec::new();
+        for float in &mut self.floats {
+            match float.place.repair(screens, gone) {
+                Repaired::Unchanged => (),
+                Repaired::Moved(place) => {
+                    float.place = place;
+                    repair.moved.push(float.key.clone());
+                }
+                Repaired::DockBack => back.push(float.key.clone()),
+            }
+        }
+        repair.docked_back = back
+            .iter()
+            .filter_map(|key| self.close_float(key))
+            .collect();
+        repair
+    }
+
+    /// The z a float takes to be in front of every other.
+    fn front_z(&self) -> u32 {
+        self.floats
+            .iter()
+            .map(|float| float.z.saturating_add(1))
+            .max()
+            .unwrap_or(0)
     }
 
     /// Folds the zone named `name` to its strip, or unfolds it; either way
@@ -460,12 +575,26 @@ impl Layout {
     /// are kept otherwise: a zone the code moved elsewhere stays where it
     /// was saved. A zone that is a leaf in one
     /// and a split in the other takes `code`'s zone, keeping its loaded
-    /// state. When the roots' names differ, the loaded layout is replaced
-    /// by `code`.
+    /// state. When the roots' names differ, the loaded tree and flyout
+    /// widths are replaced by `code`'s.
+    ///
+    /// Floats are the user's: the loaded ones are kept, those the code does
+    /// not know included (a window the user detached), with the places of
+    /// the closed ones. A float of `code` whose key the loaded layout knows
+    /// neither open nor closed is added, so a layout saved before floats
+    /// existed gets the code's. Whether a float's dock exists is
+    /// [`Docked::repair`](crate::Docked::repair)'s concern.
     pub fn reconcile(&mut self, code: &Self) -> Repair {
+        for float in &code.floats {
+            if self.float(&float.key).is_none() && !self.closed.contains_key(&float.key) {
+                self.floats.push(float.clone());
+            }
+        }
         let before = self.names();
         if self.root.name != code.root.name {
-            *self = code.clone();
+            // The floats are the user's, not the tree's.
+            self.root = code.root.clone();
+            self.flyouts = code.flyouts.clone();
         } else {
             let in_code = code.names();
             drop_missing(&mut self.root, &in_code);
@@ -488,6 +617,18 @@ impl Layout {
             removed: before.into_iter().filter(|n| !after.contains(n)).collect(),
         }
     }
+}
+
+/// What [`Layout::repair_floats`] changed.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
+pub struct FloatsRepair {
+    /// The keys of the floats given a new place.
+    pub moved: Vec<String>,
+    /// The floats closed because their screen is gone
+    /// ([`ScreenGone::DockBack`]); their places are kept in
+    /// [`Layout::closed`].
+    pub docked_back: Vec<Float>,
 }
 
 /// What [`Layout::reconcile`] changed in the loaded tree.
