@@ -1,5 +1,13 @@
 # egui_stack changelog
 
+## egui_stack 0.28.5 - 2026-11-18
+
+### Fixed
+
+- The demo's first page, One dock, draws its floating windows with `FloatsArea`, as the Dock space page does: a tab dragged out of its dock opens a float with the window's move handle, over the window or natively, where it opened a legacy `egui::Window` before. The toolbar's New window is now New float, on both pages, and the Floats choice (in the window or native) is offered on both, natively only outside the browser. `DockState::add_window`'s documentation points to floats.
+- A tab or group drag whose release the window never sees ends as a cancel, as on Escape: the layout stays as it was and the ghost goes, in one window or across the viewports of a `DockSpace`. On Wayland, a screenshot taken during a drag grabs the pointer and the button is let go while the compositor holds it; the drag stayed live, its ghost following the pointer. It is now cancelled when the window loses the focus, or when the button is pressed again while egui still believes it held; the drag stays stopped until the button is let go.
+- A tab held by the pointer but not in the air (not yet past the drag activation distance, or dragged back onto its own slot) keeps its look at rest in its tab bar, joined to the bar with square bottom corners. It was painted with the dragged look, an outlined shape rounded on all four corners standing apart from the bar.
+
 ## egui_stack 0.28.4 - 2026-11-18
 
 ### Added
