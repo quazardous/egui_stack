@@ -4,7 +4,7 @@ use super::{
     DraggedNode, DraggedTab,
     drag_and_drop::{DragData, DragDropState, HoverData},
 };
-use crate::{Style, SurfaceIndex};
+use crate::{Style, SurfaceIndex, TabPath};
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct State {
@@ -24,6 +24,9 @@ pub(super) struct State {
     /// Whether this area's viewport shows, as a target, the drag of a space begun in another
     /// viewport: its pointer and drag start are the session's.
     pub remote: bool,
+    /// The tab whose drag was under way at the last pass: its ghost follows the pointer, so its
+    /// title is left out of its bar.
+    pub tab_in_air: Option<TabPath>,
 }
 
 impl State {
@@ -39,6 +42,7 @@ impl State {
             drag_carries_group: None,
             pass: None,
             remote: false,
+            tab_in_air: None,
         })
     }
 

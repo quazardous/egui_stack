@@ -1,4 +1,4 @@
-use egui::{Id, Ui, WidgetText};
+use egui::{Id, Rect, Ui, Vec2, WidgetText};
 
 use crate::floats::{ClosePolicy, FloatClose};
 use crate::{NodePath, TabDestination, TabPath, TabStyle};
@@ -142,6 +142,25 @@ pub trait TabViewer {
     /// By default, both scroll bars are shown.
     fn scroll_bars(&self, _tab: &Self::Tab) -> [bool; 2] {
         [true, true]
+    }
+
+    /// The size of the ghost under the pointer while `tab` is dragged, or while its group is
+    /// dragged with `tab` as its active tab: its tab bar on top, its body below. `default` is
+    /// the size egui_stack picks, its leaf's size kept within limits (160 × 80 to 320 × 200
+    /// points); whatever is returned is kept within the same limits.
+    fn ghost_size(&mut self, _tab: &Self::Tab, default: Vec2) -> Vec2 {
+        default
+    }
+
+    /// Paints the body of the ghost under the pointer while `tab` is dragged, or while its
+    /// group is dragged with `tab` as its active tab: a live preview of its content, for
+    /// instance. `ui` covers `rect`, the ghost's body below its tab bar, on the ghost's layer,
+    /// clipped to it and as translucent as the rest of the ghost; the frame, the shadow and
+    /// the tab bar around it are egui_stack's ([`DockPainter`](crate::DockPainter)). Returns
+    /// whether it painted the body: by default it paints nothing and returns `false`, and the
+    /// painter shows its plain hint of the body instead.
+    fn ghost_body(&mut self, _ui: &mut Ui, _tab: &Self::Tab, _rect: Rect) -> bool {
+        false
     }
 }
 

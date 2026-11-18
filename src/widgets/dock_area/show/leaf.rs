@@ -1,8 +1,8 @@
 use egui::{
     Align, Button, Color32, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId, Layout,
     NumExt, Order, Popup, PopupCloseBehavior, Pos2, Rect, Response, ScrollArea, Sense, Shape,
-    Stroke, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role,
-    emath::TSTransform, lerp, pos2, vec2,
+    Stroke, TextStyle, Ui, UiBuilder, Vec2, WidgetInfo, WidgetText, accesskit::Role, lerp, pos2,
+    vec2,
 };
 
 use crate::NodePath;
@@ -378,14 +378,9 @@ impl<Tab> DockArea<'_, Tab> {
 
             // Add button at the ends of the tab bar.
             if self.show_add_buttons {
-                // Its slot, reserved at the end of the bar: right of the grip, left of the
-                // close-all button.
-                let slot = clip_rect.right()
-                    + if grip {
-                        Style::TAB_GROUP_GRIP_SIZE
-                    } else {
-                        0.0
-                    };
+                // Its slot, reserved at the end of the tabs' room, left of the grip: when the
+                // button follows the tabs, the grip and the close-all button stay side by side.
+                let slot = clip_rect.right();
                 let left = match style.buttons.add_tab_align {
                     // Right after the last tab, or in its slot once the tabs fill the bar.
                     TabAddAlign::Left => {
@@ -437,12 +432,19 @@ impl<Tab> DockArea<'_, Tab> {
                 self.tab_collapse(ui, path, tabbar_outer_rect, fade_style, collapsed, bar)
             }
 
-            // The grip, right of the tabs' room: always there, however many tabs the bar holds.
+            // The grip, right of the tabs' room and the add button's slot: always there,
+            // however many tabs the bar holds.
             if grip {
+                let left = clip_rect.right()
+                    + if self.show_add_buttons {
+                        Style::TAB_ADD_BUTTON_SIZE
+                    } else {
+                        0.0
+                    };
                 let grip_rect = Rect::from_min_max(
-                    pos2(clip_rect.right(), tabbar_outer_rect.top()),
+                    pos2(left, tabbar_outer_rect.top()),
                     pos2(
-                        clip_rect.right() + Style::TAB_GROUP_GRIP_SIZE,
+                        left + Style::TAB_GROUP_GRIP_SIZE,
                         tabbar_outer_rect.bottom(),
                     ),
                 );
@@ -534,9 +536,15 @@ impl<Tab> DockArea<'_, Tab> {
                 .with(PartState::LEAF_FOCUSED, Some(path) == focused);
 
             let (response, title_id) = if is_being_dragged {
+                // Once the drag is under way, the tab's ghost follows the pointer
+                // (`paint_ghost`): the title stays, for its response, but paints nothing.
+                let in_air = state.tab_in_air == Some((path, tab_index).into());
                 let layer_id = LayerId::new(Order::Tooltip, id);
                 let response = tabs_ui
                     .scope_builder(UiBuilder::new().layer_id(layer_id), |ui| {
+                        if in_air {
+                            ui.set_opacity(0.0);
+                        }
                         self.tab_title(
                             ui,
                             &tab_style,
@@ -561,12 +569,8 @@ impl<Tab> DockArea<'_, Tab> {
                     .get_or_insert_with(|| self.modifiers_carry_group(tabs_ui));
                 if carries_group {
                     self.try_initiate_node_drag(tabs_ui, state, path);
-                } else if let Some(delta) =
-                    self.try_initiate_tab_drag(tabs_ui, state, path, tab_index)
-                {
-                    tabs_ui
-                        .ctx()
-                        .transform_layer_shapes(layer_id, TSTransform::new(delta, 1.0));
+                } else {
+                    self.try_initiate_tab_drag(tabs_ui, state, path, tab_index);
                 }
 
                 (response, title_id)
@@ -1469,35 +1473,36 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     /// Checks if a drag has exceeded the movement threshold, and if so,
-    /// stores DragData for the given tab. Returns the drag delta if stored.
+    /// stores DragData for the given tab.
     fn try_initiate_tab_drag(
         &self,
         ui: &Ui,
         state: &mut State,
         path: NodePath,
         tab_index: TabIndex,
-    ) -> Option<Vec2> {
-        let pointer_pos = ui.ctx().pointer_interact_pos()?;
+    ) {
+        let Some(pointer_pos) = ui.ctx().pointer_interact_pos() else {
+            return;
+        };
         let start = *state
             .drag_start
             .get_or_insert_with(|| Self::press_origin(ui, pointer_pos));
-        let delta = pointer_pos - start;
-        self.drag_activated(delta).then(|| {
-            state.dragged = Some(DraggedTab {
-                path: (path, tab_index).into(),
-                pointer: pointer_pos,
-            });
-            ui.memory_mut(|mem| {
-                mem.data.insert_temp(
-                    self.id.with("drag_data"),
-                    Some(DragData {
-                        src: TreeComponent::Tab((path, tab_index).into()),
-                        rect: self.dock_state[path].rect().unwrap(),
-                    }),
-                );
-            });
-            delta
-        })
+        if !self.drag_activated(pointer_pos - start) {
+            return;
+        }
+        state.dragged = Some(DraggedTab {
+            path: (path, tab_index).into(),
+            pointer: pointer_pos,
+        });
+        ui.memory_mut(|mem| {
+            mem.data.insert_temp(
+                self.id.with("drag_data"),
+                Some(DragData {
+                    src: TreeComponent::Tab((path, tab_index).into()),
+                    rect: self.dock_state[path].rect().unwrap(),
+                }),
+            );
+        });
     }
 
     fn draw_arrow(collapsed: bool, ui: &mut Ui, color: Color32, arrow_rect: Rect) {

@@ -191,6 +191,7 @@ impl<Tab> DockArea<'_, Tab> {
         dock_rect: Rect,
     ) {
         state.dragged = None;
+        state.tab_in_air = None;
         state.dragged_node = None;
 
         // Where the pointer is now. On a release, where it was released: a mouse moved and
@@ -215,6 +216,16 @@ impl<Tab> DockArea<'_, Tab> {
             )
         });
 
+        // The tab whose drag began here: its ghost follows the pointer, even over another
+        // viewport, so it stays out of its bar.
+        let in_air = match &drag_data {
+            Some(DragData {
+                src: TreeComponent::Tab(path),
+                ..
+            }) => Some(*path),
+            _ => None,
+        };
+
         // The space's one drag across viewports: begun here, begun in another viewport and
         // shown here, or already settled.
         let (remote, take) = match self.across(ui, state, &mut drag_data, tab_viewer) {
@@ -235,17 +246,26 @@ impl<Tab> DockArea<'_, Tab> {
             None
         };
         let released = !remote && ui.input(|i| i.pointer.primary_released());
-        // A whole group dragged shows its ghost under the pointer, in the viewport the pointer
-        // is over: the source's, or another's of the space.
-        if !released
-            && !take
-            && let Some(DragData {
+        // A dragged tab, or a whole group, shows its ghost under the pointer, in the viewport
+        // the pointer is over: the source's, or another's of the space.
+        let ghost = match &drag_data {
+            Some(DragData {
                 src: TreeComponent::Node(path),
                 ..
-            }) = drag_data
+            }) => Some((*path, None)),
+            Some(DragData {
+                src: TreeComponent::Tab(path),
+                ..
+            }) => Some((path.node_path(), Some(path.tab))),
+            _ => None,
+        };
+        state.tab_in_air = if remote { None } else { in_air };
+        if !released
+            && !take
+            && let Some((path, tab)) = ghost
             && let Some(pointer) = state.last_hover_pos
         {
-            self.paint_group_ghost(ui, path, pointer, tab_viewer);
+            self.paint_ghost(ui, path, tab, pointer, tab_viewer);
         }
 
         // A collapsed zone's restore band wins over whatever lies under it, no-drop zones

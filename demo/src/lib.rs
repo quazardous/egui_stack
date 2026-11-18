@@ -9,13 +9,18 @@
 //!
 //! Its second page, Dock space, shows a [`DockSpace`]: a dock in a left side panel, one in a
 //! right side panel and one in the centre, each drawn by its own [`DockArea`], with tabs dragged
-//! between them into the same zones.
+//! between them into the same zones. A tab or a group moved out of every dock (or the toolbar's
+//! Float group) opens in a floating window, drawn by a [`FloatsArea`] over the window or in a
+//! native window of its own: the handle at the right end of its top tab bar moves it.
 
-use egui::{Color32, Id, Panel, Rect, RichText, Slider, Stroke, Ui, WidgetText, pos2, vec2};
+use egui::{
+    Color32, Id, Panel, Rect, RichText, Slider, Stroke, Ui, UiBuilder, WidgetText, pos2, vec2,
+};
+use egui_stack::layout::{Content, FloatHost, Layout, Zone};
 use egui_stack::{
-    AllowedSplits, DockArea, DockPainter, DockRules, DockSpace, DockState, GridLayout,
-    GroupHandles, LinearDir, NodeIndex, NodePath, OverlayType, PartState, Style, StylePainter,
-    TabAddAlign, TabBodyPaint, TabViewer,
+    AllowedSplits, DockArea, DockPainter, DockRules, DockSpace, DockState, EguiViewports,
+    FloatsArea, GridLayout, GroupHandles, LinearDir, NodeIndex, NodePath, OverlayType, PartState,
+    Style, StylePainter, TabAddAlign, TabBodyPaint, TabViewer,
 };
 
 pub mod picker;
@@ -28,8 +33,11 @@ pub struct DemoApp {
     pub page: Page,
     /// The layout of the first page: the main surface and the windows.
     pub dock_state: DockState<String>,
-    /// The layout of the second page: three docks and the windows.
+    /// The layout of the second page: three docks and the floats' docks.
     pub space: DockSpace<String>,
+    /// The floating windows of the second page, over the window or native ([`FloatsArea`]).
+    /// Its zones are not drawn: the page's docks are in panels.
+    pub floats: Layout,
     /// What the tabs show.
     pub tabs: Tabs,
     /// The overlay shown while a tab is dragged.
@@ -65,6 +73,8 @@ pub struct Tabs {
     add_request: Option<NodePath>,
     /// The tab buttons' rects of the frame, which the picker hit-tests.
     tab_rects: Vec<(String, Rect)>,
+    /// Whether a dragged tab's ghost previews its content (`TabViewer::ghost_body`).
+    pub ghost_preview: bool,
 }
 
 impl Default for DemoApp {
@@ -73,6 +83,7 @@ impl Default for DemoApp {
             page: Page::Dock,
             dock_state: initial_layout(),
             space: initial_space(),
+            floats: initial_floats(),
             tabs: Tabs {
                 notes:
                     "Things to try:\n\n- drag this tab to another leaf's edge\n- drag it out of \
@@ -82,6 +93,7 @@ impl Default for DemoApp {
                 code: "fn main() {\n    println!(\"Hello, docking!\");\n}\n".to_owned(),
                 add_request: None,
                 tab_rects: Vec::new(),
+                ghost_preview: false,
             },
             overlay_type: OverlayType::Zones,
             zone_edge_coverage: Style::default().overlay.feel.zone_edge_coverage,
@@ -112,6 +124,14 @@ fn initial_layout() -> DockState<String> {
     tree.split_right(middle, 0.55, vec!["Preview".to_owned()]);
     dock_state
 }
+
+/// The floats of the second page: none at first.
+fn initial_floats() -> Layout {
+    Layout::new(Zone::leaf("centre", Content::Dock("centre".into())))
+}
+
+/// Where the toolbar's Float group opens a float.
+const FLOAT_RECT: Rect = Rect::from_min_max(pos2(240.0, 160.0), pos2(640.0, 440.0));
 
 /// The space of the second page: files and an outline on the left, which splits only into
 /// rows; the guide and an editor in the centre; a properties panel on the right, kept as an
@@ -205,6 +225,21 @@ impl DemoApp {
             .show_add_buttons(true)
             .show_leaf_collapse_buttons(true)
             .show_inside(ui, &mut self.tabs);
+        // The floats, after the docks: their top tab bar ends with the window's move handle.
+        FloatsArea::new(&mut self.floats, &mut self.space)
+            .host(&mut EguiViewports)
+            .style(style.clone())
+            .group_handles(self.group_handles)
+            .show(ui.ctx(), &mut self.tabs);
+        self.space.take_float_events();
+    }
+
+    /// Moves the focused group of the second page into a float of its own.
+    fn float_focused_group(&mut self) {
+        if let Some(path) = self.space.state().focused_leaf() {
+            self.space
+                .float_out_group(path, FLOAT_RECT, |tab| Id::unique(tab.as_str()));
+        }
     }
 
     /// A leaf's add button (`on_add`) asks for a tab here.
@@ -289,6 +324,31 @@ impl DemoApp {
                 }
             }
 
+            if self.page == Page::Space {
+                ui.separator();
+                ui.label("Floats:");
+                let mut host = self.space.float_host();
+                ui.selectable_value(&mut host, FloatHost::InWindow, "In the window")
+                    .on_hover_text("Floating windows drawn over this window");
+                ui.selectable_value(&mut host, FloatHost::Native, "Native")
+                    .on_hover_text("Floating windows of their own, on the desktop");
+                if host != self.space.float_host() {
+                    self.space.set_float_host(host);
+                }
+                let focused = self.space.state().focused_leaf().is_some();
+                if ui
+                    .add_enabled(focused, egui::Button::new("Float group"))
+                    .on_hover_text(
+                        "Move the focused group into a floating window, moved by the handle at \
+                         the end of its tab bar",
+                    )
+                    .on_disabled_hover_text("Click a tab first")
+                    .clicked()
+                {
+                    self.float_focused_group();
+                }
+            }
+
             ui.separator();
             if ui.button("New window").clicked() {
                 self.opened += 1;
@@ -322,6 +382,12 @@ impl DemoApp {
                         "Menu",
                         "Move group in the tab's context menu",
                     ),
+                    (
+                        GroupHandles::MOVE_WINDOW,
+                        "Window move handle",
+                        "At the end of a floating window's top tab bar (Dock space page), it \
+                         moves the window",
+                    ),
                 ] {
                     let mut on = self.group_handles.contains(flag);
                     if ui.checkbox(&mut on, label).on_hover_text(hint).changed() {
@@ -331,6 +397,9 @@ impl DemoApp {
             })
             .response
             .on_hover_text("What moves a whole tab group");
+
+            ui.toggle_value(&mut self.tabs.ghost_preview, "Preview in the ghost")
+                .on_hover_text("Preview tab content in the ghost of a dragged tab or group");
 
             let mut at_end = self.add_tab_align == TabAddAlign::Right;
             if ui
@@ -356,7 +425,7 @@ impl DemoApp {
             if ui.button("Save layout").clicked() {
                 let json = match self.page {
                     Page::Dock => serde_json::to_string(&self.dock_state),
-                    Page::Space => serde_json::to_string(&self.space),
+                    Page::Space => serde_json::to_string(&(&self.space, &self.floats)),
                 };
                 match json {
                     Ok(json) => {
@@ -373,7 +442,10 @@ impl DemoApp {
             {
                 let restored = match self.page {
                     Page::Dock => serde_json::from_str(json).map(|state| self.dock_state = state),
-                    Page::Space => serde_json::from_str(json).map(|space| self.space = space),
+                    Page::Space => serde_json::from_str(json).map(|(space, floats)| {
+                        self.space = space;
+                        self.floats = floats;
+                    }),
                 };
                 self.status = match restored {
                     Ok(()) => "Restored".to_owned(),
@@ -383,7 +455,10 @@ impl DemoApp {
             if ui.button("Reset").clicked() {
                 match self.page {
                     Page::Dock => self.dock_state = initial_layout(),
-                    Page::Space => self.space = initial_space(),
+                    Page::Space => {
+                        self.space = initial_space();
+                        self.floats = initial_floats();
+                    }
                 }
                 self.status = "Back to the first layout".to_owned();
             }
@@ -499,6 +574,27 @@ impl TabViewer for Tabs {
     fn on_add(&mut self, path: NodePath) {
         self.add_request = Some(path);
     }
+
+    fn ghost_size(&mut self, _tab: &String, default: egui::Vec2) -> egui::Vec2 {
+        if self.ghost_preview {
+            // As large as the ghost goes: room for the preview.
+            vec2(320.0, 200.0)
+        } else {
+            default
+        }
+    }
+
+    fn ghost_body(&mut self, ui: &mut Ui, tab: &String, rect: Rect) -> bool {
+        if !self.ghost_preview {
+            return false;
+        }
+        ui.painter().rect_filled(rect, 0.0, ui.visuals().panel_fill);
+        ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(6.0)), |ui| {
+            let mut tab = tab.clone();
+            self.ui(ui, &mut tab);
+        });
+        true
+    }
 }
 
 fn guide(ui: &mut Ui) {
@@ -536,7 +632,11 @@ fn space_guide(ui: &mut Ui) {
          under the pointer, its middle adds the tab, a tab of its bar takes the tab before it.",
         "The left dock splits only into rows: its left and right bands are not offered.",
         "Empty the right dock: it stays, as a target for the next tab.",
-        "Drag a tab out of every dock: it opens in a floating window, which takes drops too.",
+        "Drag a tab out of every dock, or a whole group by its grip: it opens in a floating \
+         window, which takes drops too. Float group in the toolbar does it for the focused \
+         group, and so does a grip's menu, Move group > New window.",
+        "Move a floating window by the handle at the right end of its top tab bar; the \
+         toolbar's Floats choice opens the next ones in native windows of their own.",
         "Resize the side panels: each dock fills the place the application gives it.",
     ] {
         ui.horizontal_wrapped(|ui| {
