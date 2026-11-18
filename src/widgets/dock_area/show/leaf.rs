@@ -26,6 +26,53 @@ fn tab_body_id(dock_area_id: Id, path: NodePath, tab_id: Id) -> Id {
     dock_area_id.with((path.surface, "surface")).with(tab_id)
 }
 
+/// The height every button of a tab bar leaves free at the bottom of the bar: the line under
+/// the bar stays visible under it, at rest and hovered.
+const BAR_LINE: f32 = 2.0;
+
+/// The rect of a tab bar's button (add, close all, collapse, group grip, move window) from `left`,
+/// `width` wide, in the bar `bar`: the bar's height but the line under it ([`BAR_LINE`]).
+fn bar_button_rect(bar: Rect, left: f32, width: f32) -> Rect {
+    Rect::from_min_max(
+        pos2(left, bar.top()),
+        pos2(left + width, bar.bottom() - BAR_LINE),
+    )
+}
+
+/// The corners of the highlight of a tab bar's button `rect` in `bar` (the bar and its corners):
+/// rounded like the bar's where the button is at its ends.
+fn bar_button_corners(rect: Rect, bar: (Rect, CornerRadius)) -> CornerRadius {
+    let mut outer = bar.0;
+    outer.max.y -= BAR_LINE;
+    corners_within(rect, outer, bar.1)
+}
+
+/// What every tab bar button painted from the [`Style`] (add, close all, collapse, move window)
+/// paints the same way, its symbol apart: its highlight when `lit` is set (its fill), within
+/// the bar's corners, and a border (its colour) on the side of the button facing the tabs, at
+/// `border_x`. The button's rect is [`bar_button_rect`]'s, so the line under the bar stays
+/// visible; the group grip, painted by the [`DockPainter`](crate::DockPainter), has the same
+/// rect and corners.
+fn paint_bar_button(
+    ui: &Ui,
+    rect: Rect,
+    bar: (Rect, CornerRadius),
+    lit: Option<Color32>,
+    border: Option<(f32, Color32)>,
+) {
+    if let Some(fill) = lit {
+        ui.painter()
+            .rect_filled(rect, bar_button_corners(rect, bar), fill);
+    }
+    if let Some((x, color)) = border {
+        ui.painter().vline(
+            x,
+            rect.y_range(),
+            Stroke::new(ui.ctx().pixels_per_point().recip(), color),
+        );
+    }
+}
+
 impl<Tab> DockArea<'_, Tab> {
     pub(super) fn show_leaf(
         &mut self,
@@ -362,15 +409,30 @@ impl<Tab> DockArea<'_, Tab> {
                 ),
                 tabbar_outer_rect.right_bottom(),
             );
-            self.painter.tab_bar_tail(
-                ui.painter(),
-                &TabBarTailPaint {
-                    rect: tail,
-                    bar: tabbar_outer_rect,
-                    folded: collapsed,
-                    style,
-                },
-            );
+            // The line under the bar runs under every button: the tail's reaches the bar's
+            // right end, the move handle included, and the collapse button's slot at its left
+            // end gets its own piece.
+            let painted_tail = Rect::from_min_max(tail.min, full_bar.right_bottom());
+            let collapse_slot = self.show_leaf_collapse_buttons.then(|| {
+                Rect::from_min_max(
+                    tabbar_outer_rect.min,
+                    pos2(
+                        tabbar_outer_rect.left() + Style::TAB_COLLAPSE_BUTTON_SIZE,
+                        tabbar_outer_rect.bottom(),
+                    ),
+                )
+            });
+            for rect in collapse_slot.into_iter().chain([painted_tail]) {
+                self.painter.tab_bar_tail(
+                    ui.painter(),
+                    &TabBarTailPaint {
+                        rect,
+                        bar: full_bar,
+                        folded: collapsed,
+                        style,
+                    },
+                );
+            }
             // The rest of the bar drags the whole group, as an editor group is dragged by its tab
             // bar. Registered before the bar's buttons, which keep their clicks.
             if self.group_handles.contains(GroupHandles::EMPTY_SPACE) {
@@ -442,19 +504,15 @@ impl<Tab> DockArea<'_, Tab> {
                     } else {
                         0.0
                     };
-                let grip_rect = Rect::from_min_max(
-                    pos2(left, tabbar_outer_rect.top()),
-                    pos2(
-                        left + Style::TAB_GROUP_GRIP_SIZE,
-                        tabbar_outer_rect.bottom(),
-                    ),
-                );
+                let grip_rect =
+                    bar_button_rect(tabbar_outer_rect, left, Style::TAB_GROUP_GRIP_SIZE);
                 self.group_grip(
                     ui, state, path, tab_viewer, grip_rect, fade_style, collapsed, bar,
                 );
             }
 
             if let Some(rect) = move_handle {
+                let rect = bar_button_rect(full_bar, rect.left(), rect.width());
                 self.window_move_handle(ui, path, rect, fade_style, bar);
             }
 
@@ -769,9 +827,10 @@ impl<Tab> DockArea<'_, Tab> {
         fade_style: Option<&Style>,
         bar: (Rect, CornerRadius),
     ) {
-        let rect = Rect::from_min_max(
-            tabbar_outer_rect.right_top() - vec2(Style::TAB_ADD_BUTTON_SIZE + offset, 0.0),
-            tabbar_outer_rect.right_bottom() - vec2(offset, 2.0),
+        let rect = bar_button_rect(
+            tabbar_outer_rect,
+            tabbar_outer_rect.right() - Style::TAB_ADD_BUTTON_SIZE - offset,
+            Style::TAB_ADD_BUTTON_SIZE,
         );
 
         let ui = &mut ui.new_child(
@@ -788,12 +847,15 @@ impl<Tab> DockArea<'_, Tab> {
         response = response.on_hover_cursor(CursorIcon::PointingHand);
 
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
-        let color = if response.hovered() || response.has_focus() {
-            ui.painter().rect_filled(
-                rect,
-                corners_within(rect, bar.0, bar.1),
-                style.buttons.add_tab_bg_fill,
-            );
+        let lit = response.hovered() || response.has_focus();
+        paint_bar_button(
+            ui,
+            rect,
+            bar,
+            lit.then_some(style.buttons.add_tab_bg_fill),
+            Some((rect.left(), style.buttons.add_tab_border_color)),
+        );
+        let color = if lit {
             style.buttons.add_tab_active_color
         } else {
             style.buttons.add_tab_color
@@ -810,16 +872,6 @@ impl<Tab> DockArea<'_, Tab> {
         ui.painter().line_segment(
             [plus_rect.right_center(), plus_rect.left_center()],
             Stroke::new(1.0_f32, color),
-        );
-
-        // Draw button left border.
-        ui.painter().vline(
-            rect.left(),
-            rect.y_range(),
-            Stroke::new(
-                ui.ctx().pixels_per_point().recip(),
-                style.buttons.add_tab_border_color,
-            ),
         );
 
         let popup_id = ui.scope_id().with("tab_add_popup");
@@ -850,9 +902,10 @@ impl<Tab> DockArea<'_, Tab> {
         close_window_disabled: bool,
         bar: (Rect, CornerRadius),
     ) {
-        let rect = Rect::from_min_max(
-            tabbar_outer_rect.right_top() - vec2(Style::TAB_CLOSE_ALL_BUTTON_SIZE, 0.0),
-            tabbar_outer_rect.right_bottom() - vec2(0.0, 2.0),
+        let rect = bar_button_rect(
+            tabbar_outer_rect,
+            tabbar_outer_rect.right() - Style::TAB_CLOSE_ALL_BUTTON_SIZE,
+            Style::TAB_CLOSE_ALL_BUTTON_SIZE,
         );
 
         let ui = &mut ui.new_child(
@@ -877,16 +930,18 @@ impl<Tab> DockArea<'_, Tab> {
         let enabled = enabled && ui.is_enabled();
         response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
 
+        let hovered = !disabled && (response.hovered() || response.has_focus());
+        let lit = hovered && !(close_window_disabled && on_secondary_button);
+        paint_bar_button(
+            ui,
+            rect,
+            bar,
+            lit.then_some(style.buttons.close_all_tabs_bg_fill),
+            Some((rect.left(), style.buttons.close_all_tabs_border_color)),
+        );
         let mut stroke_color = if disabled {
             style.buttons.close_all_tabs_disabled_color
-        } else if response.hovered() || response.has_focus() {
-            if !(close_window_disabled && on_secondary_button) {
-                ui.painter().rect_filled(
-                    rect,
-                    corners_within(rect, bar.0, bar.1),
-                    style.buttons.close_all_tabs_bg_fill,
-                );
-            }
+        } else if hovered {
             style.buttons.close_all_tabs_active_color
         } else {
             style.buttons.close_all_tabs_color
@@ -969,16 +1024,6 @@ impl<Tab> DockArea<'_, Tab> {
             );
         }
 
-        // Draw button left border.
-        ui.painter().vline(
-            rect.left(),
-            rect.y_range(),
-            Stroke::new(
-                ui.ctx().pixels_per_point().recip(),
-                style.buttons.close_all_tabs_border_color,
-            ),
-        );
-
         if !disabled && !on_secondary_button {
             response = self.show_tooltip_hints(path.surface, response);
         }
@@ -994,9 +1039,10 @@ impl<Tab> DockArea<'_, Tab> {
         collapsed: bool,
         bar: (Rect, CornerRadius),
     ) {
-        let rect = Rect::from_min_max(
-            tabbar_outer_rect.left_top(),
-            tabbar_outer_rect.left_bottom() + vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, 0.0),
+        let rect = bar_button_rect(
+            tabbar_outer_rect,
+            tabbar_outer_rect.left(),
+            Style::TAB_COLLAPSE_BUTTON_SIZE,
         );
 
         let ui = &mut ui.new_child(
@@ -1027,12 +1073,15 @@ impl<Tab> DockArea<'_, Tab> {
                 .accesskit_node_builder(response.id, |node| node.set_expanded(!collapsed));
         }
 
-        let color = if response.hovered() || response.has_focus() {
-            ui.painter().rect_filled(
-                rect,
-                corners_within(rect, bar.0, bar.1),
-                style.buttons.collapse_tabs_bg_fill,
-            );
+        let lit = response.hovered() || response.has_focus();
+        paint_bar_button(
+            ui,
+            rect,
+            bar,
+            lit.then_some(style.buttons.collapse_tabs_bg_fill),
+            Some((rect.right(), style.buttons.collapse_tabs_border_color)),
+        );
+        let color = if lit {
             style.buttons.collapse_tabs_active_color
         } else {
             style.buttons.collapse_tabs_color
@@ -1048,16 +1097,6 @@ impl<Tab> DockArea<'_, Tab> {
             // Draw arrow.
             Self::draw_arrow(collapsed, ui, color, arrow_rect);
         }
-
-        // Draw button right border.
-        ui.painter().vline(
-            rect.right(),
-            rect.y_range(),
-            Stroke::new(
-                ui.ctx().pixels_per_point().recip(),
-                style.buttons.collapse_tabs_border_color,
-            ),
-        );
 
         if response.clicked() {
             if on_secondary_button {
@@ -1236,12 +1275,15 @@ impl<Tab> DockArea<'_, Tab> {
         }
 
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
-        let color = if active || response.has_focus() {
-            ui.painter().rect_filled(
-                rect,
-                corners_within(rect, bar.0, bar.1),
-                style.buttons.add_tab_bg_fill,
-            );
+        let lit = active || response.has_focus();
+        paint_bar_button(
+            ui,
+            rect,
+            bar,
+            lit.then_some(style.buttons.add_tab_bg_fill),
+            Some((rect.left(), style.buttons.add_tab_border_color)),
+        );
+        let color = if lit {
             style.buttons.add_tab_active_color
         } else {
             style.buttons.add_tab_color
@@ -1319,7 +1361,7 @@ impl<Tab> DockArea<'_, Tab> {
             ui.painter(),
             &TabBarGripPaint {
                 rect,
-                corner_radius: corners_within(rect, bar.0, bar.1),
+                corner_radius: bar_button_corners(rect, bar),
                 state: PartState::NONE
                     .with(PartState::HOVERED, response.hovered())
                     .with(PartState::PRESSED, response.is_pointer_button_down_on())

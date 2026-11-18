@@ -25,9 +25,9 @@ use crate::{
 /// [`tab_width`](Self::tab_width), which measures a tab before it is laid out. The parameter
 /// structs are `#[non_exhaustive]`: they may gain fields in minor releases.
 ///
-/// The buttons of the tab bars (add, close all, collapse), the hidden tab bar's handle, the tab
-/// bar's scroll bar and the tab bodies' background are still painted from [`Style`]; a body's
-/// border is the painter's ([`tab_body`](Self::tab_body)).
+/// The buttons of the tab bars (add, close all, collapse, a float's move handle), the hidden
+/// tab bar's handle, the tab bar's scroll bar and the tab bodies' background are still painted
+/// from [`Style`]; a body's border is the painter's ([`tab_body`](Self::tab_body)).
 pub trait DockPainter {
     /// The width of a tab, padding and close button included. A tab bar filling its width
     /// ([`TabBarStyle::fill_tab_bar`](crate::TabBarStyle::fill_tab_bar)) can still make it
@@ -179,9 +179,10 @@ pub trait DockPainter {
         }
     }
 
-    /// The part of a tab bar right of its last tab, painted after the tabs. Its rect is empty
-    /// when the tabs fill the bar. The default paints the line under the bar, which parts it
-    /// from the body: none when the leaf is folded.
+    /// The part of a tab bar right of its last tab, its buttons included, painted after the
+    /// tabs; and, when the bar starts with a collapse button, that button's slot at its left
+    /// end, painted the same way. The default paints the line under the bar, which parts it
+    /// from the body, and so runs under every button: none when the leaf is folded.
     fn tab_bar_tail(&self, painter: &Painter, tail: &TabBarTailPaint<'_>) {
         if tail.folded {
             return;
@@ -915,7 +916,8 @@ pub struct TabBarPaint<'a> {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub struct TabBarTailPaint<'a> {
-    /// From the right edge of the last tab to the right of the bar.
+    /// From the right edge of the last tab to the right of the bar (empty when the tabs fill
+    /// it), or the collapse button's slot at the left of the bar.
     pub rect: Rect,
     /// The bar, inside its margins.
     pub bar: Rect,
@@ -929,7 +931,7 @@ pub struct TabBarTailPaint<'a> {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub struct TabBarGripPaint<'a> {
-    /// The grip, the height of the bar.
+    /// The grip: the height of the bar but the line under it, as every button of the bar.
     pub rect: Rect,
     /// The corners its background keeps to, those of the bar where it touches them.
     pub corner_radius: CornerRadius,

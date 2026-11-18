@@ -1,12 +1,15 @@
 //! What a float looks like around its dock, on the multi-viewport harness (`support/multi.rs`):
 //! a float over the main window has no title bar of its own by default, its top tab bar is its
 //! top (`FloatsArea::title_bar` brings the title bar back, and a float without its move handle
-//! keeps it to be moved by).
+//! keeps it to be moved by), and every button of a float's tab bar (collapse, group grip, close
+//! all, move window) keeps the line under the bar, at rest and hovered, as the close all button
+//! does.
 
 #[path = "support/multi.rs"]
 mod multi;
 
-use egui::{Id, Pos2, Rect, Ui, UiBuilder, ViewportId, WidgetText, pos2, vec2};
+use egui::epaint::ClippedShape;
+use egui::{Id, Pos2, Rect, Shape, Ui, UiBuilder, ViewportId, WidgetText, pos2, vec2};
 use egui_stack::layout::{Content, Dir, FloatHost, Layout, Zone};
 use egui_stack::{
     DockArea, DockRules, DockSpace, Docked, FloatShown, GroupHandles, TabViewer, ViewportHost,
@@ -185,4 +188,85 @@ fn a_float_over_the_main_window_without_its_move_handle_keeps_its_title_bar() {
         bar.top() - window.top() > 16.0,
         "a title bar to move it by, above the tab bar {bar:?} in the window {window:?}"
     );
+}
+
+/// Whether a horizontal line of `shapes` covers `x` (inset by a point at each end) at `y`.
+fn line_under(shapes: &[ClippedShape], x: egui::Rangef, y: f32) -> bool {
+    fn covers(shape: &Shape, x: egui::Rangef, y: f32) -> bool {
+        match shape {
+            Shape::LineSegment { points: [a, b], .. } => {
+                (a.y - y).abs() < 0.6
+                    && (b.y - y).abs() < 0.6
+                    && a.x.min(b.x) <= x.min + 1.0
+                    && a.x.max(b.x) >= x.max - 1.0
+            }
+            Shape::Vec(shapes) => shapes.iter().any(|s| covers(s, x, y)),
+            _ => false,
+        }
+    }
+    shapes.iter().any(|c| covers(&c.shape, x, y))
+}
+
+/// The filled rects of `shapes` over `button`, but its hover background.
+fn fills_over(shapes: &[ClippedShape], button: Rect) -> Vec<Rect> {
+    fn walk(shape: &Shape, button: Rect, out: &mut Vec<Rect>) {
+        match shape {
+            Shape::Rect(rect)
+                if rect.fill.a() > 0
+                    && button.contains_rect(rect.rect.shrink(0.5))
+                    && rect.rect.area() > 4.0 =>
+            {
+                out.push(rect.rect);
+            }
+            Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, button, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    shapes.iter().for_each(|c| walk(&c.shape, button, &mut out));
+    out
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn every_button_of_a_float_s_tab_bar_keeps_the_line_under_the_bar() {
+    let mut multi = Multi::new();
+    let mut app = app(FloatHost::Native, None);
+    detach_b(&mut multi, &mut app);
+    let viewport = Host.viewport_id("float-1");
+    multi.passes(2, frame(&mut app));
+    let shown = app
+        .shown
+        .iter()
+        .find(|s| s.key == "float-1")
+        .expect("the float is decorated")
+        .clone();
+    let [(_, bar)] = shown.tab_bars[..] else {
+        panic!("one bar: {shown:?}");
+    };
+    let line_y = bar.bottom() - 0.5;
+    let labels = ["Collapse", "Move group", "Close all tabs", "Move window"];
+    for label in labels {
+        let button = multi
+            .find(viewport, label)
+            .unwrap_or_else(|| panic!("{label} is shown"));
+        assert!(
+            line_under(multi.shapes(viewport), button.x_range(), line_y),
+            "{label}: the line under the bar runs under it, at rest ({button:?} in {bar:?})"
+        );
+    }
+    for label in labels {
+        let button = multi.find(viewport, label).unwrap();
+        multi.queue(viewport, egui::Event::PointerMoved(button.center()));
+        multi.passes(2, frame(&mut app));
+        let fills = fills_over(multi.shapes(viewport), button);
+        assert!(
+            fills.iter().all(|fill| fill.bottom() <= bar.bottom() - 2.0),
+            "{label}: its hover background leaves the line under the bar: {fills:?}, bar {bar:?}"
+        );
+        assert!(
+            line_under(multi.shapes(viewport), button.x_range(), line_y),
+            "{label}: the line under the bar runs under it, hovered"
+        );
+    }
 }
