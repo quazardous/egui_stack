@@ -5,7 +5,8 @@
 
 use egui::{Context, Id, LayerId, Order, Pos2, Rect, StrokeKind, Vec2};
 
-use super::{closed, forget_native, put_tab, sync_docks};
+use super::{closed, forget_native, sync_docks};
+use crate::dock_space::put_tab;
 use crate::layout::Layout;
 use crate::tab_viewer::{DockDrop, DropVerdict};
 use crate::{DockSpace, NodeIndex, NodePath, Style, TabDestination, TabInsert, TabViewer};
@@ -305,7 +306,10 @@ fn dock_whole<Tab>(
                     tree[node].append_tab(tab);
                 }
             }
-            None => put_tab(space, viewer, to, tab, None),
+            None => {
+                // `to` is a dock of the space: the tab cannot come back.
+                let _ = put_tab(space, &mut |tab| viewer.id(tab), to, tab, None);
+            }
         }
         moved.push((id, to.to_owned()));
     }

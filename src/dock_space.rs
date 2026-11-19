@@ -119,6 +119,44 @@ impl TabOrigin {
     }
 }
 
+/// Where a tab was in a dock, for it to go back there: its dock, the tabs next to it in its
+/// group, and its index in the group. [`DockSpace::take_with_place`] takes a tab out of the
+/// space with its place; [`DockSpace::restore_at`] puts it back. With the `serde` feature it
+/// saves with the application's state, and stays valid across a layout save and load: it names
+/// tabs by their [`TabViewer::id`](crate::TabViewer::id) and the dock by its name, not by
+/// indices.
+///
+/// The space keeps no trace of a taken tab: between the two calls, the tab is the
+/// application's, as is the place. See [`DockSpace::restore_at`] for where the tab goes when
+/// its group or its dock is gone.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[non_exhaustive]
+pub struct TabPlace {
+    /// The tab, its dock and its neighbours.
+    origin: TabOrigin,
+    /// Its index in its group.
+    index: usize,
+    /// For a tab taken from a float: where it came from before it floated.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    float_origin: Option<TabOrigin>,
+}
+
+impl TabPlace {
+    /// The tab, by its [`TabViewer::id`](crate::TabViewer::id).
+    pub fn tab(&self) -> Id {
+        self.origin.tab
+    }
+
+    /// The name of the dock the tab was in.
+    pub fn dock(&self) -> &str {
+        &self.origin.dock
+    }
+}
+
 /// What an application declared no tab may be dropped in ([`DockSpace::no_drop_zone`]): rects,
 /// and widgets whose rects egui knows.
 #[derive(Clone, Debug, Default)]
@@ -839,6 +877,134 @@ impl<Tab> DockSpace<Tab> {
         &self.origins
     }
 
+    /// Takes the tab `tab` (named by `id_of`, the viewer's
+    /// [`TabViewer::id`](crate::TabViewer::id)) out of its dock, with its place: the dock, the
+    /// tabs next to it and its index in its group. Give both to
+    /// [`restore_at`](Self::restore_at) to put it back. Returns `None` when no dock of the space
+    /// has the tab.
+    ///
+    /// Use it to hide a tab and show it again, or to close a tab and reopen it where it was:
+    /// the space keeps nothing of the tab, so it draws, counts, saves and focuses as if the tab
+    /// had closed. A group emptied goes, as when its last tab closes; a zone emptied stays,
+    /// unless its dock says otherwise ([`DockRules::keep_when_empty`],
+    /// [`collapse_empty`](Self::collapse_empty)). A tab taken from a float takes the float's
+    /// own origin ([`origin`](Self::origin)) with it, and the float closes once empty, as
+    /// [`ClosePolicy::ReturnToOrigin`](crate::ClosePolicy::ReturnToOrigin) would leave it.
+    ///
+    /// ```
+    /// # use egui_stack::{DockRules, DockSpace, TabPlace};
+    /// # let id_of = |tab: &mut String| egui::Id::unique(tab.as_str());
+    /// let mut space = DockSpace::new();
+    /// space.add_dock("main", DockRules::default(), vec!["Files".to_owned(), "Log".to_owned()]);
+    ///
+    /// // Hide "Files": the application keeps the tab and its place.
+    /// let (tab, place): (String, TabPlace) =
+    ///     space.take_with_place(egui::Id::unique("Files"), id_of).unwrap();
+    /// assert_eq!(space.dock("main").unwrap().num_tabs(), 1);
+    ///
+    /// // Show it again: back before "Log".
+    /// assert_eq!(space.restore_at(tab, place, id_of).ok(), Some("main".to_owned()));
+    /// ```
+    pub fn take_with_place(
+        &mut self,
+        tab: Id,
+        mut id_of: impl FnMut(&mut Tab) -> Id,
+    ) -> Option<(Tab, TabPlace)> {
+        let surfaces: Vec<SurfaceIndex> = self.docks.iter().map(|dock| dock.surface).collect();
+        let path = self.state.iter_all_tabs_mut().find_map(|(path, each)| {
+            (surfaces.contains(&path.surface) && id_of(each) == tab).then_some(path)
+        })?;
+        let mut recorded = Vec::new();
+        record_origin(
+            &mut self.state,
+            &self.docks,
+            &mut recorded,
+            path,
+            &mut id_of,
+        )?;
+        let origin = recorded.pop()?;
+        let floating = self
+            .docks
+            .iter()
+            .any(|dock| dock.surface == path.surface && dock.floating);
+        let float_origin = if floating {
+            self.take_origin(tab)
+        } else {
+            None
+        };
+        let taken = self.state.remove_tab(path)?;
+        Some((
+            taken,
+            TabPlace {
+                origin,
+                index: path.tab.0,
+                float_origin,
+            },
+        ))
+    }
+
+    /// Puts `tab`, taken with [`take_with_place`](Self::take_with_place), back at `place`, and
+    /// returns the name of the dock it went to. `id_of` names tabs as for
+    /// [`take_with_place`](Self::take_with_place).
+    ///
+    /// The tab goes where a float's tab goes when the float closes
+    /// ([`ClosePolicy::ReturnToOrigin`](crate::ClosePolicy::ReturnToOrigin)):
+    /// - in its dock, beside the tab it was next to (after the one before it, else before the
+    ///   one after it), in whichever of the dock's groups that tab is now: its group comes back
+    ///   through its neighbours;
+    /// - when neither neighbour is in the dock any more (the tab was alone in its group, or the
+    ///   whole group went), in the dock's focused (or first) group, at its old index (or last);
+    ///   in an empty dock, as its only tab;
+    /// - when its dock is gone: for a tab taken from a float, where it came from before it
+    ///   floated, as above; else in the first dock no float shows, after its focused (or
+    ///   first) group's tabs.
+    ///
+    /// The tab becomes its group's active tab. A tab put back in a float keeps the origin it
+    /// had there. Returns the tab when the space has no dock to put it in.
+    pub fn restore_at(
+        &mut self,
+        tab: Tab,
+        place: TabPlace,
+        mut id_of: impl FnMut(&mut Tab) -> Id,
+    ) -> Result<String, Tab> {
+        let TabPlace {
+            origin,
+            index,
+            float_origin,
+        } = place;
+        let near = |origin: &TabOrigin, index: Option<usize>| Near {
+            before: origin.before,
+            after: origin.after,
+            index,
+        };
+        let target = if self.has_dock(&origin.dock) {
+            Some((origin.dock.clone(), Some(near(&origin, Some(index)))))
+        } else if let Some(from) = float_origin
+            .as_ref()
+            .filter(|from| self.has_dock(&from.dock))
+        {
+            Some((from.dock.clone(), Some(near(from, None))))
+        } else {
+            self.docks
+                .iter()
+                .find(|dock| !dock.floating)
+                .map(|dock| (dock.name.clone(), None))
+        };
+        let Some((dock, near)) = target else {
+            return Err(tab);
+        };
+        put_tab(self, &mut id_of, &dock, tab, near)?;
+        let floating = self
+            .docks
+            .iter()
+            .any(|each| each.name == dock && each.floating);
+        if let Some(from) = float_origin.filter(|_| floating) {
+            self.origins.retain(|kept| kept.tab != from.tab);
+            self.origins.push(from);
+        }
+        Ok(dock)
+    }
+
     /// Turns each floating window of the space ([`Surface::Window`], as `egui::Window`s) into a
     /// dock of its own and a [`FloatHost::Native`] float showing it, keyed by the dock's name
     /// (`window-1`, `window-2`… skipping names taken). The float's place is the window's last
@@ -1157,6 +1323,75 @@ pub(crate) fn record_origin<Tab>(
     origins.retain(|origin| origin.tab != tab);
     origins.push(TabOrigin::new(tab, dock, before, after));
     Some(())
+}
+
+/// Where to put a tab back in a dock ([`put_tab`]): beside its neighbours, else at `index` in
+/// the dock's focused (or first) group.
+#[derive(Clone, Copy)]
+pub(crate) struct Near {
+    pub(crate) before: Option<Id>,
+    pub(crate) after: Option<Id>,
+    pub(crate) index: Option<usize>,
+}
+
+/// Puts `tab` in the dock `dock`: after the tab it was next to (`near`), else in the dock's
+/// focused (or first) leaf (at `near`'s index, else last), else as the empty dock's only tab.
+/// Gives the tab back when the space has no such dock.
+pub(crate) fn put_tab<Tab>(
+    space: &mut DockSpace<Tab>,
+    id_of: &mut dyn FnMut(&mut Tab) -> Id,
+    dock: &str,
+    tab: Tab,
+    near: Option<Near>,
+) -> Result<(), Tab> {
+    let Some(tree) = space.dock_mut(dock) else {
+        return Err(tab);
+    };
+    if tree.is_empty() {
+        *tree = Tree::new(vec![tab]);
+        return Ok(());
+    }
+    if let Some(Near { before, after, .. }) = near {
+        let nodes: Vec<_> = tree.breadth_first_index_iter().collect();
+        // After the tab before it, wherever it is; else before the tab after it.
+        let neighbours = [(before, 1), (after, 0)];
+        for (neighbour, offset) in neighbours {
+            let Some(neighbour) = neighbour else {
+                continue;
+            };
+            for &node in &nodes {
+                let Ok(leaf) = tree.leaf_mut(node) else {
+                    continue;
+                };
+                if let Some(at) = leaf
+                    .tabs
+                    .iter_mut()
+                    .position(|each| id_of(each) == neighbour)
+                {
+                    leaf.insert_tab(crate::TabIndex(at + offset), tab);
+                    return Ok(());
+                }
+            }
+        }
+    }
+    let leaf = tree
+        .focused_leaf()
+        .filter(|&node| tree.leaf(node).is_ok())
+        .or_else(|| {
+            tree.breadth_first_index_iter()
+                .find(|&node| tree.leaf(node).is_ok())
+        });
+    match leaf.and_then(|node| tree.leaf_mut(node).ok()) {
+        Some(leaf) => {
+            let len = leaf.tabs.len();
+            match near.and_then(|near| near.index) {
+                Some(index) => leaf.insert_tab(crate::TabIndex(index.min(len)), tab),
+                None => leaf.append_tab(tab),
+            }
+        }
+        None => *tree = Tree::new(vec![tab]),
+    }
+    Ok(())
 }
 
 /// The name of the dock of `docks` whose surface is `surface`.
