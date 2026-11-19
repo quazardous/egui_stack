@@ -197,6 +197,8 @@ pub(crate) struct StripDrop {
 /// Whether `name` is one the space makes itself for a float's dock (`float-N` for tabs moved out
 /// to a float, `window-N` for a former egui_dock window), not one the application gave: such a
 /// dock is shown by its float's window title, not by its name.
+///
+/// So these names are reserved: [`DockSpace::add_dock`] documents it for applications.
 pub(crate) fn library_named(name: &str) -> bool {
     ["float-", "window-"].iter().any(|prefix| {
         name.strip_prefix(prefix)
@@ -384,6 +386,13 @@ impl<Tab> DockSpace<Tab> {
     /// Adds a dock named `name` holding `tabs` in one leaf (none for an empty dock), and returns
     /// its surface.
     ///
+    /// The names `float-<digits>` and `window-<digits>` (`float-3`, `window-1`) are reserved for
+    /// the docks the space makes itself for floats ([`float_out`](Self::float_out), a tab dragged
+    /// out of every dock, [`windows_to_floats`](Self::windows_to_floats)): such a dock is
+    /// recognised by its name and shown by its float's window title where
+    /// [`TabViewer::dock_title`](crate::TabViewer::dock_title) gives none. Give a dock another
+    /// name to have it shown by that name.
+    ///
     /// # Panics
     ///
     /// Panics if the space already has a dock of that name.
@@ -403,6 +412,9 @@ impl<Tab> DockSpace<Tab> {
     }
 
     /// Adds a dock named `name` holding `tree`, and returns its surface.
+    ///
+    /// Dock names `float-<digits>` and `window-<digits>` are reserved for the space's own float
+    /// docks: see [`add_dock`](Self::add_dock).
     ///
     /// # Panics
     ///

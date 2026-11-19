@@ -102,6 +102,14 @@ same way, through the same test.
 They are the space's, not a dock's: a tab may go from any dock to a window and back to any dock,
 unless the dock it leaves has `windows: false` or the viewer's `allowed_in_windows` says no.
 
+A float's dock the space makes itself is named `float-N` (tabs moved out to a new float) or
+`window-N` (a former egui_dock window, `DockSpace::windows_to_floats`). These names, `float-` or
+`window-` followed by digits only, are reserved: the space recognises such a dock by its name and,
+where `TabViewer::dock_title` gives no title, shows it by its float's window title (the active
+tab's title of its focused, else first, group) rather than by its name, in the Move group menu
+for one. A dock the application adds under such a name is shown the same way, so an application
+names its own docks otherwise (`float`, `float-tools`, `window-a` are fine).
+
 ### Moving a whole tab group
 
 A tab group (a leaf with all its tabs) moves as one, through the same zones, veto and Escape as a
