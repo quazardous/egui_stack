@@ -105,6 +105,9 @@ struct SpaceDock<'a, Tab> {
     /// Whether the area draws a float over the main window that has no title bar: its top tab
     /// bar has a close window button beside the move handle.
     close_button: bool,
+    /// The folded zone whose strip, or the collapsed zone whose restore band, the drag hovers
+    /// this frame, with the dock it takes the tab for: the zone a drop there names.
+    drop_zone: Option<(String, crate::layout::ZoneName)>,
 }
 
 /// A tab being dragged in a [`DockArea`], from [`DockArea::dragged_tab`].
@@ -308,6 +311,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             viewport: None,
             rank: 0,
             close_button: false,
+            drop_zone: None,
         });
         area
     }

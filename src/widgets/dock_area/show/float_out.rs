@@ -22,6 +22,7 @@ impl<Tab> DockArea<'_, Tab> {
             TabDestination::Window(_) => None,
         };
         let mut change = crate::bus::LayoutChange::new(crate::bus::Change::TabMoved);
+        change.zone = self.drop_zone_of(dock);
         change.dock = dock.map(str::to_owned);
         bus.emit::<crate::bus::LayoutChanged>(change);
     }

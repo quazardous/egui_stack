@@ -152,6 +152,12 @@ pub struct DropAsk {
     pub to_float: bool,
     /// Where in the destination.
     pub target: DropTarget,
+    /// The layout zone they are dropped in: the folded zone whose strip, or the collapsed zone
+    /// whose restore band, they are released on (the zone
+    /// [`DockSpace::take_unfolds`](crate::DockSpace::take_unfolds) reports), else the zone
+    /// holding the dock they enter, as [`DockSpace::bind`](crate::DockSpace::bind) last read it.
+    /// `None` for a new float, or for a dock no bound layout holds.
+    pub zone: Option<String>,
 }
 
 /// What changed, for [`LayoutChanged`].
@@ -192,7 +198,8 @@ pub enum Change {
 pub struct LayoutChange {
     /// What changed.
     pub change: Change,
-    /// The zone, or the flyout's key, if a zone changed.
+    /// The zone, or the flyout's key, if a zone changed. For [`Change::TabMoved`], the zone the
+    /// tab or the group was dropped in, as [`DropAsk::zone`] names it.
     pub zone: Option<String>,
     /// The dock, if a dock changed (the one a tab entered).
     pub dock: Option<String>,
