@@ -1,5 +1,18 @@
 # egui_stack changelog
 
+## egui_stack 0.28.9 - 2026-11-19
+
+### Added
+
+- A float's move handle is no longer a keyboard stop that does nothing: Tab passes it by. The new `TabViewer::on_window_handle` gives the application the handle's response, as `on_tab_button` does for tabs, so it can make it focusable and wire keys itself. Setting a shown float's `Place` in the layout from code now moves its window there, over the main window and natively, with no `FloatEvent::Moved`; it was only read when the window opened.
+- `DockState::set_collapsed(path, collapsed)` and `Tree::set_leaf_collapsed(node, collapsed)` collapse or expand a tab group from code as its collapse button does, keeping the tree's collapsed state up to date: a float whose groups are all collapsed shrinks to its tab bars and grows back once one is expanded. `Node::set_collapsed` sets the node's flag only, and left such a float shrunk; its docs point to them. `DockState::focus_tab` does not expand a collapsed group (#142).
+- Dock tabs follow the accessible tab pattern: the active tab's body is a `TabPanel` under its leaf, named by its tab, which `controls` it, and each tab list has a name, the dock's title (`TabViewer::dock_title`) or the new `Labels::tab_list` ("Tabs" by default) to translate. Without its tab bar, the panel takes the tab's title as its name.
+
+### Fixed
+
+- A float over the main window without a title bar of its own (the default since 0.28.7) has a "Close window" button beside its move handle: it closes the float as the title bar's close button does, asking `TabViewer::close_policy` what becomes of its tabs, even when they cannot be closed one by one, which left such a float with no way to close it (#143).
+- A `LayoutArea` zone's content now lies inside its pane in the accessibility tree: the content's `Ui` is the `Pane` named after the zone's title, where it was an empty `Pane` beside its controls. A zone lying over its neighbour does the same, and a flyout's content is a `Pane` named by `ZoneViewer::flyout_title`.
+
 ## egui_stack 0.28.8 - 2026-11-18
 
 ### Fixed
