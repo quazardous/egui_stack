@@ -329,6 +329,12 @@ impl<Tab> Node<Tab> {
 
     /// Sets the collapsing state of the node.
     ///
+    /// Only this node's flag: its ancestors' and its tree's collapsed state are not updated,
+    /// so a float whose groups were all collapsed stays shrunk to its tab bars. To collapse or
+    /// expand a tab group as its collapse button does, use
+    /// [`DockState::set_collapsed`](crate::DockState::set_collapsed) or
+    /// [`Tree::set_leaf_collapsed`](crate::Tree::set_leaf_collapsed).
+    ///
     /// # Panics
     ///
     /// Panics if `self` is an [`Empty`](Node::Empty) node.

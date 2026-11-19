@@ -1159,6 +1159,25 @@ impl<Tab> Tree<Tab> {
         self.collapsed_leaf_count = collapsed_leaf_count;
     }
 
+    /// Collapses (or expands) the leaf `node` as its collapse button does: its tab group shows
+    /// only its tab bar, and its ancestors and the tree are updated, so that a container (or
+    /// the whole tree, a float shrinking to its tab bars) whose groups are all collapsed is
+    /// collapsed, and one with a group expanded is not.
+    ///
+    /// Prefer it to [`Node::set_collapsed`], which sets the node's flag only. In a
+    /// [`DockState`](crate::DockState), [`DockState::set_collapsed`](crate::DockState::set_collapsed)
+    /// also updates a legacy window's state.
+    ///
+    /// Returns `false`, changing nothing, if `node` is not a leaf of the tree.
+    pub fn set_leaf_collapsed(&mut self, node: NodeIndex, collapsed: bool) -> bool {
+        match self.nodes.get_mut(node.0) {
+            Some(Node::Leaf(leaf)) => leaf.collapsed = collapsed,
+            _ => return false,
+        }
+        self.node_update_collapsed(node);
+        true
+    }
+
     /// Updates the collapsed state of the node and its parents.
     pub(crate) fn node_update_collapsed(&mut self, node_index: NodeIndex) {
         let collapsed = self[node_index].is_collapsed();
@@ -1657,5 +1676,35 @@ mod test {
         }
         assert!(tree[NodeIndex::root()].is_collapsed());
         assert_eq!(tree[NodeIndex::root()].collapsed_leaf_count(), 2);
+    }
+
+    #[test]
+    fn set_leaf_collapsed_updates_the_ancestors_and_the_tree() {
+        let mut tree: Tree<Tab> = Tree::new(vec![Tab(0)]);
+        let [top, bottom] = tree.split_below(NodeIndex::root(), 0.5, vec![Tab(1)]);
+        let root = NodeIndex::root();
+
+        assert!(tree.set_leaf_collapsed(top, true));
+        assert!(tree[top].is_collapsed());
+        assert!(!tree[root].is_collapsed(), "one group still open");
+        assert!(!tree.is_collapsed());
+
+        assert!(tree.set_leaf_collapsed(bottom, true));
+        assert!(tree[root].is_collapsed());
+        assert_eq!(tree[root].collapsed_leaf_count(), 2);
+        assert!(tree.is_collapsed(), "every group collapsed");
+
+        assert!(tree.set_leaf_collapsed(top, false));
+        assert!(!tree[top].is_collapsed());
+        assert!(!tree[root].is_collapsed());
+        assert_eq!(tree[root].collapsed_leaf_count(), 1);
+        assert!(!tree.is_collapsed(), "expanded again");
+
+        assert!(!tree.set_leaf_collapsed(root, true), "not a leaf");
+        assert!(!tree[root].is_collapsed());
+        assert!(
+            !tree.set_leaf_collapsed(NodeIndex(99), true),
+            "no such node"
+        );
     }
 }
