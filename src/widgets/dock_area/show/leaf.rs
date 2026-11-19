@@ -26,6 +26,14 @@ fn tab_body_id(dock_area_id: Id, path: NodePath, tab_id: Id) -> Id {
     dock_area_id.with((path.surface, "surface")).with(tab_id)
 }
 
+/// The id of the tab `index`'s widget in the tab bar of the leaf `path`.
+fn tab_widget_id(dock_area_id: Id, path: NodePath, index: TabIndex) -> Id {
+    dock_area_id
+        .with((path.surface, "surface"))
+        .with((path.node, "node"))
+        .with((index.0, "tab"))
+}
+
 /// The height every button of a tab bar leaves free at the bottom of the bar: the line under
 /// the bar stays visible under it, at rest and hovered.
 const BAR_LINE: f32 = 2.0;
@@ -356,6 +364,14 @@ impl<Tab> DockArea<'_, Tab> {
         }
 
         let (actual_width, tab_hovered) = {
+            // The tab list is named after its dock's title, else by `Labels::tab_list`.
+            let list_name = self
+                .dock_name(path.surface)
+                .and_then(|dock| tab_viewer.dock_title(dock))
+                .map_or_else(
+                    || self.labels.tab_list.to_string(),
+                    |title| title.text().to_owned(),
+                );
             let leaf = self
                 .dock_state
                 .leaf_mut(path)
@@ -380,7 +396,8 @@ impl<Tab> DockArea<'_, Tab> {
                     .max_rect(tabbar_inner_rect)
                     .layout(Layout::left_to_right(Align::Center))
                     .id_salt("tabs")
-                    .accessibility_role(Role::TabList),
+                    .accessibility_role(Role::TabList)
+                    .accessibility_label(list_name),
             );
 
             let mut clip_rect = tabbar_outer_rect;
@@ -571,12 +588,8 @@ impl<Tab> DockArea<'_, Tab> {
 
         let mut roved = false;
         for tab_index in 0..tabs_len {
-            let id = self
-                .id
-                .with((path.surface, "surface"))
-                .with((path.node, "node"))
-                .with((tab_index, "tab"));
             let tab_index = TabIndex(tab_index);
+            let id = tab_widget_id(self.id, path, tab_index);
             let is_being_dragged = tabs_ui.ctx().is_being_dragged(id)
                 && tabs_ui.input(|i| i.pointer.is_decidedly_dragging())
                 && self.draggable_tabs;
@@ -1944,11 +1957,37 @@ impl<Tab> DockArea<'_, Tab> {
             // from node to node.
             let id = tab_body_id(self.id, path, tab_viewer.id(tab));
             ui.ctx().check_for_id_clash(id, body_rect, "a tab with id");
+            // The body is the active tab's panel: under the leaf in the accessibility tree,
+            // controlled and named by its tab when the tab bar shows it.
             let ui = &mut Ui::new(
                 ui.ctx().clone(),
                 id,
-                UiBuilder::new().max_rect(body_rect).layer_id(ui.layer_id()),
+                UiBuilder::new()
+                    .max_rect(body_rect)
+                    .layer_id(ui.layer_id())
+                    .accessibility_parent(ui.unique_id())
+                    .accessibility_role(Role::TabPanel),
             );
+            let tab_id = tab_widget_id(self.id, path, *active);
+            if tab_bar_shown {
+                ui.ctx().accesskit_node_builder(tab_id, |node| {
+                    node.push_controlled(id.accesskit_id());
+                });
+            }
+            // Without its tab bar, the panel takes the tab's title as its name.
+            let title = (!tab_bar_shown).then(|| tab_viewer.title(tab).text().to_owned());
+            ui.ctx().accesskit_node_builder(id, |node| {
+                match title {
+                    Some(title) => node.set_label(title),
+                    None => node.push_labelled_by(tab_id.accesskit_id()),
+                }
+                node.set_bounds(egui::accesskit::Rect {
+                    x0: body_rect.min.x.into(),
+                    y0: body_rect.min.y.into(),
+                    x1: body_rect.max.x.into(),
+                    y1: body_rect.max.y.into(),
+                });
+            });
             ui.set_clip_rect(Rect::from_min_max(ui.cursor().min, ui.clip_rect().max));
 
             // Use initial spacing for ui.

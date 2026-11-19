@@ -25,6 +25,9 @@ use std::borrow::Cow;
 )]
 #[non_exhaustive]
 pub struct Labels {
+    /// A tab bar, the list of its tabs, when its dock has no title
+    /// ([`TabViewer::dock_title`](crate::TabViewer::dock_title)) or it is in no dock.
+    pub tab_list: Cow<'static, str>,
     /// The close button of a tab.
     pub close_tab: Cow<'static, str>,
     /// The button that adds a tab to a tab bar.
@@ -79,6 +82,7 @@ pub struct Labels {
 impl Labels {
     /// The default English labels.
     pub const ENGLISH: Self = Self {
+        tab_list: Cow::Borrowed("Tabs"),
         close_tab: Cow::Borrowed("Close tab"),
         add_tab: Cow::Borrowed("Add tab"),
         close_all_tabs: Cow::Borrowed("Close all tabs"),
