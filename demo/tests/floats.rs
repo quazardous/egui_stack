@@ -38,6 +38,25 @@ fn float_group_opens_a_float_with_a_move_handle() {
         harness.query_by_label("Move window").is_some(),
         "the float's top tab bar has the window's move handle"
     );
+
+    // One close button on that bar, the float's, right of the handle: the group's close all
+    // button would close the window too.
+    let handle = harness.get_by_label("Move window").rect();
+    let on_bar = |rect: egui::Rect| (rect.center().y - handle.center().y).abs() < 1.0;
+    let closes: Vec<_> = ["Close window", "Close all tabs"]
+        .into_iter()
+        .flat_map(|label| harness.query_all_by_label(label).map(|node| node.rect()))
+        .filter(|rect| on_bar(*rect))
+        .collect();
+    assert_eq!(
+        closes.len(),
+        1,
+        "one close button on the float's bar: {closes:?}"
+    );
+    assert!(
+        closes[0].left() >= handle.right() - 1.0,
+        "the float's close button, right of its move handle"
+    );
 }
 
 #[test]

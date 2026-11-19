@@ -240,6 +240,16 @@ impl Multi {
             .map(|(_, rect, _)| *rect)
     }
 
+    /// Every labelled widget of a window's last pass, with where it was (its points, scale 1).
+    pub fn labels(&self, viewport: ViewportId) -> Vec<(String, Rect)> {
+        self.immediate
+            .borrow()
+            .labels
+            .get(&viewport)
+            .map(|labels| labels.iter().map(|(l, r, _)| (l.clone(), *r)).collect())
+            .unwrap_or_default()
+    }
+
     /// Whether the widget labelled `label` took the focus in a window's last pass (AccessKit's
     /// `Focus` action), as a keyboard stop.
     pub fn focusable(&self, viewport: ViewportId, label: &str) -> Option<bool> {

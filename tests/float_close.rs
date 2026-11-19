@@ -1,7 +1,8 @@
 //! Closing a float over the main window that has no title bar of its own, on the
 //! multi-viewport harness (`support/multi.rs`): its top tab bar has a "Close window" button
 //! beside the move handle, which asks `TabViewer::close_policy` as the title bar's close button
-//! does, whether or not its tabs can be closed.
+//! does, whether or not its tabs can be closed. It is the bar's only close button while the
+//! float holds one tab group: the group's close all button would close the window too.
 
 #[path = "support/multi.rs"]
 mod multi;
@@ -22,6 +23,7 @@ const CLOSE: &str = "Close window";
 /// Tabs that cannot be closed, and the policy a float's close gets.
 struct Viewer {
     tab_rects: Vec<(String, Rect)>,
+    closeable: bool,
     policy: ClosePolicy,
     asked: usize,
 }
@@ -42,7 +44,7 @@ impl TabViewer for Viewer {
     }
 
     fn is_closeable(&self, _tab: &String) -> bool {
-        false
+        self.closeable
     }
 
     fn close_policy(&mut self, _close: &FloatClose) -> ClosePolicy {
@@ -63,6 +65,8 @@ struct App {
     docked: Docked<String>,
     viewer: Viewer,
     title_bar: bool,
+    /// `DockArea::show_leaf_close_all_buttons` of the floats' areas.
+    close_all: bool,
 }
 
 fn app(policy: ClosePolicy) -> App {
@@ -82,10 +86,12 @@ fn app(policy: ClosePolicy) -> App {
         docked: Docked::new(layout, space),
         viewer: Viewer {
             tab_rects: Vec::new(),
+            closeable: false,
             policy,
             asked: 0,
         },
         title_bar: false,
+        close_all: true,
     }
 }
 
@@ -100,10 +106,12 @@ fn frame(app: &mut App) -> impl FnMut(&mut Ui) + '_ {
             });
         }
         let mut host = Host;
+        let close_all = app.close_all;
         app.docked
             .floats()
             .host(&mut host)
             .title_bar(app.title_bar)
+            .configure(move |_float, area| area.show_leaf_close_all_buttons(close_all))
             .show(ui.ctx(), &mut app.viewer);
     }
 }
@@ -207,4 +215,93 @@ fn a_float_with_its_title_bar_has_no_close_window_button_on_its_tab_bar() {
         close.bottom() <= handle.top(),
         "the only close button {close:?} is the title bar's, above the tab bar {handle:?}"
     );
+}
+
+/// The close buttons on the float's top bar, the row of its move handle, left to right: the
+/// float's close window button and its groups' close all buttons.
+fn close_buttons_on_top_bar(multi: &Multi) -> Vec<(String, Rect)> {
+    let handle = multi
+        .find(ViewportId::ROOT, "Move window")
+        .expect("the move handle is shown");
+    let mut closes: Vec<_> = multi
+        .labels(ViewportId::ROOT)
+        .into_iter()
+        .filter(|(label, rect)| {
+            (label == CLOSE || label == "Close all tabs")
+                && (rect.center().y - handle.center().y).abs() < 1.0
+        })
+        .collect();
+    closes.sort_by(|a, b| a.1.left().total_cmp(&b.1.left()));
+    closes
+}
+
+/// A float holding one tab group shows one close button on its top bar, its close window
+/// button beside the move handle, whatever `show_leaf_close_all_buttons` and whether or not
+/// its tabs can be closed: the group's close all button would close the window too, a second
+/// cross beside the first.
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_float_of_one_group_has_one_close_button_on_its_top_bar() {
+    for close_all in [true, false] {
+        for closeable in [false, true] {
+            let mut multi = Multi::new();
+            let mut app = app(ClosePolicy::ReturnToOrigin);
+            app.close_all = close_all;
+            app.viewer.closeable = closeable;
+            detach_b(&mut multi, &mut app);
+            let closes = close_buttons_on_top_bar(&multi);
+            let names: Vec<_> = closes.iter().map(|(label, _)| label.as_str()).collect();
+            assert_eq!(
+                names,
+                [CLOSE],
+                "close_all {close_all}, closeable {closeable}: one close button on the top bar"
+            );
+            let handle = multi.find(ViewportId::ROOT, "Move window").unwrap();
+            assert!(
+                closes[0].1.left() >= handle.right() - 1.0,
+                "it is right of the move handle {handle:?}: {closes:?}"
+            );
+        }
+    }
+}
+
+/// The float's top bar, its widgets left to right relative to the bar's left, against
+/// `tests/painting/float_top_bar.txt` (`UPDATE_SNAPSHOTS=1` writes it again).
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn the_top_bar_of_a_float_snapshot() {
+    let mut multi = Multi::new();
+    let mut app = app(ClosePolicy::ReturnToOrigin);
+    app.viewer.closeable = true;
+    detach_b(&mut multi, &mut app);
+    let handle = multi.find(ViewportId::ROOT, "Move window").unwrap();
+    let b = tab_rect(&app, "B").expect("B is shown");
+    let mut row: Vec<_> = multi
+        .labels(ViewportId::ROOT)
+        .into_iter()
+        .filter(|(_, rect)| {
+            (rect.center().y - handle.center().y).abs() < 2.0
+                && rect.left() >= b.left() - 1.0
+                && rect.right() <= handle.right() + 40.0
+        })
+        .collect();
+    row.sort_by(|a, b| a.1.left().total_cmp(&b.1.left()));
+    let mut text = String::new();
+    for (label, rect) in row {
+        text += &format!(
+            "{label}: x {:.1}..{:.1}\n",
+            rect.left() - b.left(),
+            rect.right() - b.left()
+        );
+    }
+    let path = format!(
+        "{}/tests/painting/float_top_bar.txt",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+        std::fs::write(&path, &text).unwrap();
+    }
+    let expected = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{path}: {e}; run with UPDATE_SNAPSHOTS=1 to write it"));
+    assert_eq!(text, expected, "the float's top bar changed");
 }

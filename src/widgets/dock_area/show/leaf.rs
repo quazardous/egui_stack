@@ -331,6 +331,11 @@ impl<Tab> DockArea<'_, Tab> {
             }
             slot => (slot, None),
         };
+        // The leaf's close all button, but on a float's top bar beside its close window button
+        // when the float holds this one tab group: closing all its tabs would close the window
+        // too, so the bar would show two crosses for one action.
+        let close_all = self.show_leaf_close_all_buttons
+            && !(float_close.is_some() && self.single_group(path.surface));
         let tabbar_outer_rect = match move_handle {
             Some(handle) => {
                 Rect::from_min_max(full_bar.min, pos2(handle.left(), full_bar.bottom()))
@@ -350,7 +355,7 @@ impl<Tab> DockArea<'_, Tab> {
             available_width -= Style::TAB_ADD_BUTTON_SIZE;
         }
 
-        if self.show_leaf_close_all_buttons {
+        if close_all {
             available_width -= Style::TAB_CLOSE_ALL_BUTTON_SIZE;
         }
 
@@ -488,7 +493,7 @@ impl<Tab> DockArea<'_, Tab> {
                 );
             }
 
-            if self.show_leaf_close_all_buttons {
+            if close_all {
                 // Current leaf contains non-closable tabs.
                 let disabled = self
                     .dock_state
@@ -1340,6 +1345,15 @@ impl<Tab> DockArea<'_, Tab> {
 
     /// Whether the float this area draws has a close window button beside its move handle: a
     /// float over the main window without a title bar of its own.
+    /// Whether the surface holds a single tab group with tabs: closing all its tabs empties it.
+    fn single_group(&self, surface: SurfaceIndex) -> bool {
+        self.dock_state[surface]
+            .iter()
+            .filter(|node| node.get_leaf().is_some_and(|leaf| !leaf.tabs.is_empty()))
+            .count()
+            == 1
+    }
+
     fn shows_float_close_button(&self) -> bool {
         self.space.as_ref().is_some_and(|space| space.close_button)
     }
