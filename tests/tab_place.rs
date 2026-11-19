@@ -7,6 +7,8 @@ use egui_stack::{
     DockRules, DockSpace, NodeIndex, NodePath, TabDestination, TabIndex, TabInsert, TabPlace,
 };
 
+/// Names a tab, as `TabViewer::id` does: the signature `id_of` takes.
+#[allow(clippy::ptr_arg)]
 fn id(tab: &mut String) -> Id {
     Id::unique(tab.as_str())
 }
