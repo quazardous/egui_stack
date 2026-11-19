@@ -169,7 +169,9 @@ pub trait TabViewer {
     /// it can name the dock by the same title.
     ///
     /// By default `None`: the dock is shown by its name, as given to
-    /// [`DockSpace::add_dock`](crate::DockSpace::add_dock).
+    /// [`DockSpace::add_dock`](crate::DockSpace::add_dock). A float's dock the space named itself
+    /// (`float-N`, when tabs are moved out to a new float) is shown instead by its window's
+    /// title: the active tab's [`title`](Self::title) of its focused, else first, group.
     fn dock_title(&mut self, _dock: &str) -> Option<WidgetText> {
         None
     }

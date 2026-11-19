@@ -1517,8 +1517,9 @@ impl<Tab> DockArea<'_, Tab> {
             ));
         }
 
-        // The space's other docks, which take drops, by the viewer's titles.
-        let docks: Vec<String> = self
+        // The space's other docks, which take drops, by the viewer's titles; else a float's dock
+        // the space named itself by its window's title, and any other dock by its name.
+        let docks: Vec<(String, SurfaceIndex)> = self
             .space
             .as_ref()
             .map(|space| {
@@ -1526,17 +1527,25 @@ impl<Tab> DockArea<'_, Tab> {
                     .docks
                     .iter()
                     .filter(|dock| dock.surface != path.surface && dock.rules.accept_drops)
-                    .map(|dock| dock.name.clone())
+                    .map(|dock| (dock.name.clone(), dock.surface))
                     .collect()
             })
             .unwrap_or_default();
-        for name in docks {
+        for (name, surface) in docks {
             let destination = match self.dock_target(&name) {
                 Some(TreeComponent::Node(node)) => TabDestination::Node(node, TabInsert::Append),
                 Some(TreeComponent::Surface(surface)) => TabDestination::EmptySurface(surface),
                 _ => continue,
             };
-            let title = tab_viewer.dock_title(&name).unwrap_or_else(|| name.into());
+            let title = tab_viewer
+                .dock_title(&name)
+                .or_else(|| {
+                    crate::dock_space::library_named(&name)
+                        .then(|| self.dock_state.get_surface_mut(surface)?.node_tree_mut())
+                        .flatten()
+                        .and_then(|tree| crate::floats::tree_title(tree, tab_viewer))
+                })
+                .unwrap_or_else(|| name.into());
             targets.push((title, destination));
         }
 
