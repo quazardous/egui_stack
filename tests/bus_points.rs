@@ -7,12 +7,10 @@
 
 #[path = "support/multi.rs"]
 mod multi;
-#[path = "support/test_bus.rs"]
-mod test_bus;
-
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use bus_kernel::Kernel;
 use egui::{
     Event, Id, Modifiers, PointerButton, Pos2, Rect, Ui, UiBuilder, ViewportId, WidgetText, pos2,
 };
@@ -21,7 +19,6 @@ use egui_stack::bus::{self, ClosePolicy, POINTS};
 use egui_stack::layout::{Content, Dir, FloatHost, Layout, Screen, Zone};
 use egui_stack::{DockArea, DockRules, DockSpace, Docked, FloatClose, TabViewer, ViewportHost};
 use multi::Multi;
-use test_bus::TestBus;
 
 const MAIN: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 300.0));
 const SIDE: Rect = Rect::from_min_max(pos2(300.0, 0.0), pos2(600.0, 300.0));
@@ -83,7 +80,7 @@ struct App {
     viewer: Viewer,
 }
 
-fn app(bus: Arc<TestBus>) -> App {
+fn app(bus: Arc<Kernel>) -> App {
     let mut space = DockSpace::new()
         .with_float_host(FloatHost::Native)
         .with_bus(bus, |tab: &String| tab.clone());
@@ -152,7 +149,7 @@ fn viewport(key: &str) -> ViewportId {
 
 /// Counts the asks of `stack.dock.drop`, refusing those `refuse` says.
 fn count_drops(
-    bus: &TestBus,
+    bus: &Kernel,
     refuse: impl Fn(&bus::DropAsk) -> Option<HookError> + Send + Sync + 'static,
 ) -> Arc<AtomicUsize> {
     let asked = Arc::new(AtomicUsize::new(0));
@@ -173,9 +170,14 @@ fn side_middle() -> Pos2 {
 
 #[test]
 fn the_points_are_declared_under_the_crates_prefix() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     let _app = app(bus.clone());
-    let mut declared = bus.declared();
+    let mut declared: Vec<&str> = bus
+        .points()
+        .into_iter()
+        .filter(|point| point.declared)
+        .map(|point| point.id)
+        .collect();
     declared.sort_unstable();
     let mut expected: Vec<&str> = POINTS.iter().map(|point| point.id).collect();
     expected.sort_unstable();
@@ -193,7 +195,7 @@ fn the_points_are_declared_under_the_crates_prefix() {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_veto_listener_refuses_a_drop() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     let asked = count_drops(&bus, |ask| {
         (ask.to.as_deref() == Some("side")).then(|| HookError::refuse("not there"))
     });
@@ -211,7 +213,7 @@ fn a_veto_listener_refuses_a_drop() {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_failing_drop_listener_refuses_the_drop() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     count_drops(&bus, |_| Some(HookError::failed("broken")));
     let mut multi = Multi::new();
     let mut app = app(bus);
@@ -226,7 +228,7 @@ fn a_failing_drop_listener_refuses_the_drop() {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn an_allowed_drop_lands_and_the_viewer_is_not_asked() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     count_drops(&bus, |_| None);
     let mut multi = Multi::new();
     let mut app = app(bus);
@@ -241,7 +243,7 @@ fn an_allowed_drop_lands_and_the_viewer_is_not_asked() {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn the_drop_is_asked_when_the_destination_changes_not_every_frame() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     let asked = count_drops(&bus, |_| None);
     let mut multi = Multi::new();
     let mut app = app(bus);
@@ -300,7 +302,7 @@ fn detach_b(multi: &mut Multi, app: &mut App) {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_failing_close_listener_falls_back_to_the_default() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     {
         let bus: &dyn Bus = &*bus;
         bus.listen::<bus::WindowClose>("test.close", ListenOpts::new(), |_, _| {
@@ -328,7 +330,7 @@ fn a_failing_close_listener_falls_back_to_the_default() {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_close_listener_chooses_the_policy() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     {
         let bus: &dyn Bus = &*bus;
         bus.listen::<bus::WindowClose>("test.close", ListenOpts::new(), |ask, policy| {
@@ -352,7 +354,7 @@ fn a_close_listener_chooses_the_policy() {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn the_window_events_are_emitted() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     let heard: Arc<Mutex<Vec<String>>> = Arc::default();
     {
         let bus: &dyn Bus = &*bus;
@@ -403,7 +405,7 @@ fn the_window_events_are_emitted() {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_drop_into_another_window_is_asked_when_it_changes_and_at_release() {
-    let bus = Arc::new(TestBus::default());
+    let bus = Arc::new(Kernel::new());
     let asked = count_drops(&bus, |ask| {
         assert!(
             ask.to_float == (ask.to.as_deref() == Some("float-1")),

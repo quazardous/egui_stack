@@ -329,7 +329,7 @@ the native floats.
   across viewports (step 4), position snapping and joined groups (layout steps 6 to 8).
 - Tests: `tests/native_floats.rs` on a small multi-viewport harness (`tests/support/multi.rs`,
   immediate viewports run as eframe runs them, a close request, positions hidden, windows
-  moved), and `tests/bus_points.rs` on a minimal bus (`tests/support/test_bus.rs`).
+  moved), and `tests/bus_points.rs` on the `bus-kernel` crate's bus (a dev-dependency).
 
 ### As built (step 4)
 

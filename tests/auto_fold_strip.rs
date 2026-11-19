@@ -267,14 +267,10 @@ fn the_hook_can_open_a_folded_zone_over_its_neighbour() {
 }
 
 #[cfg(feature = "bus")]
-#[path = "support/test_bus.rs"]
-mod test_bus;
-
-#[cfg(feature = "bus")]
 mod bus {
     use std::sync::{Arc, Mutex};
 
-    use super::test_bus::TestBus;
+    use bus_kernel::Kernel;
     use egui_stack::DockSpace;
     use egui_stack::bus::bus_contract::{Bus, ListenOpts};
     use egui_stack::bus::{Change, LayoutChanged};
@@ -284,7 +280,7 @@ mod bus {
     #[test]
     #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
     fn the_click_goes_on_the_bus() {
-        let bus = Arc::new(TestBus::default());
+        let bus = Arc::new(Kernel::new());
         let heard = Arc::new(Mutex::new(Vec::new()));
         let h = heard.clone();
         let mut space: DockSpace<String> =
