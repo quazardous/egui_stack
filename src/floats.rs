@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use egui::{
-    Context, Id, LayerId, Modifiers, Rect, Ui, ViewportBuilder, ViewportCommand, ViewportId,
+    Context, Id, LayerId, Modifiers, Rect, Ui, Vec2, ViewportBuilder, ViewportCommand, ViewportId,
     WindowDrag, vec2,
 };
 
@@ -65,6 +65,14 @@ pub trait ViewportHost {
     /// never invented.
     fn screens(&self) -> Vec<Screen> {
         Vec::new()
+    }
+
+    /// Whether this host opens native windows: by default, unless egui embeds its viewports
+    /// ([`Context::embed_viewports`]: on the web, or a backend with a single viewport). A host
+    /// that draws the floats embedded says `false`. Without native windows,
+    /// [`Outside::Native`] falls back to [`Outside::Cancel`].
+    fn native_windows(&self, ctx: &Context) -> bool {
+        !ctx.embed_viewports()
     }
 
     /// The outer rect of the viewport `id` on the desktop, in physical pixels; `None` where
@@ -219,6 +227,12 @@ pub(crate) struct Floating {
     /// Where each float just opened from a release over the main window was released: its
     /// first region is the one there, whatever its size overlaps.
     pub(crate) released_at: HashMap<String, egui::Pos2>,
+    /// Whether the host opens native windows ([`ViewportHost::native_windows`]), as last told.
+    pub(crate) native_windows: bool,
+    /// Where the pointer held each float over the main window being moved, from its corner,
+    /// while it was over the window: a float torn out ([`Outside::Native`]) opens with the
+    /// pointer there.
+    pub(crate) grabs: HashMap<String, egui::Vec2>,
 }
 
 impl Floating {
@@ -231,6 +245,27 @@ impl Floating {
             .filter(|dock| !dock.floating && work_area::main_window(dock.viewport))
             .filter_map(|dock| dock.rect);
         self.work_area.regions(&self.zones, drawn)
+    }
+
+    /// What hosts the float made from a tab or a group released over nothing at `pointer`, in
+    /// the main window's points: the space's host inside the work area; past its edge, a
+    /// native window with [`Outside::Native`] where native windows are available; `None` where
+    /// the release is refused ([`Outside::Cancel`]).
+    pub(crate) fn release_host(
+        &self,
+        docks: &[crate::dock_space::Dock],
+        pointer: egui::Pos2,
+    ) -> Option<FloatHost> {
+        let Some(regions) = self.regions(docks) else {
+            return Some(self.host);
+        };
+        if regions.iter().any(|region| region.contains(pointer)) {
+            return Some(self.host);
+        }
+        match self.work_area.outside_rule() {
+            Outside::Native if self.native_windows => Some(FloatHost::Native),
+            Outside::Native | Outside::Cancel => None,
+        }
     }
 
     /// The viewport `viewport` closed (a float's window): a drag that began there ends, and one
@@ -262,6 +297,9 @@ pub(crate) struct PendingFloat {
     pub(crate) physical: Option<Rect>,
     /// Its tabs.
     pub(crate) tabs: Vec<Id>,
+    /// What hosts it, chosen at its release: the space's host, or a native window for one
+    /// torn out of the work area ([`Outside::Native`]).
+    pub(crate) host: FloatHost,
 }
 
 /// Draws the floats of a [`Layout`] whose content is a dock of a [`DockSpace`]: over the main
@@ -530,6 +568,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
         };
         space.floating.enabled = true;
         space.floating.work_area = work_area;
+        space.floating.native_windows = host.native_windows(ctx);
         let screens = host.screens();
 
         legacy_windows(layout, space);
@@ -673,7 +712,7 @@ fn open_pending<Tab>(layout: &mut Layout, space: &mut DockSpace<Tab>, screens: &
         if !space.has_dock(&pending.dock) {
             continue;
         }
-        let host = space.floating.host;
+        let host = pending.host;
         let place = match host {
             FloatHost::Native => pending
                 .physical
@@ -1083,6 +1122,18 @@ fn show_in_window<Tab>(
             }
         }
     }
+    if let Some(shown) = &shown
+        && tear_out(
+            ctx,
+            layout,
+            space,
+            key,
+            [id.with("__title_click"), handle],
+            shown.response.rect,
+        )
+    {
+        return;
+    }
     if let Some(shown) = shown {
         let rect = shown.response.rect;
         space.floating.layers.push(shown.response.layer_id);
@@ -1115,6 +1166,79 @@ fn show_in_window<Tab>(
             close_with(layout, space, viewer, key, policy);
         }
     }
+}
+
+/// Tears the float `key` over the main window out to a native window, when its window, at
+/// `rect` and moved by the drags of `movers` (its title bar, its move handle), is let go with
+/// the pointer outside every region of the work area and the work area says
+/// [`Outside::Native`]: the native window opens where it was let go, the pointer where it held
+/// the float. Returns whether it was torn out.
+fn tear_out<Tab>(
+    ctx: &Context,
+    layout: &mut Layout,
+    space: &mut DockSpace<Tab>,
+    key: &str,
+    movers: [Id; 2],
+    rect: Rect,
+) -> bool {
+    let responses = movers.map(|id| ctx.read_response(id));
+    let moving = responses.iter().flatten().any(egui::Response::dragged);
+    let released = responses.iter().flatten().any(egui::Response::drag_stopped);
+    let pointer = ctx.input(|i| i.pointer.latest_pos());
+    if !moving && !released {
+        space.floating.grabs.remove(key);
+        return false;
+    }
+    let Some(pointer) = pointer else {
+        return false;
+    };
+    // While over the window, where the pointer holds it.
+    if rect.contains(pointer) {
+        space
+            .floating
+            .grabs
+            .insert(key.to_owned(), pointer - rect.min);
+    }
+    if !released {
+        return false;
+    }
+    let grab = space.floating.grabs.remove(key);
+    if space.floating.work_area.outside_rule() != Outside::Native
+        || space.floating.release_host(space.docks(), pointer) != Some(FloatHost::Native)
+    {
+        return false;
+    }
+    let Some(float) = layout.float_mut(key) else {
+        return false;
+    };
+    let grab = grab.unwrap_or_else(|| (pointer - rect.min).clamp(Vec2::ZERO, rect.size()));
+    let at = Rect::from_min_size(pointer - grab, rect.size());
+    // On the desktop, when the system tells where the main window is.
+    let ppp = ctx.pixels_per_point();
+    let physical = ctx.input(|i| i.viewport().inner_rect).map(|inner| {
+        Rect::from_min_size(
+            ((inner.min.to_vec2() + at.min.to_vec2()) * ppp).to_pos2(),
+            at.size() * ppp,
+        )
+    });
+    let screens = space.floating.screens.clone().unwrap_or_default();
+    let place = physical
+        .and_then(|rect| Place::from_physical(rect, &screens))
+        .unwrap_or_else(|| Place::new(at));
+    float.host = FloatHost::Native;
+    float.place = place.clone();
+    space.floating.chrome.remove(key);
+    space.floating.collapsed.remove(key);
+    space.floating.moving.remove(key);
+    space.floating.placed.insert(key.to_owned(), place.rect.min);
+    #[cfg(feature = "bus")]
+    space.emit_change(float_change(crate::bus::Change::FloatMoved, key));
+    space.floating.events.push(FloatEvent::Moved {
+        key: key.to_owned(),
+        place,
+    });
+    ctx.request_repaint();
+    true
 }
 
 /// A native float, through the host.

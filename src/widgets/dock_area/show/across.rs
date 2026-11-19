@@ -321,13 +321,17 @@ impl<Tab> DockArea<'_, Tab> {
             TreeComponent::Node(path) => self.node_may_float(path, tab_viewer),
             TreeComponent::Surface(_) => false,
         };
+        // Outside the floats' work area: refused, or torn out to a native window.
+        let Some(host) = self.release_host(rect.min) else {
+            return;
+        };
         let destination = TabDestination::Window(rect);
         if may
             && self
                 .refusal_of(&src, tab_viewer, &destination, true)
                 .is_none()
         {
-            self.to_float.push((src, rect));
+            self.to_float.push((src, rect, Some(host)));
         }
     }
 

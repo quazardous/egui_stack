@@ -34,12 +34,18 @@ use crate::layout::{Laid, Shown, ZoneName};
 ///   [`FloatEvent::Moved`](crate::FloatEvent::Moved). With no region left (every zone gone),
 ///   the floats are free, as without a work area.
 ///
+/// With [`Outside::Native`], a tab, a group or a float over the main window released past the
+/// work area's edge leaves the window instead: it becomes a native float, opened where it was
+/// released (a hybrid tear-out, as in Visual Studio or Blender). Where native windows are not
+/// available, it falls back to [`Outside::Cancel`].
+///
 /// Native floats ([`FloatHost::Native`](crate::layout::FloatHost)) ignore the work area: they
-/// are free on the desktop.
+/// are free on the desktop. Their own docks are work area for them: a tab dropped into one is
+/// taken, whatever the regions of the main window.
 ///
 /// ```
 /// # use egui_stack::{WorkArea, Outside};
-/// let area = WorkArea::new().zone("centre").zone("right").outside(Outside::Cancel);
+/// let area = WorkArea::new().zone("centre").zone("right").outside(Outside::Native);
 /// # let _ = area;
 /// ```
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -64,6 +70,17 @@ pub enum Outside {
     /// tab or the group stays where it was.
     #[default]
     Cancel,
+    /// A tab, a group or a float over the main window released outside every region becomes
+    /// a native float ([`FloatHost::Native`](crate::layout::FloatHost)), opened where it was
+    /// released: on release, not while dragged (no window follows the pointer out of the main
+    /// window). Inside the regions, the floats stay over the main window, bounded as with
+    /// [`Cancel`](Self::Cancel).
+    ///
+    /// Where native windows are not available
+    /// ([`ViewportHost::native_windows`](crate::ViewportHost::native_windows) false: egui's
+    /// viewports embedded, on the web or a single-viewport backend), it is
+    /// [`Cancel`](Self::Cancel).
+    Native,
 }
 
 impl WorkArea {
