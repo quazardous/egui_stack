@@ -90,6 +90,30 @@ fn the_zones_are_drawn_as_panes() {
 
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_zones_content_lies_inside_its_pane() {
+    let harness = harness();
+    for zone in ["left", "centre", "right"] {
+        let label = format!("Body of {zone}");
+        let body = harness.get_by_label(&label);
+        let mut ancestor = body.parent();
+        let mut pane = None;
+        while let Some(node) = ancestor {
+            if node.accesskit_node().role() == Role::Pane {
+                pane = node.accesskit_node().label();
+                break;
+            }
+            ancestor = node.parent();
+        }
+        assert_eq!(
+            pane.as_deref(),
+            Some(zone),
+            "the body of {zone} is a descendant of its pane"
+        );
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn a_sash_drag_resizes_its_zone_within_its_bounds() {
     let mut harness = harness();
     drag(&mut harness, "left", 40.0);

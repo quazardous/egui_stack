@@ -690,7 +690,8 @@ pub(super) fn flyout(
     );
     let area_id = id.with(("flyout", &flyout.key));
     pin(ui, sublayer_of, area_id);
-    let label = names.resize_flyout(&viewer.flyout_title(flyout));
+    let title = viewer.flyout_title(flyout);
+    let label = names.resize_flyout(&title);
     let mut resized = None;
     egui::Area::new(area_id)
         .order(Order::Foreground)
@@ -708,12 +709,16 @@ pub(super) fn flyout(
                     style,
                 },
             );
+            // The content is a pane named after the flyout, as a zone's is.
             let mut child = ui.new_child(
                 UiBuilder::new()
                     .id_salt(area_id.with("content"))
-                    .max_rect(rect),
+                    .max_rect(rect)
+                    .accessibility_role(Role::Pane)
+                    .accessibility_label(title),
             );
             child.set_clip_rect(rect);
+            super::area::set_bounds(ui.ctx(), child.unique_id(), rect);
             viewer.flyout(&mut child, flyout);
 
             let cursor = match dir {

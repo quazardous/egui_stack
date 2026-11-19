@@ -188,6 +188,9 @@ pub(crate) struct Floating {
     pub(crate) builders: HashMap<String, ViewportBuilder>,
     /// The floats whose place changed last frame.
     pub(crate) moving: BTreeSet<String>,
+    /// Where each float's window was last seen (its place's corner): a place the application
+    /// changed since then moves the window there.
+    pub(crate) placed: HashMap<String, egui::Pos2>,
     /// The screens the floats were last repaired on.
     pub(crate) screens: Option<Vec<Screen>>,
     /// The last number given to a float's dock (`float-N`).
@@ -817,6 +820,7 @@ fn forget_native<Tab>(space: &mut DockSpace<Tab>, key: &str) {
     space.floating.collapsed.remove(key);
     space.floating.builders.remove(key);
     space.floating.moving.remove(key);
+    space.floating.placed.remove(key);
     if space
         .floating
         .window_move
@@ -836,6 +840,7 @@ fn track_place<Tab>(layout: &mut Layout, space: &mut DockSpace<Tab>, key: &str, 
     let Some(float) = layout.float_mut(key) else {
         return;
     };
+    space.floating.placed.insert(key.to_owned(), place.rect.min);
     if float.place != place {
         float.place = place;
         space.floating.moving.insert(key.to_owned());
@@ -893,6 +898,7 @@ fn show_in_window<Tab>(
         return;
     };
     let place = float.place.clone();
+    let app_moved = moved_by_app(space, &float);
     let title = dock_title(space, viewer, dock);
     let mut open = true;
     let id = space.id().with(("egui_stack.float", key));
@@ -933,6 +939,12 @@ fn show_in_window<Tab>(
             WindowDrag::Off
         })
         .open(&mut open);
+    // The application changed the float's place: the window goes there.
+    let window = if app_moved {
+        window.current_pos(place.rect.min)
+    } else {
+        window
+    };
     let window = match collapsed_height {
         Some(height) => window.fixed_size(vec2(place.rect.width(), height + chrome)),
         // Expanded again: the height it had, which egui keeps from the next frame on.
@@ -1058,6 +1070,14 @@ fn show_native<Tab>(
     let handle = move_handle_id(space.id(), dock);
     let mut moved_by_handle = None;
     space.floating.viewports.insert(key.to_owned(), id);
+    // The application changed the float's place: the window is told to go there, and the
+    // builder kept is made again from the place.
+    let app_moved = moved_by_app(space, &float);
+    let mut move_to = None;
+    if app_moved {
+        space.floating.builders.remove(key);
+        move_to = first_builder(ViewportBuilder::default(), &float.place, screens).position;
+    }
     let builder = match space.floating.builders.get(key) {
         Some(builder) => builder.clone(),
         None => {
@@ -1078,6 +1098,10 @@ fn show_native<Tab>(
             (info.close_requested(), info.maximized, info.fullscreen)
         });
         seen = Some((ui.ctx().content_rect().size(), maximized, fullscreen));
+        if let Some(at) = move_to.take() {
+            ui.ctx()
+                .send_viewport_cmd(ViewportCommand::OuterPosition(at));
+        }
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
             let rect = ui.available_rect_before_wrap();
             gestures
@@ -1142,7 +1166,25 @@ fn show_native<Tab>(
         place.maximized = maximized.unwrap_or(place.maximized);
         place.fullscreen = fullscreen.unwrap_or(place.fullscreen);
     }
-    track_place(layout, space, key, place);
+    if app_moved {
+        // The system tells the new position from the next frame: the place stays the
+        // application's until then.
+        space
+            .floating
+            .placed
+            .insert(key.to_owned(), float.place.rect.min);
+    } else {
+        track_place(layout, space, key, place);
+    }
+}
+
+/// Whether the application changed `float`'s place since its window was last seen.
+fn moved_by_app<Tab>(space: &DockSpace<Tab>, float: &Float) -> bool {
+    space
+        .floating
+        .placed
+        .get(&float.key)
+        .is_some_and(|at| *at != float.place.rect.min)
 }
 
 /// The move handle of the native float `key` moving its window itself ([`FloatMove::Dock`],
