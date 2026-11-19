@@ -163,7 +163,11 @@ fn drag_solo(
         },
     );
     harness.run();
-    let start = harness.get_by_label("Solo").rect().center();
+    // The tab, by its role: its panel (the body of the active tab) is named after it too.
+    let start = harness
+        .get_by_role_and_label(egui::accesskit::Role::Tab, "Solo")
+        .rect()
+        .center();
     harness.event(Event::ModifiersChanged(modifiers));
     harness.hover_at(start);
     harness.step();

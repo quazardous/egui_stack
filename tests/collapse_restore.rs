@@ -153,9 +153,18 @@ fn band(harness: &Harness<'_, App>, name: &str, depth: f32) -> Pos2 {
     }
 }
 
+/// Where the tab `tab` is, in its tab bar: by its role, as its panel (the body of the
+/// active tab) is named after it too.
+fn tab_center(harness: &Harness<'_, App>, tab: &str) -> Pos2 {
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Tab, tab)
+        .rect()
+        .center()
+}
+
 /// Drags `tab` to `target` and holds it there.
 fn drag_to(harness: &mut Harness<'_, App>, tab: &str, target: Pos2) {
-    let start = harness.get_by_label(tab).rect().center();
+    let start = tab_center(harness, tab);
     harness.hover_at(start);
     harness.step();
     harness.drag_at(start);
@@ -244,7 +253,7 @@ fn emptied_again_the_dock_collapses_again() {
     let target = band(&harness, "left", 4.0);
     drop_at(&mut harness, "Log", target);
     assert_eq!(shown(harness.state(), "left"), Shown::Open);
-    let bottom = harness.get_by_label("Console").rect().center();
+    let bottom = tab_center(&harness, "Console");
     drop_at(&mut harness, "Log", bottom);
     assert_eq!(dock_of(harness.state(), "Log").as_deref(), Some("bottom"));
     assert_eq!(shown(harness.state(), "left"), Shown::Collapsed);
