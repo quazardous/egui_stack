@@ -514,6 +514,15 @@ impl<Tab> DockArea<'_, Tab> {
         let Some(pointer) = state.last_hover_pos else {
             return false;
         };
+        // Released outside every dock and outside the floats' work area: refused.
+        if hover.outside
+            && let Some(regions) = space.floating.regions(space.docks)
+            && !regions.iter().any(|region| region.contains(pointer))
+        {
+            return match space.floating.work_area.outside_rule() {
+                crate::Outside::Cancel => true,
+            };
+        }
         let widgets = space
             .no_drop
             .ids

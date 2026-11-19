@@ -110,6 +110,46 @@ tab's title of its focused, else first, group) rather than by its name, in the M
 for one. A dock the application adds under such a name is shown the same way, so an application
 names its own docks otherwise (`float`, `float-tools`, `window-a` are fine).
 
+### The floats' work area
+
+By default the floats over the main window go anywhere in it, and a tab released outside every
+dock floats where it lands. `FloatsArea::work_area` keeps both inside regions of the window,
+resolved by egui_stack every frame, so the application computes no geometry:
+
+```rust,ignore
+docked
+    .floats()
+    .work_area(WorkArea::new().zone("centre").zone("right")) // Outside::Cancel by default
+    .show(ctx, &mut viewer);
+```
+
+A region is the whole space as drawn (`.space()`: the root zone `DockSpace::bind` last read, else
+the union of the docks drawn in the main window), a zone of the layout, leaf or split
+(`.zone(name)`, as `bind` last read it: zones are the layout's only named regions), or a rect
+(`.rect(r)`). A zone folded, hidden or collapsed is no region until it opens again; with no region
+left the floats are free. `WorkArea::window()`, the default, is the whole window.
+
+- A tab or a group released outside every dock and every region is refused through the no-drop
+  path (`Outside::Cancel`): it stays where it was. Docks, strips and restore bands keep their rules.
+- A float over the main window stays in one region, the one it overlaps most. Moved, it goes to
+  the region under the pointer, if any, else stays in its own: over a gap it does not follow the
+  pointer, so it never straddles two regions and does not flicker at a boundary. egui's
+  `constrain_to` bounds its position; its size is capped by the region too (`max_size`; egui 0.37
+  also caps a window to its constrain rect), so a float larger than its region shrinks.
+- A region that shrinks or goes, or a layout restored with a float outside every region, brings
+  the float into its region or the nearest one, reported once as `FloatEvent::Moved`.
+- Native floats ignore the work area: they are free on the desktop.
+
+The setting is an option of `FloatsArea`, given every frame like its other options, and kept by
+the space (not saved) for its docks: they decide a drop while they are drawn, before the floats,
+so they read the value the floats were given last frame. Only the very first frame has none yet,
+which no drag notices, as a drag takes several frames; a `DockSpace::set_work_area` would avoid
+that frame at the cost of a second place to configure the floats, so the option stays with the
+floats. Zone rects come from `DockSpace::bind`, as strips and no-drop zones do.
+
+Leaving the window for a native float past a region's edge (`Outside::Native`, as Visual Studio or
+Blender tear tabs out) is a later step.
+
 ### Moving a whole tab group
 
 A tab group (a leaf with all its tabs) moves as one, through the same zones, veto and Escape as a
