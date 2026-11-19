@@ -282,6 +282,15 @@ impl<Tab> DockArea<'_, Tab> {
     ) {
         match report.outcome {
             Outcome::Drop(destination) => {
+                let dock = match destination {
+                    TabDestination::Node(path, _) => self.dock_name(path.surface),
+                    TabDestination::EmptySurface(surface) => self.dock_name(surface),
+                    TabDestination::Window(_) => None,
+                }
+                .map(str::to_owned);
+                if let Some(space) = &mut self.space {
+                    space.drop_zone = dock.zip(report.unfold.clone());
+                }
                 if self
                     .refusal_of(&src, tab_viewer, &destination, true)
                     .is_none()

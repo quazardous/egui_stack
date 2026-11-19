@@ -320,13 +320,19 @@ impl<Tab> DockArea<'_, Tab> {
             .filter(|_| restore.is_none())
             .and_then(|_| self.hover_strip(state));
         let preview = restore.as_ref().map(|(_, _, i)| restores[*i].restore.rect);
-        let unfold = match &restore {
-            Some((_, zone, _)) => Some(zone.clone()),
-            None => strip.as_ref().and_then(|(_, unfold)| unfold.clone()),
+        let drop_zone = match &restore {
+            Some((_, zone, i)) => Some((restores[*i].dock.clone(), zone.clone())),
+            None => strip
+                .as_ref()
+                .map(|(_, dock, zone)| (dock.clone(), zone.clone())),
         };
+        let unfold = drop_zone.as_ref().map(|(_, zone)| zone.clone());
+        if let Some(space) = &mut self.space {
+            space.drop_zone = drop_zone;
+        }
         let hover_data = restore
             .map(|(hover, _, _)| hover)
-            .or_else(|| strip.map(|(hover, _)| hover))
+            .or_else(|| strip.map(|(hover, _, _)| hover))
             .or(hover_data)
             // Shown for another viewport's drag, this one has no "outside": the drag's own
             // viewport decides what a release over nothing does.
@@ -370,8 +376,8 @@ impl<Tab> DockArea<'_, Tab> {
             if remote {
                 outcome = Some(tab_dst.map_or(Outcome::Refused, Outcome::Drop));
             } else if released && let Some(destination) = tab_dst {
-                // Dropped on a folded split zone's strip, or a collapsed zone's restore band: the
-                // zone is to unfold.
+                // Dropped on a folded zone's strip, or a collapsed zone's restore band: the zone
+                // is to unfold.
                 if let (Some(zone), Some(space)) = (unfold.clone(), &mut self.space) {
                     space.no_drop.unfolds.push(zone);
                 }
@@ -527,6 +533,23 @@ impl<Tab> DockArea<'_, Tab> {
         dock_name(self.space.as_ref()?.docks, surface)
     }
 
+    /// The zone a tab entering the dock `dock` is dropped in: the folded or collapsed zone
+    /// whose strip or restore band the drag hovers for that dock, else the zone holding the
+    /// dock as [`DockSpace::bind`](crate::DockSpace::bind) last read it; none for no dock.
+    #[cfg(feature = "bus")]
+    pub(super) fn drop_zone_of(&self, dock: Option<&str>) -> Option<String> {
+        let (dock, space) = (dock?, self.space.as_ref()?);
+        match &space.drop_zone {
+            Some((over, zone)) if over == dock => Some(zone.0.clone()),
+            _ => space
+                .docks
+                .iter()
+                .find(|d| d.name == dock)
+                .and_then(|d| d.zone.as_ref())
+                .map(|zone| zone.0.clone()),
+        }
+    }
+
     /// Whether the tab at `path` may become a floating window: the viewer allows it, and the
     /// dock it is in, if any, too.
     pub(super) fn may_float(
@@ -581,7 +604,7 @@ impl<Tab> DockArea<'_, Tab> {
     /// ([`DockSpace::bind`](crate::DockSpace::bind)), under the pointer and under no floating
     /// window: hovered as that dock's tab bar, so a tab released there joins the dock's focused
     /// leaf, else its first, or the dock itself when empty.
-    fn hover_strip(&self, state: &State) -> Option<(HoverData, Option<ZoneName>)> {
+    fn hover_strip(&self, state: &State) -> Option<(HoverData, String, ZoneName)> {
         let space = self.space.as_ref()?;
         let pointer = state.last_hover_pos?;
         let StripDrop {
@@ -612,6 +635,7 @@ impl<Tab> DockArea<'_, Tab> {
                 tab_bar: None,
                 outside: false,
             },
+            name.clone(),
             unfold.clone(),
         ))
     }
@@ -817,6 +841,7 @@ impl<Tab> DockArea<'_, Tab> {
                 from_float: self.is_float_dock(src.surface),
                 to_float: to_surface.is_some_and(|surface| self.is_float_dock(surface)),
                 target,
+                zone: self.drop_zone_of(to),
             };
             return bus
                 .drop_refusal(ask, fresh)

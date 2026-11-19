@@ -149,6 +149,12 @@ fn refused<Tab>(
             } else {
                 DropTarget::EmptyDock
             },
+            zone: space
+                .docks()
+                .iter()
+                .find(|dock| dock.name == to)
+                .and_then(|dock| dock.zone.as_ref())
+                .map(|zone| zone.0.clone()),
         };
         return bus.drop_refusal(ask, fresh).is_some();
     }

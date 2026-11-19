@@ -130,7 +130,7 @@ pub(crate) struct NoDrop {
     pub(crate) strips: Vec<StripDrop>,
     /// Collapsed zones' restore bands ([`DockSpace::bind`]), in tree order.
     pub(crate) restores: Vec<RestoreDrop>,
-    /// Folded split zones and collapsed zones a tab was dropped on, to unfold
+    /// Folded zones and collapsed zones a tab was dropped on, to unfold
     /// ([`DockSpace::take_unfolds`]). Kept across frames until taken.
     pub(crate) unfolds: Vec<ZoneName>,
 }
@@ -152,8 +152,8 @@ pub(crate) struct StripDrop {
     pub(crate) rect: Rect,
     /// The dock a tab released there joins.
     pub(crate) dock: String,
-    /// For a split zone's strip, the zone, to unfold once a tab is dropped there.
-    pub(crate) unfold: Option<ZoneName>,
+    /// The folded zone, to unfold once a tab is dropped there.
+    pub(crate) unfold: ZoneName,
 }
 
 /// A dock of a [`DockSpace`]: its name, its surface and its rules.
@@ -173,6 +173,9 @@ pub(crate) struct Dock {
     /// ([`FloatsArea`](crate::FloatsArea)).
     #[cfg_attr(feature = "serde", serde(skip))]
     pub(crate) floating: bool,
+    /// The layout zone holding it ([`Content::Dock`]), as [`DockSpace::bind`] last read it.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) zone: Option<ZoneName>,
 }
 
 /// What a dock of a [`DockSpace`] allows, set when it is added with [`DockSpace::add_dock`] or
@@ -385,6 +388,7 @@ impl<Tab> DockSpace<Tab> {
             rect: None,
             viewport: None,
             floating: false,
+            zone: None,
         });
         surface
     }
@@ -499,7 +503,8 @@ impl<Tab> DockSpace<Tab> {
     /// released there joins that dock (its focused leaf, else its first), the strip highlighted
     /// meanwhile, unless the dock's rules or the viewer's veto refuse it. A folded split zone
     /// with `strip_drops` takes them for one of the docks it holds, the last active one, else the
-    /// first accepting drops, and reports the zone to unfold ([`take_unfolds`](Self::take_unfolds)).
+    /// first accepting drops. Either way the zone is reported to unfold
+    /// ([`take_unfolds`](Self::take_unfolds)), and stays folded until the application unfolds it.
     ///
     /// A collapsed zone ([`Fold::Collapse`]) that accepts drops,
     /// holding a dock of this space that accepts them (for a split, one of its docks, chosen as
@@ -555,6 +560,11 @@ impl<Tab> DockSpace<Tab> {
             self.emit_change(crate::bus::LayoutChange::of(event));
         }
         for zone in &laid.zones {
+            if let Some(Content::Dock(name)) = &zone.content
+                && let Some(dock) = self.docks.iter_mut().find(|dock| dock.name == *name)
+            {
+                dock.zone = Some(zone.name.clone());
+            }
             if let (Shown::Collapsed, Some(restore)) = (zone.shown, zone.restore) {
                 if let Some(dock) = self.restore_dock(zone) {
                     self.no_drop.restores.push(RestoreDrop {
@@ -573,7 +583,7 @@ impl<Tab> DockSpace<Tab> {
                         Some(dock) => self.no_drop.strips.push(StripDrop {
                             rect: strip,
                             dock,
-                            unfold: Some(zone.name.clone()),
+                            unfold: zone.name.clone(),
                         }),
                         None => self.no_drop.rects.push(strip),
                     }
@@ -595,7 +605,7 @@ impl<Tab> DockSpace<Tab> {
                         self.no_drop.strips.push(StripDrop {
                             rect: strip,
                             dock: name.clone(),
-                            unfold: None,
+                            unfold: zone.name.clone(),
                         });
                     }
                     _ => self.no_drop.rects.push(strip),
@@ -663,10 +673,13 @@ impl<Tab> DockSpace<Tab> {
     }
 
     /// The zones a tab was dropped on since the last call, for the application to unfold
-    /// ([`Layout::set_folded`](crate::layout::Layout::set_folded)): folded split zones, whose
-    /// strip takes drops with [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops),
-    /// and collapsed zones, through their restore band ([`bind`](Self::bind)). Call it every
-    /// frame, after the layout is drawn.
+    /// ([`Layout::set_folded`](crate::layout::Layout::set_folded)): folded zones, whether they
+    /// hold one dock or split into several, through their strip, which takes drops with
+    /// [`Constraints::strip_drops`](crate::layout::Constraints::strip_drops); and collapsed zones,
+    /// through their restore band ([`bind`](Self::bind)). egui_stack unfolds none of them itself:
+    /// an application that keeps a zone folded on a drop leaves it out. With the `bus` feature,
+    /// the drop's `stack.dock.drop` ask and its `TabMoved` change name the zone too
+    /// (`DropAsk::zone`, `LayoutChange::zone`). Call it every frame, after the layout is drawn.
     pub fn take_unfolds(&mut self) -> Vec<ZoneName> {
         std::mem::take(&mut self.no_drop.unfolds)
     }
@@ -860,6 +873,7 @@ impl<Tab> DockSpace<Tab> {
                 rect: None,
                 viewport: None,
                 floating: true,
+                zone: None,
             });
             let mut float = Float::dock(name.clone(), name, FloatHost::Native, Place::new(rect));
             float.minimized = window.is_minimized();
@@ -1096,6 +1110,7 @@ pub(crate) fn detach<Tab>(
         rect: None,
         viewport: None,
         floating: true,
+        zone: None,
     });
     match source {
         Detach::Tab(path) => state.move_tab(path, crate::TabDestination::EmptySurface(surface)),
