@@ -713,7 +713,8 @@ pub(super) fn zone_ui_at(
 }
 
 /// Draws one leaf zone's content in its rect, as a pane named after its
-/// title; returns the size its content took.
+/// title: the content's `Ui` is the pane, so assistive technology finds the
+/// zone's controls inside it. Returns the size its content took.
 pub(super) fn zone_ui(
     ui: &mut Ui,
     id: Id,
@@ -722,18 +723,32 @@ pub(super) fn zone_ui(
     viewer: &mut dyn ZoneViewer,
 ) -> egui::Vec2 {
     let zone_id = id.with(("zone", &at.name.0));
-    let response = ui.interact(at.rect, zone_id, Sense::hover());
-    let label = names.title(&at.name).to_owned();
-    response.widget_info(|| WidgetInfo::labeled(Role::Pane, true, &label));
     let mut child = ui.new_child(
         UiBuilder::new()
             .id_salt(zone_id)
             .max_rect(at.rect)
-            .layout(*ui.layout()),
+            .layout(*ui.layout())
+            .accessibility_role(Role::Pane)
+            .accessibility_label(names.title(&at.name)),
     );
     child.set_clip_rect(at.rect.intersect(ui.clip_rect()));
+    // A `Ui` gets no bounds of its own: the pane covers the zone's rect.
+    set_bounds(ui.ctx(), child.unique_id(), at.rect);
     viewer.ui(&mut child, &at.name);
     child.min_rect().size()
+}
+
+/// Sets the bounds of the AccessKit node `id` (a `Ui` given a role, which egui leaves without
+/// bounds) to `rect`.
+pub(super) fn set_bounds(ctx: &egui::Context, id: Id, rect: Rect) {
+    ctx.accesskit_node_builder(id, |node| {
+        node.set_bounds(egui::accesskit::Rect {
+            x0: rect.min.x.into(),
+            y0: rect.min.y.into(),
+            x1: rect.max.x.into(),
+            y1: rect.max.y.into(),
+        });
+    });
 }
 
 /// A sash between two neighbouring open zones of a split.

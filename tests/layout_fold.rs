@@ -194,6 +194,34 @@ fn a_flyout_opens_by_the_strip_and_closes_on_escape_or_a_click_outside() {
     assert!(harness.state().flyout.is_none());
 }
 
+/// The name of the nearest pane holding the node labelled `label`.
+fn pane_of(harness: &Harness<'_, App>, label: &str) -> Option<String> {
+    let node = harness.get_by_label(label);
+    let mut ancestor = node.parent();
+    while let Some(node) = ancestor {
+        if node.accesskit_node().role() == Role::Pane {
+            return node.accesskit_node().label();
+        }
+        ancestor = node.parent();
+    }
+    None
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_zone_lying_over_and_a_flyout_hold_their_content_in_a_pane() {
+    let mut folded = layout();
+    folded.set_over("left", true);
+    let mut harness = harness(folded);
+    assert_eq!(pane_of(&harness, "Body of left").as_deref(), Some("left"));
+
+    harness.key_press(Key::Escape);
+    harness.run();
+    harness.state_mut().flyout = Some(Flyout::new("files", "left"));
+    harness.run();
+    assert_eq!(pane_of(&harness, "Flyout files").as_deref(), Some("files"));
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn zone_states_and_flyout_breadths_save_and_load() {
