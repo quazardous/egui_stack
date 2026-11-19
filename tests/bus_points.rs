@@ -179,7 +179,7 @@ fn the_points_are_declared_under_the_crates_prefix() {
         .map(|point| point.id)
         .collect();
     declared.sort_unstable();
-    let mut expected: Vec<&str> = POINTS.iter().map(|point| point.id).collect();
+    let mut expected: Vec<&str> = POINTS.iter().map(|point| point.id.as_str()).collect();
     expected.sort_unstable();
     assert_eq!(declared, expected);
     assert!(declared.iter().all(|id| id.starts_with("stack.")));
@@ -359,7 +359,7 @@ fn the_window_events_are_emitted() {
     {
         let bus: &dyn Bus = &*bus;
         let h = heard.clone();
-        bus.listen::<bus::WindowDetached>("test", ListenOpts::new(), move |info, _| {
+        bus.listen::<bus::WindowDetached>("test.detached", ListenOpts::new(), move |info, _| {
             h.lock()
                 .unwrap()
                 .push(format!("detached {} {:?}", info.key, info.tabs));
@@ -367,7 +367,7 @@ fn the_window_events_are_emitted() {
         })
         .unwrap();
         let h = heard.clone();
-        bus.listen::<bus::WindowClosed>("test", ListenOpts::new(), move |info, _| {
+        bus.listen::<bus::WindowClosed>("test.closed", ListenOpts::new(), move |info, _| {
             h.lock().unwrap().push(format!(
                 "closed {} {:?} {:?}",
                 info.key, info.policy, info.moved
@@ -376,7 +376,7 @@ fn the_window_events_are_emitted() {
         })
         .unwrap();
         let h = heard.clone();
-        bus.listen::<bus::LayoutChanged>("test", ListenOpts::new(), move |change, _| {
+        bus.listen::<bus::LayoutChanged>("test.layout", ListenOpts::new(), move |change, _| {
             h.lock()
                 .unwrap()
                 .push(format!("changed {:?}", change.change));

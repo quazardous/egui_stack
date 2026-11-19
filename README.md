@@ -78,7 +78,7 @@ Add `egui` and `egui_stack` to your project's dependencies:
 ```toml
 [dependencies]
 egui = "0.37"
-egui_stack = "0.29"
+egui_stack = "0.30"
 ```
 
 Then proceed by setting up `egui`, following its [quick start guide](https://github.com/emilk/egui#quick-start). Once

@@ -2,7 +2,7 @@
 name = "egui_stack"
 description = "Docking system for egui, continuing egui_dock"
 authors = ["lain-dono", "Adam Gąsior (Adanos020)", "egui_stack contributors"]
-version = "0.29.1"
+version = "0.30.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
@@ -31,7 +31,7 @@ bus = ["dep:bus-contract"]
 [dependencies]
 egui = { version = "0.37", default-features = false }
 serde = { version = "1", optional = true, features = ["derive"] }
-bus-contract = { version = "0.3.2", optional = true }
+bus-contract = { version = "0.5.0", optional = true }
 
 duplicate = "2.0"
 paste = "1.0"
@@ -47,7 +47,7 @@ egui_kittest = "0.37"
 # MIT OR Apache-2.0: the bus the `bus` feature's tests run on, the
 # implementation applications use (with its ordering, deadlines and
 # local listeners), in place of a test double.
-bus-kernel = "0.1"
+bus-kernel = "0.3.0"
 serde_json = { version = "1" }
 
 [[example]]

@@ -29,7 +29,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 
 pub use bus_contract;
-use bus_contract::{Bus, Point, PointDecl, PointKind, declare_all};
+use bus_contract::{Bus, Point, PointDecl, PointId, PointKind, declare_all};
 
 pub use crate::floats::ClosePolicy;
 use crate::{DockSpace, Split};
@@ -41,7 +41,7 @@ use crate::{DockSpace, Split};
 pub struct DockDrop;
 
 impl Point for DockDrop {
-    const ID: &'static str = "stack.dock.drop";
+    const ID: PointId = PointId::new("stack.dock.drop");
     const KIND: PointKind = PointKind::Request;
     type Input = DropAsk;
     type Value = ();
@@ -52,7 +52,7 @@ impl Point for DockDrop {
 pub struct LayoutChanged;
 
 impl Point for LayoutChanged {
-    const ID: &'static str = "stack.layout.changed";
+    const ID: PointId = PointId::new("stack.layout.changed");
     const KIND: PointKind = PointKind::Event;
     type Input = LayoutChange;
     type Value = ();
@@ -63,7 +63,7 @@ impl Point for LayoutChanged {
 pub struct WindowDetached;
 
 impl Point for WindowDetached {
-    const ID: &'static str = "stack.window.detached";
+    const ID: PointId = PointId::new("stack.window.detached");
     const KIND: PointKind = PointKind::Event;
     type Input = DetachedInfo;
     type Value = ();
@@ -75,7 +75,7 @@ impl Point for WindowDetached {
 pub struct WindowClose;
 
 impl Point for WindowClose {
-    const ID: &'static str = "stack.window.close";
+    const ID: PointId = PointId::new("stack.window.close");
     const KIND: PointKind = PointKind::Request;
     type Input = CloseAsk;
     type Value = ClosePolicy;
@@ -86,7 +86,7 @@ impl Point for WindowClose {
 pub struct WindowClosed;
 
 impl Point for WindowClosed {
-    const ID: &'static str = "stack.window.closed";
+    const ID: PointId = PointId::new("stack.window.closed");
     const KIND: PointKind = PointKind::Event;
     type Input = ClosedInfo;
     type Value = ();
@@ -98,7 +98,7 @@ impl Point for WindowClosed {
 pub struct WindowRepaired;
 
 impl Point for WindowRepaired {
-    const ID: &'static str = "stack.window.repaired";
+    const ID: PointId = PointId::new("stack.window.repaired");
     const KIND: PointKind = PointKind::Event;
     type Input = RepairedInfo;
     type Value = ();

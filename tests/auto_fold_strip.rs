@@ -287,7 +287,7 @@ mod bus {
             DockSpace::new().with_bus(bus.clone(), |tab: &String| tab.clone());
         let listen: &dyn Bus = &*bus;
         listen
-            .listen::<LayoutChanged>("test", ListenOpts::new(), move |change, _| {
+            .listen::<LayoutChanged>("test.layout", ListenOpts::new(), move |change, _| {
                 h.lock().unwrap().push((change.change, change.zone.clone()));
                 Ok(())
             })
