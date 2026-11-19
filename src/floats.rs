@@ -203,6 +203,9 @@ pub(crate) struct Floating {
     pub(crate) chrome: HashMap<String, f32>,
     /// The floats over the main window drawn last with all their groups collapsed.
     pub(crate) collapsed: BTreeSet<String>,
+    /// The docks of the floats whose close window button was clicked this frame
+    /// ([`FloatsArea::title_bar`]), closed once their window is drawn.
+    pub(crate) close_asked: BTreeSet<String>,
 }
 
 impl Floating {
@@ -443,7 +446,10 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
     /// Sets whether a float over the main window ([`FloatHost::InWindow`]) has a title bar of
     /// its own, with its title and a close button, above its dock; by default it has none: its
     /// top tab bar is its top, the window's move handle ([`GroupHandles::MOVE_WINDOW`]) moves
-    /// it and the tab bars' close all buttons close it. Without the move handle (turned off in
+    /// it and a close window button beside the handle closes it, as the title bar's close
+    /// button does: it asks [`TabViewer::close_policy`] what becomes of the tabs, whether or
+    /// not they can be closed ([`TabViewer::is_closeable`]). The tab bars' close all buttons
+    /// close tabs, not the window. Without the move handle (turned off in
     /// [`group_handles`](Self::group_handles)), the title bar is kept, so that the window can
     /// still be moved. A native float keeps the system's decoration either way.
     #[must_use]
@@ -960,9 +966,12 @@ fn show_in_window<Tab>(
         let area_id = space.id();
         let rect = ui.available_rect_before_wrap();
         content = Some(rect);
-        gestures
-            .area(&float, DockArea::dock(space, dock), style)
-            .show_inside(ui, viewer);
+        let mut area = DockArea::dock(space, dock);
+        if !title_bar {
+            // Its top tab bar is its top: the close button goes there, by the move handle.
+            area = area.float_close_button();
+        }
+        gestures.area(&float, area, style).show_inside(ui, viewer);
         gestures.decorate(ui, space, area_id, key, dock, false, rect);
     });
     if gestures.float_move == FloatMove::Dock {
@@ -1012,6 +1021,10 @@ fn show_in_window<Tab>(
             rect
         };
         track_place(layout, space, key, moved);
+    }
+    // Its close window button, without a title bar, closes it as the title bar's would.
+    if space.floating.close_asked.remove(dock) {
+        open = false;
     }
     if !open {
         let policy = ask_close(space, viewer, key, dock);

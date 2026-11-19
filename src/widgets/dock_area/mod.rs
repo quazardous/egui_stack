@@ -102,6 +102,9 @@ struct SpaceDock<'a, Tab> {
     /// The rank of the area's viewport for a drag across viewports: 0 in the main window, a
     /// native float's z order plus one in its window.
     rank: u32,
+    /// Whether the area draws a float over the main window that has no title bar: its top tab
+    /// bar has a close window button beside the move handle.
+    close_button: bool,
 }
 
 /// A tab being dragged in a [`DockArea`], from [`DockArea::dragged_tab`].
@@ -304,8 +307,19 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             native: false,
             viewport: None,
             rank: 0,
+            close_button: false,
         });
         area
+    }
+
+    /// Marks the area as drawing a float over the main window that has no title bar of its
+    /// own: its top tab bar gets a close window button beside the move handle, which asks the
+    /// [`FloatsArea`](crate::FloatsArea) to close the float.
+    pub(crate) fn float_close_button(mut self) -> Self {
+        if let Some(space) = &mut self.space {
+            space.close_button = true;
+        }
+        self
     }
 
     /// Marks the area as drawing a dock in a native float's viewport, the float's z order
