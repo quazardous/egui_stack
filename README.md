@@ -46,7 +46,8 @@ from this repository's main branch.
   shares), drawn by `LayoutArea`, with sashes that snap and resize from the keyboard.
 - Folding a zone to a strip, with a grip, the app's icons and an optional built-in title (`LayoutStyle::strip_title`,
   or `ZoneViewer::strip_title` to draw it yourself); a click unfolds, a drag on the strip's edge pulls it out.
-- Zones that fold by themselves for want of room (`Constraints::auto_fold`), reported as `LayoutEvent`s.
+- Zones that fold by themselves for want of room (`Constraints::auto_fold`), reported as `LayoutEvent`s; a click
+  on their strip opens them over their neighbour until closed (`ZoneViewer::on_strip` to change what a strip does).
 - Strips that take dropped tabs (`Constraints::strip_drops`), and empty docks that collapse to nothing
   (`Fold::Collapse`) and come back from a restore band while a tab is dragged.
 - Zones lying over their neighbour and a flyout, with their own dismiss rules.

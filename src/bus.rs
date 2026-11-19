@@ -176,6 +176,12 @@ pub enum Change {
     AutoFolded,
     /// A zone the solver had folded came back.
     AutoUnfolded,
+    /// A folded zone's strip was clicked.
+    StripClicked,
+    /// A zone opened over its neighbour from its strip.
+    OpenedOver,
+    /// A zone opened over from its auto-folded strip closed, back to its automatic state.
+    ClosedOver,
     /// A flyout asked to close.
     FlyoutClosed,
     /// A flyout was resized.
@@ -220,6 +226,9 @@ impl LayoutChange {
             LayoutEvent::FlyoutResized { key, .. } => (Change::FlyoutResized, key.clone()),
             LayoutEvent::AutoFolded { zone } => (Change::AutoFolded, zone.0.clone()),
             LayoutEvent::AutoUnfolded { zone } => (Change::AutoUnfolded, zone.0.clone()),
+            LayoutEvent::StripClicked { zone, .. } => (Change::StripClicked, zone.0.clone()),
+            LayoutEvent::OpenedOver { zone } => (Change::OpenedOver, zone.0.clone()),
+            LayoutEvent::ClosedOver { zone } => (Change::ClosedOver, zone.0.clone()),
         };
         let mut change = Self::new(change);
         change.zone = Some(zone);

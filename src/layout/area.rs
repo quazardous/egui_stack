@@ -10,7 +10,8 @@ use egui::{
 };
 
 use super::fold::{
-    self, Dismiss, Flyout, FlyoutPaint, Inside, StripOrientation, StripPaint, StripTitle,
+    self, Dismiss, Flyout, FlyoutPaint, Inside, StripAction, StripOrientation, StripPaint,
+    StripTitle,
 };
 use super::solve::{along, span};
 use super::{
@@ -255,6 +256,27 @@ pub trait ZoneViewer {
     /// nothing.
     fn strip(&mut self, ui: &mut Ui, zone: &ZoneName) {
         let _ = (ui, zone);
+    }
+
+    /// Called after a folded zone's strip is shown, every frame, as
+    /// [`TabViewer::on_tab_button`](crate::TabViewer::on_tab_button) is
+    /// after a tab button: `response` covers the strip and its grip, for a
+    /// tooltip or a context menu. When the strip is clicked this frame, the
+    /// returned [`StripAction`] says what the click does: by default
+    /// ([`StripAction::Default`]) a zone the user folded unfolds, a zone the
+    /// solver folded short of room ([`Shown::AutoFolded`]) opens over its
+    /// neighbour, and a zone lying over closes. The click is reported
+    /// ([`LayoutEvent::StripClicked`]) whatever the action.
+    ///
+    /// The hook lives here, not on `TabViewer`: strips belong to the layout,
+    /// which draws them with this viewer and knows no tabs.
+    fn on_strip(
+        &mut self,
+        _zone: &ZoneName,
+        _shown: Shown,
+        _response: &egui::Response,
+    ) -> StripAction {
+        StripAction::Default
     }
 
     /// A folded zone's strip title, when [`LayoutStyle::strip_title`] is
@@ -641,7 +663,7 @@ impl<'a> LayoutArea<'a> {
         } else {
             self.layout.solve(rect, &solve)
         };
-        auto_folds(ui, self.id, &laid, &mut events);
+        auto_folds(ui, self.id, self.layout, &laid, &mut events);
         laid.events = events;
         laid.flyout = flyout_rect;
         laid
@@ -1147,14 +1169,21 @@ fn describe_sash(
 /// Reports the zones the solver folded by itself ([`Shown::AutoFolded`]) since
 /// the area was last drawn, and those it brought back, from the auto-folded
 /// zones it remembers between frames. A zone no longer laid (under a folded
-/// zone) is forgotten without an event.
-fn auto_folds(ui: &Ui, id: Id, laid: &Laid, events: &mut Vec<LayoutEvent>) {
+/// zone) is forgotten without an event. A zone opened over from its
+/// auto-folded strip counts as auto-folded until it is closed.
+fn auto_folds(ui: &Ui, id: Id, layout: &Layout, laid: &Laid, events: &mut Vec<LayoutEvent>) {
     let memory = id.with("auto_folded");
     let before: Vec<ZoneName> = ui.ctx().data(|d| d.get_temp(memory)).unwrap_or_default();
     let now: Vec<ZoneName> = laid
         .zones
         .iter()
-        .filter(|zone| zone.shown == Shown::AutoFolded)
+        .filter(|zone| {
+            zone.shown == Shown::AutoFolded
+                || zone.shown == Shown::Over
+                    && layout
+                        .zone(&zone.name.0)
+                        .is_some_and(|z| z.state.over_from_auto)
+        })
         .map(|zone| zone.name.clone())
         .collect();
     for zone in &now {

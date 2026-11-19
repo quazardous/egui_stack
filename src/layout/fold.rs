@@ -42,6 +42,36 @@ impl Flyout {
     }
 }
 
+/// What a click on a folded zone's strip does, as
+/// [`ZoneViewer::on_strip`] returns it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StripAction {
+    /// What the strip does by itself: a zone the user folded
+    /// ([`Shown::Folded`]) unfolds; a zone the solver folded short of room
+    /// ([`Shown::AutoFolded`]) opens over its neighbour ([`Self::Over`]),
+    /// and goes back to its automatic state once closed; a zone lying over
+    /// ([`Shown::Over`]) closes ([`Self::Fold`]). When the zone's flyout is
+    /// open, the flyout closes instead.
+    #[default]
+    Default,
+    /// The zone unfolds, back in the flow. On an auto-folded zone, nothing:
+    /// the room decides.
+    Unfold,
+    /// The zone opens over its neighbour, next to its strip, without
+    /// taking room, as [`Layout::set_over`] does. Opened from an
+    /// auto-folded strip, closing it (its strip, Escape or a press outside,
+    /// as [`LayoutArea::over_dismiss`](super::LayoutArea::over_dismiss)
+    /// says) puts it back in its automatic state; opened from a strip the
+    /// user folded, it folds back. On a zone already lying over, nothing.
+    Over,
+    /// A zone lying over closes, as above. On a folded strip, nothing.
+    Fold,
+    /// Nothing: the application handles the click itself, from the
+    /// response or [`LayoutEvent::StripClicked`].
+    Nothing,
+}
+
 /// A folded zone's strip to paint.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -369,9 +399,7 @@ pub(super) fn strips(
             Shown::Over => names.fold(&at.name),
             _ => names.unfold(&at.name),
         };
-        response.widget_info(|| {
-            WidgetInfo::labeled(Role::Button, at.shown != Shown::AutoFolded, &label)
-        });
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &label));
         let axis = match dir {
             Dir::Horizontal => SeparatorAxis::Vertical,
             Dir::Vertical => SeparatorAxis::Horizontal,
@@ -439,6 +467,7 @@ pub(super) fn strips(
             }
         }
         viewer.strip(&mut child, &at.name);
+        let action = viewer.on_strip(&at.name, at.shown, &response.union(body.clone()));
 
         let mut band_clicked = false;
         if at.shown == Shown::Folded && style.strip_drag {
@@ -455,33 +484,63 @@ pub(super) fn strips(
         }
 
         if response.clicked() || body.clicked() || band_clicked {
-            match (flyout, at.shown) {
-                (Some(flyout), _) if flyout.zone == at.name => {
-                    events.push(LayoutEvent::FlyoutClosed {
-                        key: flyout.key.clone(),
-                    });
-                }
-                (_, Shown::Folded) => {
-                    layout.set_folded(&at.name.0, false);
-                    events.push(LayoutEvent::Unfolded {
-                        zone: at.name.clone(),
-                    });
-                }
-                (_, Shown::Over) => {
-                    layout.set_folded(&at.name.0, true);
-                    events.push(LayoutEvent::Folded {
-                        zone: at.name.clone(),
-                    });
-                }
-                _ => {}
+            events.push(LayoutEvent::StripClicked {
+                zone: at.name.clone(),
+                shown: at.shown,
+            });
+            if let Some(flyout) = flyout
+                && flyout.zone == at.name
+                && action == StripAction::Default
+            {
+                events.push(LayoutEvent::FlyoutClosed {
+                    key: flyout.key.clone(),
+                });
+                continue;
+            }
+            if let Some(event) = act(layout, &at.name, at.shown, action) {
+                events.push(event);
             }
         }
     }
 }
 
+/// Applies `action` to the zone `name`, shown as `shown`, whose strip was
+/// clicked; returns the event that reports it, if it did anything.
+fn act(
+    layout: &mut Layout,
+    name: &ZoneName,
+    shown: Shown,
+    action: StripAction,
+) -> Option<LayoutEvent> {
+    let action = match (action, shown) {
+        (StripAction::Default, Shown::Folded) => StripAction::Unfold,
+        (StripAction::Default, Shown::AutoFolded) => StripAction::Over,
+        (StripAction::Default, Shown::Over) => StripAction::Fold,
+        (action, _) => action,
+    };
+    let zone = name.clone();
+    match (action, shown) {
+        (StripAction::Unfold, Shown::Folded | Shown::Over) => {
+            layout.set_folded(&name.0, false);
+            Some(LayoutEvent::Unfolded { zone })
+        }
+        (StripAction::Over, Shown::Folded) => {
+            layout.set_over(&name.0, true);
+            Some(LayoutEvent::OpenedOver { zone })
+        }
+        (StripAction::Over, Shown::AutoFolded) => {
+            layout.open_over_from_auto(&name.0);
+            Some(LayoutEvent::OpenedOver { zone })
+        }
+        (StripAction::Fold, Shown::Over) => layout.close_over(name),
+        _ => None,
+    }
+}
+
 /// Draws the zones lying over their neighbour, in front of the others,
 /// each with its free edge that resizes it; what `dismiss` says (by default a press outside one, or Escape) folds
-/// it back.
+/// it back, or puts it back in its automatic state when it was opened from
+/// its auto-folded strip.
 #[expect(
     clippy::too_many_arguments,
     reason = "the area's parts, borrowed apart"
@@ -600,11 +659,10 @@ pub(super) fn overs(
             });
         }
         let inside = [rect, strip, edge];
-        if dismissed(ui, dismiss, &inside, host) {
-            layout.set_folded(&at.name.0, true);
-            events.push(LayoutEvent::Folded {
-                zone: at.name.clone(),
-            });
+        if dismissed(ui, dismiss, &inside, host)
+            && let Some(event) = layout.close_over(&at.name)
+        {
+            events.push(event);
         }
     }
 }
