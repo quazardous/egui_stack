@@ -1,5 +1,0 @@
----
-egui_stack: major
----
-
-Behaviour change: the strip of a zone the solver folded short of room (`Shown::AutoFolded`) is no longer a dead control. A click opens the zone over its neighbour, as `Layout::set_over` does, and closing it (its strip, Escape or a press outside) puts it back in its automatic state, so it unfolds by itself once the room comes back (`ZoneState::over_from_auto`). A new hook, `ZoneViewer::on_strip(zone, shown, response) -> StripAction`, the strips' counterpart of `TabViewer::on_tab_button`, lets the application choose what a strip click does (`Default`, `Unfold`, `Over`, `Fold` or `Nothing`). Every strip click is reported as `LayoutEvent::StripClicked`, an opening from the strip as `LayoutEvent::OpenedOver`, a closing back to the automatic state as `LayoutEvent::ClosedOver`, and with the `bus` feature as `Change::StripClicked`, `OpenedOver` and `ClosedOver` on `stack.layout.changed` (#149). Migration: an application that wants auto-folded strips to stay inert returns `StripAction::Nothing` from `ZoneViewer::on_strip` for `Shown::AutoFolded`; one matching every `LayoutEvent` or `Change` adds the new variants.

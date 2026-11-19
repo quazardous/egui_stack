@@ -1,5 +1,30 @@
 # egui_stack changelog
 
+## egui_stack 0.29.0 - 2026-11-19
+
+### Breaking changes
+
+- Behaviour change: the strip of a zone the solver folded short of room (`Shown::AutoFolded`) is no longer a dead control. A click opens the zone over its neighbour, as `Layout::set_over` does, and closing it (its strip, Escape or a press outside) puts it back in its automatic state, so it unfolds by itself once the room comes back (`ZoneState::over_from_auto`). A new hook, `ZoneViewer::on_strip(zone, shown, response) -> StripAction`, the strips' counterpart of `TabViewer::on_tab_button`, lets the application choose what a strip click does (`Default`, `Unfold`, `Over`, `Fold` or `Nothing`). Every strip click is reported as `LayoutEvent::StripClicked`, an opening from the strip as `LayoutEvent::OpenedOver`, a closing back to the automatic state as `LayoutEvent::ClosedOver`, and with the `bus` feature as `Change::StripClicked`, `OpenedOver` and `ClosedOver` on `stack.layout.changed` (#149). Migration: an application that wants auto-folded strips to stay inert returns `StripAction::Nothing` from `ZoneViewer::on_strip` for `Shown::AutoFolded`; one matching every `LayoutEvent` or `Change` adds the new variants.
+- Behaviour change: `DockSpace::take_unfolds` now also reports a folded zone holding a single dock
+  when a tab is dropped on its strip (`Constraints::strip_drops`), as it already did for a folded
+  split zone; before, such a drop was not reported. egui_stack still unfolds nothing itself: an
+  application that unfolds every zone `take_unfolds` returns now unfolds single-dock zones on a
+  strip drop too, and one that wants them to stay folded leaves them out. With the `bus` feature,
+  the drop names the zone as well as the dock: `DropAsk` has a new field, `zone` (the folded or
+  collapsed zone dropped on, else the zone holding the destination dock), and the `TabMoved`
+  `LayoutChange` sets `zone` the same way (#147). Migration: apps that unfold everything
+  `take_unfolds()` reports now also unfold single-dock zones; leave those zones out to keep them
+  folded.
+
+### Added
+
+- A tab can leave a `DockSpace` and come back where it was, to hide and show it or to close and reopen it in place: `DockSpace::take_with_place` removes a tab and returns it with its `TabPlace` (its dock, the tabs next to it and its index in its group; opaque, and serialisable with the `serde` feature), and `DockSpace::restore_at` puts it back, beside its neighbours, else in its dock's focused group at its old index, else where a float's tab goes when the float closes (`ClosePolicy::ReturnToOrigin`). No hidden tab stays in the tree (#141). Restoring now shares one neighbour search with closing a float: it looks for the tab that was before the restored one in every group of the dock first, and only then for the tab that was after it (it used to try both in each group in turn). So a tab coming back from a closed float (`ClosePolicy::ReturnToOrigin`) now lands after its left neighbour wherever that tab has gone, where it could land before its right neighbour in another group.
+
+### Fixed
+
+- The Move group menu no longer shows a float's dock the space named itself (`float-N`, made when tabs are moved out to a new float) by that name: where `TabViewer::dock_title` gives no title, the item reads the float's window title, the active tab's title of its focused (else first) group, and follows it when the active tab changes. A dock the application named keeps its name, and `dock_title` still takes precedence (#150).
+- Documented: dock names `float-<digits>` and `window-<digits>` are reserved for the docks a `DockSpace` makes itself for floats (`float-N` for tabs moved out to a new float, `window-N` from `DockSpace::windows_to_floats`). The Move group menu recognises such a dock by its name and shows it by its float's window title where `TabViewer::dock_title` gives none (#150), so a dock the application names so is shown the same way. See `DockSpace::add_dock`.
+
 ## egui_stack 0.28.9 - 2026-11-19
 
 ### Added
