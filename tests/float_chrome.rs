@@ -270,3 +270,56 @@ fn every_button_of_a_float_s_tab_bar_keeps_the_line_under_the_bar() {
         );
     }
 }
+
+/// The widths of the line segments drawn over `button` that are not whole physical pixels at
+/// `ppp`.
+fn blurred_over(shapes: &[ClippedShape], button: Rect, ppp: f32) -> Vec<f32> {
+    fn walk(shape: &Shape, button: Rect, ppp: f32, out: &mut Vec<f32>) {
+        match shape {
+            Shape::LineSegment {
+                points: [a, b],
+                stroke,
+            } if stroke.width > 0.0
+                && button.expand(0.5).contains(*a)
+                && button.expand(0.5).contains(*b) =>
+            {
+                let px = stroke.width * ppp;
+                if (px - px.round()).abs() > 1e-3 {
+                    out.push(stroke.width);
+                }
+            }
+            Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, button, ppp, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    shapes
+        .iter()
+        .for_each(|c| walk(&c.shape, button, ppp, &mut out));
+    out
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn the_buttons_of_a_float_s_tab_bar_draw_whole_pixels_at_every_scale() {
+    let mut multi = Multi::new();
+    let mut app = app(FloatHost::Native, None);
+    detach_b(&mut multi, &mut app);
+    let viewport = Host.viewport_id("float-1");
+    multi.passes(2, frame(&mut app));
+    let labels = ["Collapse", "Move group", "Close all tabs", "Move window"];
+    for scale in [1.0, 1.25, 1.5, 1.75, 2.0, 3.0] {
+        multi.place(viewport, pos2(400.0, 100.0), scale);
+        multi.passes(2, frame(&mut app));
+        for label in labels {
+            let button = multi
+                .find(viewport, label)
+                .unwrap_or_else(|| panic!("{label} is shown at {scale}"));
+            let blurred = blurred_over(multi.shapes(viewport), button, scale);
+            assert!(
+                blurred.is_empty(),
+                "{label}: strokes {blurred:?} points wide are not whole pixels at {scale}"
+            );
+        }
+    }
+}
