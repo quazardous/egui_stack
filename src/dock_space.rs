@@ -156,6 +156,16 @@ pub(crate) struct StripDrop {
     pub(crate) unfold: ZoneName,
 }
 
+/// Whether `name` is one the space makes itself for a float's dock (`float-N` for tabs moved out
+/// to a float, `window-N` for a former egui_dock window), not one the application gave: such a
+/// dock is shown by its float's window title, not by its name.
+pub(crate) fn library_named(name: &str) -> bool {
+    ["float-", "window-"].iter().any(|prefix| {
+        name.strip_prefix(prefix)
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
 /// A dock of a [`DockSpace`]: its name, its surface and its rules.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

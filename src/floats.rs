@@ -855,29 +855,35 @@ fn track_place<Tab>(layout: &mut Layout, space: &mut DockSpace<Tab>, key: &str, 
     }
 }
 
-/// The title of the dock `dock`'s window: its focused (or first) leaf's active tab.
+/// The title of the dock `dock`'s window: its focused (or first) leaf's active tab, else the
+/// dock's name.
 fn dock_title<Tab>(
     space: &mut DockSpace<Tab>,
     viewer: &mut impl TabViewer<Tab = Tab>,
     dock: &str,
 ) -> egui::WidgetText {
-    let Some(tree) = space.dock_mut(dock) else {
-        return dock.into();
-    };
+    space
+        .dock_mut(dock)
+        .and_then(|tree| tree_title(tree, viewer))
+        .unwrap_or_else(|| dock.into())
+}
+
+/// The title of a float's window showing `tree`: its focused (or first) leaf's active tab;
+/// `None` when the tree has no tab.
+pub(crate) fn tree_title<Tab>(
+    tree: &mut Tree<Tab>,
+    viewer: &mut impl TabViewer<Tab = Tab>,
+) -> Option<egui::WidgetText> {
     let node = tree
         .focused_leaf()
         .filter(|&node| tree.leaf(node).is_ok_and(|leaf| !leaf.tabs.is_empty()))
         .or_else(|| {
             tree.breadth_first_index_iter()
                 .find(|&node| tree.leaf(node).is_ok_and(|leaf| !leaf.tabs.is_empty()))
-        });
-    match node.and_then(|node| tree.leaf_mut(node).ok()) {
-        Some(leaf) => {
-            let active = leaf.active.0.min(leaf.tabs.len() - 1);
-            viewer.title(&mut leaf.tabs[active])
-        }
-        None => dock.into(),
-    }
+        })?;
+    let leaf = tree.leaf_mut(node).ok()?;
+    let active = leaf.active.0.min(leaf.tabs.len() - 1);
+    Some(viewer.title(&mut leaf.tabs[active]))
 }
 
 /// A float over the main window, as an `egui::Window`: moved by its move handle, or by its
