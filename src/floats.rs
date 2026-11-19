@@ -11,8 +11,8 @@ use egui::{
 
 use crate::layout::{Float, FloatHost, Layout, Place, Screen, ScreenGone};
 use crate::{
-    DockArea, DockPainter, DockSpace, Docked, GroupHandles, NodePath, Style, Surface, TabIndex,
-    TabViewer, Tree,
+    DockArea, DockPainter, DockSpace, Docked, GroupHandles, NodePath, Style, Surface, TabViewer,
+    Tree,
 };
 
 mod gestures;
@@ -1392,56 +1392,18 @@ fn put_back<Tab>(
         let Some((target, near)) = into.or_else(fallback) else {
             continue;
         };
-        put_tab(space, viewer, &target, tab, near);
+        let near = near.map(|(before, after)| crate::dock_space::Near {
+            before,
+            after,
+            index: None,
+        });
+        if crate::dock_space::put_tab(space, &mut |tab| viewer.id(tab), &target, tab, near).is_err()
+        {
+            continue;
+        }
         moved.push((id, target));
         #[cfg(feature = "bus")]
         keys.extend(key);
     }
     (moved, keys)
-}
-
-/// Puts `tab` in the dock `dock`: after the tab it was next to (`near`: the tabs before and
-/// after it), else in the dock's focused (or first) leaf, else as the empty dock's only tab.
-fn put_tab<Tab>(
-    space: &mut DockSpace<Tab>,
-    viewer: &mut impl TabViewer<Tab = Tab>,
-    dock: &str,
-    tab: Tab,
-    near: Option<(Option<Id>, Option<Id>)>,
-) {
-    let Some(tree) = space.dock_mut(dock) else {
-        return;
-    };
-    if tree.is_empty() {
-        *tree = Tree::new(vec![tab]);
-        return;
-    }
-    if let Some((before, after)) = near {
-        let nodes: Vec<_> = tree.breadth_first_index_iter().collect();
-        for node in nodes {
-            let Ok(leaf) = tree.leaf_mut(node) else {
-                continue;
-            };
-            let ids: Vec<Id> = leaf.tabs.iter_mut().map(|tab| viewer.id(tab)).collect();
-            let at = before
-                .and_then(|before| ids.iter().position(|&id| id == before))
-                .map(|i| i + 1)
-                .or_else(|| after.and_then(|after| ids.iter().position(|&id| id == after)));
-            if let Some(at) = at {
-                leaf.insert_tab(TabIndex(at), tab);
-                return;
-            }
-        }
-    }
-    let leaf = tree
-        .focused_leaf()
-        .filter(|&node| tree.leaf(node).is_ok())
-        .or_else(|| {
-            tree.breadth_first_index_iter()
-                .find(|&node| tree.leaf(node).is_ok())
-        });
-    match leaf {
-        Some(node) => tree[node].append_tab(tab),
-        None => *tree = Tree::new(vec![tab]),
-    }
 }

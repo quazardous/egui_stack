@@ -140,6 +140,65 @@ The add tab button sits right after the last tab (`ButtonsStyle::add_tab_align`,
 reserved left of the grip, so the buttons at the end of the bar (the add button once it is there,
 the grip, the close-all button) always sit side by side.
 
+### Taking a tab out and putting it back: `TabPlace`
+
+A space has no hidden tab: a tab in a tree is drawn, counted, focused, dragged, listed in menus,
+saved and read by screen readers. To hide a tab, or to close one and reopen it where it was, the
+application takes it out of the space with its place, and keeps both:
+
+- `DockSpace::take_with_place(tab_id, id_of) -> Option<(Tab, TabPlace)>` removes the tab named
+  `tab_id` (by `TabViewer::id`, through `id_of`) from its dock, as a close would: an emptied group
+  goes, an emptied zone stays unless its dock says otherwise (`DockRules::keep_when_empty`,
+  `DockSpace::collapse_empty`).
+- `DockSpace::restore_at(tab, place, id_of) -> Result<String, Tab>` puts it back and returns the
+  dock it went to, or gives the tab back when the space has no dock left.
+
+`TabPlace` is opaque: the dock, the tabs next to the tab in its group, and its index there; with
+the `serde` feature it serialises, and it outlives a layout save and load, since it names tabs by
+their id and the dock by its name. `restore_at` puts the tab back as a float's close does
+(`ClosePolicy::ReturnToOrigin`), from the same code:
+
+1. In its dock, after the tab that was before it, else before the tab that was after it, in
+   whichever of the dock's groups that tab is now: the group comes back through the neighbours.
+2. When neither neighbour is in the dock (the tab was alone in its group, or its whole group
+   went), in the dock's focused (or first) group, at its old index; in an empty dock, as its only
+   tab.
+3. When its dock is gone: for a tab taken from a float, where it was before it floated (the
+   float's origin, which the place carries); else the first dock no float shows.
+
+The restored tab is its group's active tab. A tab taken from a float and put back in it keeps its
+origin, for the float's close.
+
+Hide and show, with the application's own state (`T` already carries what the tab shows):
+
+```rust,ignore
+struct App {
+    space: DockSpace<Tab>,
+    /// Hidden tabs, with where they were.
+    hidden: Vec<(Tab, TabPlace)>,
+}
+
+impl App {
+    fn hide(&mut self, id: egui::Id, viewer: &mut Viewer) {
+        if let Some(taken) = self.space.take_with_place(id, |tab| viewer.id(tab)) {
+            self.hidden.push(taken);
+        }
+    }
+
+    fn show(&mut self, id: egui::Id, viewer: &mut Viewer) {
+        if let Some(i) = self.hidden.iter().position(|(_, place)| place.tab() == id) {
+            let (tab, place) = self.hidden.remove(i);
+            if let Err(tab) = self.space.restore_at(tab, place, |tab| viewer.id(tab)) {
+                // No dock left: put it wherever the application wants.
+                self.space.add_dock("main", DockRules::default(), vec![tab]);
+            }
+        }
+    }
+}
+```
+
+`hidden` saves with the application's state when it saves it (`TabPlace` is `Serialize`).
+
 ### The ghost of a drag
 
 A dragged tab or group leaves its bar and shows a ghost under the pointer: a translucent frame
