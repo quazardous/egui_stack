@@ -33,6 +33,10 @@ from this repository's main branch.
   viewports the application hosts through `ViewportHost`), drawn by `FloatsArea`; closing one returns its tabs where
   they came from, or as `ClosePolicy` says, and windows left off every screen are brought back
   ([docs/native-floats.md](docs/native-floats.md)).
+- A work area for the floats over the main window (`FloatsArea::work_area`): regions made of the space, layout zones
+  or rects, resolved every frame; a float stays in one region, moved from one to the next without straddling a gap,
+  never larger than it, brought back when its region shrinks or goes; a tab released outside every region stays where
+  it was ([docs/dock-space.md](docs/dock-space.md)).
 - One drag across native windows (`DockSpace::dragging`): a tab or a group goes from the main window to a float, back,
   or from float to float, with the same drop zones, veto and Escape, across screens of different scales; where the
   system hides window positions (Wayland), the windows that could take it are outlined.

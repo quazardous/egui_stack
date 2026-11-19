@@ -619,6 +619,7 @@ impl<Tab> DockSpace<Tab> {
         for event in &laid.events {
             self.emit_change(crate::bus::LayoutChange::of(event));
         }
+        self.floating.zones = crate::floats::BoundZones::of(laid);
         for zone in &laid.zones {
             if let Some(Content::Dock(name)) = &zone.content
                 && let Some(dock) = self.docks.iter_mut().find(|dock| dock.name == *name)

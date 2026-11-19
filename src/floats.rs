@@ -16,9 +16,12 @@ use crate::{
 };
 
 mod gestures;
+mod work_area;
 
 pub use gestures::FloatMove;
 pub(crate) use gestures::{WindowMove, move_handle_id};
+pub(crate) use work_area::BoundZones;
+pub use work_area::{Outside, WorkArea};
 
 /// What hosts the native windows of [`FloatHost::Native`] floats: the application, which
 /// creates them, places them and renders them (egui_stack never creates a window or a
@@ -209,9 +212,27 @@ pub(crate) struct Floating {
     /// The docks of the floats whose close window button was clicked this frame
     /// ([`FloatsArea::title_bar`]), closed once their window is drawn.
     pub(crate) close_asked: BTreeSet<String>,
+    /// Where the floats over the main window may go ([`FloatsArea::work_area`]), as last set.
+    pub(crate) work_area: WorkArea,
+    /// The layout's zones last read by [`DockSpace::bind`], for the work area's regions.
+    pub(crate) zones: BoundZones,
+    /// Where each float just opened from a release over the main window was released: its
+    /// first region is the one there, whatever its size overlaps.
+    pub(crate) released_at: HashMap<String, egui::Pos2>,
 }
 
 impl Floating {
+    /// The work area's regions this frame, in the main window's points; `None` when the floats
+    /// are free. `docks` are the space's docks, for the space drawn without
+    /// [`DockSpace::bind`].
+    pub(crate) fn regions(&self, docks: &[crate::dock_space::Dock]) -> Option<Vec<Rect>> {
+        let drawn = docks
+            .iter()
+            .filter(|dock| !dock.floating && work_area::main_window(dock.viewport))
+            .filter_map(|dock| dock.rect);
+        self.work_area.regions(&self.zones, drawn)
+    }
+
     /// The viewport `viewport` closed (a float's window): a drag that began there ends, and one
     /// over it is cancelled (nothing moves at its release).
     pub(crate) fn viewport_closed(&mut self, viewport: ViewportId) {
@@ -306,6 +327,7 @@ pub struct FloatsArea<'a, Tab> {
     modifiers: Modifiers,
     float_move: FloatMove,
     title_bar: bool,
+    work_area: WorkArea,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -358,6 +380,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             modifiers: Modifiers::SHIFT,
             float_move: FloatMove::Move,
             title_bar: false,
+            work_area: WorkArea::window(),
             painter: None,
             configure: None,
             decorate: None,
@@ -461,6 +484,19 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
         self
     }
 
+    /// Sets where the floats over the main window may go, and where a tab dragged out of every
+    /// dock may become one: see [`WorkArea`]. By default [`WorkArea::window`], the whole window.
+    /// Native floats ignore it.
+    ///
+    /// Give it every frame, as the other options: the space keeps it (not saved) for its docks,
+    /// which decide a drop as they are drawn, before the floats. On the very first frame the
+    /// docks have not read it yet, which no drag notices: a drag takes several frames.
+    #[must_use]
+    pub fn work_area(mut self, work_area: WorkArea) -> Self {
+        self.work_area = work_area;
+        self
+    }
+
     /// Draws the floats, back to front, and keeps the model up to date (see [`FloatsArea`]).
     pub fn show(self, ctx: &Context, viewer: &mut impl TabViewer<Tab = Tab>) {
         let Self {
@@ -473,6 +509,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             modifiers,
             float_move,
             title_bar,
+            work_area,
             painter,
             configure,
             decorate,
@@ -492,6 +529,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             None => &mut default_host,
         };
         space.floating.enabled = true;
+        space.floating.work_area = work_area;
         let screens = host.screens();
 
         legacy_windows(layout, space);
@@ -644,6 +682,12 @@ fn open_pending<Tab>(layout: &mut Layout, space: &mut DockSpace<Tab>, screens: &
             _ => Place::new(pending.rect),
         };
         let screen = place.screen.clone();
+        if host != FloatHost::Native {
+            space
+                .floating
+                .released_at
+                .insert(pending.dock.clone(), pending.rect.min);
+        }
         layout.open_float(Float::dock(
             pending.dock.clone(),
             pending.dock.clone(),
@@ -816,6 +860,7 @@ fn float_change(change: crate::bus::Change, key: &str) -> crate::bus::LayoutChan
 /// Forgets what was kept of a native float's window, closed: a drag that began in it ends, and
 /// one over it is cancelled.
 fn forget_native<Tab>(space: &mut DockSpace<Tab>, key: &str) {
+    space.floating.released_at.remove(key);
     space.floating.chrome.remove(key);
     space.floating.collapsed.remove(key);
     space.floating.builders.remove(key);
@@ -950,6 +995,26 @@ fn show_in_window<Tab>(
         window.current_pos(place.rect.min)
     } else {
         window
+    };
+    // The work area: the window stays in one region, moved by the pointer from one to another,
+    // and is no larger than it. egui's `constrain_to` bounds the position; the size is capped
+    // too (egui 0.37 also caps a window's largest size to its constrain rect). A window the
+    // region moves or shrinks is kept and reported below, as one the user moved.
+    let released_at = space.floating.released_at.remove(key);
+    let region = space.floating.regions(space.docks()).and_then(|regions| {
+        let moved_by_user = [id.with("__title_click"), handle]
+            .into_iter()
+            .any(|id| ctx.read_response(id).is_some_and(|r| r.dragged()));
+        let pointer = if moved_by_user {
+            ctx.input(|i| i.pointer.latest_pos())
+        } else {
+            released_at
+        };
+        work_area::region_of(&regions, place.rect, pointer)
+    });
+    let window = match region {
+        Some(region) => window.constrain_to(region).max_size(region.size()),
+        None => window,
     };
     let window = match collapsed_height {
         Some(height) => window.fixed_size(vec2(place.rect.width(), height + chrome)),
