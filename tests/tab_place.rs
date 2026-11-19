@@ -272,6 +272,7 @@ mod saved {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
     fn a_place_outlives_a_layout_save_and_load() {
         let layout = Layout::new(Zone::split(
             "root",
