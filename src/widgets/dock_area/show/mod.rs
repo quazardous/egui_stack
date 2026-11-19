@@ -154,6 +154,7 @@ impl<Tab> DockArea<'_, Tab> {
                 self.to_float.push((
                     TreeComponent::Tab(path),
                     Rect::from_min_size(mouse_pos, size),
+                    None,
                 ));
             } else {
                 self.dock_state.eject_tab(path, mouse_pos);
@@ -163,14 +164,14 @@ impl<Tab> DockArea<'_, Tab> {
         for (path, destination) in std::mem::take(&mut self.to_move_group) {
             match destination {
                 TabDestination::Window(rect) if self.floats_on() => {
-                    self.to_float.push((TreeComponent::Node(path), rect));
+                    self.to_float.push((TreeComponent::Node(path), rect, None));
                 }
                 destination => self.dock_state.move_node(path, destination),
             }
         }
 
-        for (source, rect) in std::mem::take(&mut self.to_float) {
-            self.float_out(ui.ctx(), source, rect, tab_viewer);
+        for (source, rect, host) in std::mem::take(&mut self.to_float) {
+            self.float_out(ui.ctx(), source, rect, host, tab_viewer);
         }
 
         if let Some(focused) = self.new_focused {
@@ -385,7 +386,8 @@ impl<Tab> DockArea<'_, Tab> {
                 match destination {
                     // Out of every dock, once the space's floats are drawn: a float.
                     TabDestination::Window(rect) if self.floats_on() => {
-                        self.to_float.push((source, rect));
+                        let host = self.release_host(rect.min);
+                        self.to_float.push((source, rect, host));
                     }
                     destination => {
                         self.apply_move(source, destination, tab_viewer);
@@ -514,14 +516,10 @@ impl<Tab> DockArea<'_, Tab> {
         let Some(pointer) = state.last_hover_pos else {
             return false;
         };
-        // Released outside every dock and outside the floats' work area: refused.
-        if hover.outside
-            && let Some(regions) = space.floating.regions(space.docks)
-            && !regions.iter().any(|region| region.contains(pointer))
-        {
-            return match space.floating.work_area.outside_rule() {
-                crate::Outside::Cancel => true,
-            };
+        // Released outside every dock and outside the floats' work area: refused, unless torn
+        // out to a native window (`Outside::Native`).
+        if hover.outside && space.floating.release_host(space.docks, pointer).is_none() {
+            return true;
         }
         let widgets = space
             .no_drop

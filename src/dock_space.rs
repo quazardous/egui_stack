@@ -1109,6 +1109,7 @@ impl<Tab> DockSpace<Tab> {
         rect: Rect,
         id_of: &mut dyn FnMut(&mut Tab) -> Id,
     ) -> Option<String> {
+        let host = self.floating.host;
         detach(
             &mut self.state,
             &mut self.docks,
@@ -1117,6 +1118,7 @@ impl<Tab> DockSpace<Tab> {
             source,
             rect,
             None,
+            host,
             id_of,
         )
     }
@@ -1251,8 +1253,8 @@ pub(crate) enum Detach {
 
 /// Moves `source` into a new dock (`float-N`), records where its tabs came from (unless they
 /// leave another float: they keep the origin they had), and asks for a float showing it at
-/// `rect`, `physical` on the desktop when known. Returns the new dock's name, which keys the
-/// float.
+/// `rect`, `physical` on the desktop when known, hosted by `host`. Returns the new dock's name,
+/// which keys the float.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn detach<Tab>(
     state: &mut DockState<Tab>,
@@ -1262,6 +1264,7 @@ pub(crate) fn detach<Tab>(
     source: Detach,
     rect: Rect,
     physical: Option<Rect>,
+    host: crate::layout::FloatHost,
     id_of: &mut dyn FnMut(&mut Tab) -> Id,
 ) -> Option<String> {
     let (node, tabs) = match source {
@@ -1310,6 +1313,7 @@ pub(crate) fn detach<Tab>(
         rect,
         physical,
         tabs: ids,
+        host,
     });
     Some(name)
 }

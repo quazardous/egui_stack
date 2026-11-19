@@ -139,6 +139,7 @@ left the floats are free. `WorkArea::window()`, the default, is the whole window
 - A region that shrinks or goes, or a layout restored with a float outside every region, brings
   the float into its region or the nearest one, reported once as `FloatEvent::Moved`.
 - Native floats ignore the work area: they are free on the desktop.
+- With `Outside::Native`, what is released past the edge becomes a native float instead (below).
 
 The setting is an option of `FloatsArea`, given every frame like its other options, and kept by
 the space (not saved) for its docks: they decide a drop while they are drawn, before the floats,
@@ -147,8 +148,26 @@ which no drag notices, as a drag takes several frames; a `DockSpace::set_work_ar
 that frame at the cost of a second place to configure the floats, so the option stays with the
 floats. Zone rects come from `DockSpace::bind`, as strips and no-drop zones do.
 
-Leaving the window for a native float past a region's edge (`Outside::Native`, as Visual Studio or
-Blender tear tabs out) is a later step.
+#### Tearing out to a native window
+
+With `.outside(Outside::Native)` the work area is hybrid, as in Visual Studio or Blender: floats
+over the main window stay bounded as above, and what is released past the work area's edge leaves
+the window.
+
+- A tab or a group released outside every dock and every region becomes a native float
+  (`FloatHost::Native`), opened where it was released, whatever `DockSpace::set_float_host` says.
+  Released inside a region, it floats over the main window as before.
+- A float over the main window moved past the edge stays bounded while it is held; let go with
+  the pointer outside every region, it becomes a native float, the pointer where it held it. It is
+  reported as `FloatEvent::Moved`, its place now on the desktop.
+- It happens on release: no window follows the pointer out of the main window during the drag
+  (that needs a window before the release, and Wayland does not tell where windows are).
+- Where native windows are not available, `ViewportHost::native_windows` false (by default, when
+  egui embeds its viewports: on the web, or a backend with a single viewport), it is
+  `Outside::Cancel`.
+- Each native float's window is its own region: a tab dropped into its docks is taken, as without
+  a work area. Moved back over the main window with `FloatMove::Dock`, a native float docks as
+  usual.
 
 ### Moving a whole tab group
 

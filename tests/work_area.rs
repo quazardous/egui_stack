@@ -3,13 +3,19 @@
 //! window stays in one region, moved from one to another without straddling the gap, never
 //! larger than it, and brought back when its region shrinks or goes, or when a layout is
 //! restored with it outside; native floats are left alone. Without a work area nothing changes.
+//! With `Outside::Native`, a tab or a float released past the work area's edge becomes a native
+//! float where it was released (`Cancel` where viewports are embedded), and a native float's
+//! docks still take drops.
 
 #[path = "support/multi.rs"]
 mod multi;
 
 use egui::{Event, Id, Pos2, Rect, Ui, UiBuilder, ViewportId, WidgetText, pos2, vec2};
 use egui_stack::layout::{Content, Dir, FloatHost, Laid, Layout, Screen, Solve, Zone};
-use egui_stack::{DockArea, DockRules, DockSpace, Docked, FloatEvent, TabViewer, ViewportHost};
+use egui_stack::{
+    DockArea, DockRules, DockSpace, Docked, FloatEvent, NodeIndex, TabIndex, TabPath, TabViewer,
+    ViewportHost,
+};
 use egui_stack::{Outside, WorkArea};
 use multi::{Multi, SIZE};
 
@@ -57,6 +63,8 @@ impl ViewportHost for Host {
 enum Area {
     None,
     Zones,
+    /// The zones, a release outside them tearing out to a native window.
+    Native,
     Rect(Rect),
 }
 
@@ -116,6 +124,10 @@ fn frame(app: &mut App) -> impl FnMut(&mut Ui) + '_ {
                 .zone("left")
                 .zone("right")
                 .outside(Outside::Cancel),
+            Area::Native => WorkArea::new()
+                .zone("left")
+                .zone("right")
+                .outside(Outside::Native),
             Area::Rect(rect) => WorkArea::new().rect(*rect),
         };
         app.laid = laid;
@@ -132,9 +144,13 @@ fn zone(app: &App, name: &str) -> Rect {
 }
 
 fn tabs(app: &App) -> Vec<String> {
+    tabs_of(app, "main")
+}
+
+fn tabs_of(app: &App, dock: &str) -> Vec<String> {
     app.docked
         .space
-        .dock("main")
+        .dock(dock)
         .map(|tree| {
             tree.iter()
                 .filter_map(|n| n.tabs())
@@ -373,4 +389,147 @@ fn a_native_float_ignores_the_work_area() {
     app.docked.layout.float_mut("float-1").unwrap().place.rect = far;
     multi.passes(6, frame(&mut app));
     assert_eq!(float_rect(&app).min, far.min);
+}
+
+fn host_of(app: &App) -> FloatHost {
+    app.docked.layout.float("float-1").expect("B floats").host
+}
+
+fn viewport(key: &str) -> ViewportId {
+    Host.viewport_id(key)
+}
+
+/// Past the main window's right edge.
+const PAST_THE_EDGE: Pos2 = pos2(SIZE.x + 60.0, 100.0);
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_tab_released_past_the_work_area_becomes_a_native_float_there() {
+    let mut multi = Multi::new();
+    let mut app = app(FloatHost::InWindow, Area::Native);
+    multi.passes(2, frame(&mut app));
+    drag_b_to(&mut multi, &mut app, PAST_THE_EDGE);
+    assert_eq!(host_of(&app), FloatHost::Native);
+    let place = &app.docked.layout.float("float-1").unwrap().place;
+    assert_eq!(place.rect.min, PAST_THE_EDGE, "where it was released");
+    assert_eq!(place.screen.as_deref(), Some("one"));
+    assert_eq!(tabs(&app), ["A", "C"]);
+    assert_eq!(tabs_of(&app, "float-1"), ["B"]);
+    assert!(multi.shown().contains(&viewport("float-1")), "its window");
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_tab_released_in_a_region_still_floats_inside_it() {
+    let mut multi = Multi::new();
+    let mut app = app(FloatHost::InWindow, Area::Native);
+    float_in_left(&mut multi, &mut app);
+    assert_eq!(host_of(&app), FloatHost::InWindow);
+    assert_eq!(tabs(&app), ["A", "C"]);
+    let left = zone(&app, "left");
+    assert!(
+        inside(left, float_rect(&app)),
+        "{left:?} ⊇ {:?}",
+        float_rect(&app)
+    );
+    assert!(!multi.shown().contains(&viewport("float-1")), "no window");
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_float_dragged_past_the_edge_tears_out_on_release() {
+    let mut multi = Multi::new();
+    let mut app = app(FloatHost::InWindow, Area::Native);
+    float_in_left(&mut multi, &mut app);
+    let from = handle(&multi);
+    let to = pos2(SIZE.x + 80.0, from.y);
+    multi.press(ViewportId::ROOT, from, frame(&mut app));
+    multi.move_held(ViewportId::ROOT, from, to, frame(&mut app));
+    // Held past the edge: still over the main window, bounded by its region.
+    assert_eq!(host_of(&app), FloatHost::InWindow);
+    let (left, right) = (zone(&app, "left"), zone(&app, "right"));
+    let rect = float_rect(&app);
+    assert!(inside(left, rect) || inside(right, rect), "{rect:?}");
+    multi.release(ViewportId::ROOT, to, frame(&mut app));
+    multi.passes(3, frame(&mut app));
+    assert_eq!(host_of(&app), FloatHost::Native);
+    let rect = float_rect(&app);
+    assert!(
+        rect.expand(1.0).contains(to),
+        "opened where it was let go, under the pointer: {rect:?} ∌ {to:?}"
+    );
+    assert!(rect.min.x > SIZE.x - rect.width(), "{rect:?}");
+    assert_eq!(tabs_of(&app, "float-1"), ["B"]);
+    assert!(multi.shown().contains(&viewport("float-1")), "its window");
+    let events = app.docked.space.take_float_events();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, FloatEvent::Moved { key, .. } if key == "float-1")),
+        "{events:?}"
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn with_embedded_viewports_native_falls_back_to_cancel() {
+    let mut multi = Multi::new();
+    multi.ctx().set_embed_viewports(true);
+    let mut app = app(FloatHost::InWindow, Area::Native);
+    multi.passes(2, frame(&mut app));
+    drag_b_to(&mut multi, &mut app, PAST_THE_EDGE);
+    assert!(app.docked.layout.floats.is_empty(), "no float");
+    assert_eq!(tabs(&app), ["A", "B", "C"]);
+
+    // A float over the main window let go past the edge stays over it.
+    float_in_left(&mut multi, &mut app);
+    let from = handle(&multi);
+    multi.drag(from, pos2(SIZE.x + 80.0, from.y), frame(&mut app));
+    assert_eq!(host_of(&app), FloatHost::InWindow);
+    let (left, right) = (zone(&app, "left"), zone(&app, "right"));
+    let rect = float_rect(&app);
+    assert!(inside(left, rect) || inside(right, rect), "{rect:?}");
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_native_floats_docks_take_drops_whatever_the_work_area() {
+    for area in [Area::Zones, Area::Native] {
+        let mut multi = Multi::new();
+        let mut app = app(FloatHost::Native, area);
+        multi.passes(3, frame(&mut app));
+        // `C` in a native float, its window at (700, 100) on the desktop: past the main
+        // window, outside every region.
+        let main = app.docked.space.dock_surface("main").unwrap();
+        let key = app
+            .docked
+            .space
+            .float_out(
+                TabPath::new(main, NodeIndex::root(), TabIndex(2)),
+                Rect::from_min_size(pos2(100.0, 100.0), vec2(300.0, 200.0)),
+                |tab| Id::unique(tab.as_str()),
+            )
+            .unwrap();
+        multi.pass(frame(&mut app));
+        let at = pos2(700.0, 100.0);
+        multi.place(viewport(&key), at, 1.0);
+        multi.passes(5, frame(&mut app));
+        app.docked.space.take_float_events();
+
+        let b = app
+            .viewer
+            .tab_rects
+            .iter()
+            .find(|(name, _)| name == "B")
+            .map(|(_, rect)| rect.center())
+            .expect("B is shown");
+        let over = at + vec2(150.0, 100.0);
+        multi.drag(b, over, frame(&mut app));
+        multi.passes(3, frame(&mut app));
+        let mut taken = tabs_of(&app, &key);
+        taken.sort();
+        assert_eq!(taken, ["B", "C"]);
+        assert_eq!(tabs(&app), ["A"]);
+        assert!(app.docked.layout.float("float-2").is_none(), "no new float");
+    }
 }

@@ -67,8 +67,14 @@ pub trait ViewportHost {
             body: &mut dyn FnMut(&mut Ui));
     fn screens(&self) -> Vec<Screen>;                     // name, physical rect, scale
     fn outer_rect(&self, id: ViewportId) -> Option<Rect>; // None: positions hidden (Wayland)
+    fn native_windows(&self, ctx: &Context) -> bool;      // false: viewports embedded
 }
 ```
+
+`native_windows` is `!ctx.embed_viewports()` by default; a host that draws
+the floats embedded says `false`, and the work area's `Outside::Native`
+tear-out then cancels instead (docs/dock-space.md, "The floats' work
+area").
 
 Viewport ids are the application's and stay stable, so anything it
 pairs with a window (a second wgpu surface, display settings) keeps
