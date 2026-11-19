@@ -44,6 +44,10 @@ eframe = { version = "0.37", default-features = false, features = [
     "glow",
 ] }
 egui_kittest = "0.37"
+# MIT OR Apache-2.0: the bus the `bus` feature's tests run on, the
+# implementation applications use (with its ordering, deadlines and
+# local listeners), in place of a test double.
+bus-kernel = "0.1"
 serde_json = { version = "1" }
 
 [[example]]

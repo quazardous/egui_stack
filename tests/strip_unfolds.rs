@@ -10,10 +10,6 @@ use egui_stack::layout::{
 };
 use egui_stack::{DockArea, DockRules, DockSpace, TabViewer};
 
-#[cfg(feature = "bus")]
-#[path = "support/test_bus.rs"]
-mod test_bus;
-
 struct Tabs;
 
 impl TabViewer for Tabs {
@@ -182,8 +178,8 @@ mod bus {
     use egui_stack::bus::bus_contract::{Bus, ListenOpts};
     use egui_stack::bus::{self, Change};
 
-    use super::test_bus::TestBus;
     use super::*;
+    use bus_kernel::Kernel;
 
     /// The zones `stack.dock.drop` was asked for, and those `TabMoved` named.
     #[derive(Default)]
@@ -193,7 +189,7 @@ mod bus {
     }
 
     fn with_bus() -> (Harness<'static, App>, Arc<Mutex<Seen>>) {
-        let bus = Arc::new(TestBus::default());
+        let bus = Arc::new(Kernel::new());
         let space = DockSpace::new().with_bus(bus.clone(), |tab: &String| tab.clone());
         let seen = Arc::new(Mutex::new(Seen::default()));
         let asked = seen.clone();
