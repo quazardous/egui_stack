@@ -185,6 +185,9 @@ pub mod layout {
             orientation: StripOrientation) -> bool { false }
         /// The icon the built-in strip title shows first; by default none.
         fn strip_icon(&mut self, zone: &ZoneName) -> Option<String> { None }
+        /// After a folded zone's strip is shown: what a click on it does.
+        fn on_strip(&mut self, zone: &ZoneName, shown: Shown, response: &egui::Response)
+            -> StripAction { StripAction::Default }
         /// A float's content.
         fn float(&mut self, ui: &mut egui::Ui, key: &str) {}
         /// A flyout's content.
@@ -295,6 +298,14 @@ by the viewer (`ZoneViewer::strip`, the application's icons); a click on the gri
 zone may also lie **over** its neighbour: unfolded, next to its strip, without taking room, with
 the style's shadow; its free edge resizes it, painted by the painter's `over_edge` (nothing by
 default) with its hover and drag state. The growing zone never folds.
+
+A strip click is the application's to steer: `ZoneViewer::on_strip(zone, shown, response)`, the
+strips' counterpart of `TabViewer::on_tab_button`, returns a `StripAction`. It lives on the zone
+viewer because strips belong to the layout, which draws them with that viewer and knows no tabs.
+By default a zone the user folded unfolds, a zone lying over closes, and a zone the solver folded
+short of room opens over its neighbour; closed again (its strip, Escape or a press outside), it
+goes back to its automatic state rather than folded, and unfolds by itself once the room comes
+back. Every strip click is reported (`LayoutEvent::StripClicked`).
 
 **Strip titles.** A strip shows only its grip unless the style asks for a title
 (`LayoutStyle::strip_title`, a `StripTitle`). The built-in title is the zone's title

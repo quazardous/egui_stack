@@ -56,7 +56,8 @@ pub use area::{
 };
 pub use float::{Float, FloatHost, Place, Repaired, Screen, ScreenGone};
 pub use fold::{
-    Dismiss, Flyout, FlyoutPaint, Inside, StripOrientation, StripPaint, StripTitle, VerticalReading,
+    Dismiss, Flyout, FlyoutPaint, Inside, StripAction, StripOrientation, StripPaint, StripTitle,
+    VerticalReading,
 };
 
 #[cfg(feature = "serde")]
@@ -313,6 +314,21 @@ pub struct ZoneState {
     pub over: bool,
     /// Not shown, and taking no room.
     pub hidden: bool,
+    /// Lying over because its auto-folded strip was clicked
+    /// ([`StripAction::Over`]): closed, it goes back to its automatic state
+    /// rather than folded. Never saved.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) over_from_auto: bool,
+}
+
+impl ZoneState {
+    /// Whether the zone lies over its neighbour because its auto-folded
+    /// strip was clicked ([`Shown::AutoFolded`], [`StripAction::Over`]):
+    /// closing it puts it back in its automatic state, not folded, so that
+    /// it unfolds by itself once the room comes back. Not saved.
+    pub fn over_from_auto(&self) -> bool {
+        self.over_from_auto
+    }
 }
 
 impl Zone {
@@ -523,25 +539,63 @@ impl Layout {
     /// The zone that grows never folds: the solver ignores its state. No
     /// [`LayoutEvent`] reports it: the events are the user's acts and the
     /// solver's, not the application's.
+    ///
+    /// Unfolding a zone the solver folded short of room
+    /// ([`Shown::AutoFolded`]) changes nothing while the room is short: to
+    /// show it anyway, open it over its neighbour with
+    /// [`set_over`](Self::set_over), as a click on its strip does
+    /// ([`StripAction::Over`]).
     pub fn set_folded(&mut self, name: &str, folded: bool) -> bool {
         self.zone_mut(name)
             .map(|zone| {
                 zone.state.folded = folded;
                 zone.state.over = false;
+                zone.state.over_from_auto = false;
             })
             .is_some()
     }
 
     /// Opens the zone named `name` over its neighbour, next to its strip,
     /// without taking room (`over`), or folds it back to its strip. Says
-    /// whether the zone exists.
+    /// whether the zone exists. A zone lying over takes only its strip in
+    /// the flow, so the solver does not fold it short of room.
     pub fn set_over(&mut self, name: &str, over: bool) -> bool {
         self.zone_mut(name)
             .map(|zone| {
                 zone.state.over = over;
                 zone.state.folded = !over;
+                zone.state.over_from_auto = false;
             })
             .is_some()
+    }
+
+    /// Opens the auto-folded zone named `name` over its neighbour, as
+    /// [`set_over`](Self::set_over) does, remembering that closing it puts
+    /// it back in its automatic state.
+    pub(crate) fn open_over_from_auto(&mut self, name: &str) {
+        self.set_over(name, true);
+        if let Some(zone) = self.zone_mut(name) {
+            zone.state.over_from_auto = true;
+        }
+    }
+
+    /// Closes a zone lying over its neighbour: back to its strip when the
+    /// user had folded it, back to its automatic state (neither folded nor
+    /// over) when it was opened from its auto-folded strip. The event that
+    /// says so.
+    pub(crate) fn close_over(&mut self, name: &ZoneName) -> Option<LayoutEvent> {
+        let zone = self.zone_mut(&name.0)?;
+        let event = if zone.state.over_from_auto {
+            zone.state.folded = false;
+            zone.state.over = false;
+            zone.state.over_from_auto = false;
+            LayoutEvent::ClosedOver { zone: name.clone() }
+        } else {
+            zone.state.folded = true;
+            zone.state.over = false;
+            LayoutEvent::Folded { zone: name.clone() }
+        };
+        Some(event)
     }
 
     /// A layout of one leaf, `name`, holding the dock of the same name.

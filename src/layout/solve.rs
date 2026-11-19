@@ -172,8 +172,36 @@ pub enum LayoutEvent {
     },
     /// The room came back for a zone the solver had folded
     /// ([`AutoFolded`](Self::AutoFolded)): it is no longer
-    /// [`Shown::AutoFolded`].
+    /// [`Shown::AutoFolded`]. A zone opened over from its auto-folded strip
+    /// ([`OpenedOver`](Self::OpenedOver)) still counts as auto-folded: it is
+    /// reported once it is closed with the room back.
     AutoUnfolded {
+        /// The zone.
+        zone: ZoneName,
+    },
+    /// A folded zone's strip was clicked (its grip, its bare body or its
+    /// edge), whatever [`ZoneViewer::on_strip`](super::ZoneViewer::on_strip)
+    /// made of it; what it did follows as its own event.
+    StripClicked {
+        /// The zone.
+        zone: ZoneName,
+        /// How it was shown when clicked: [`Shown::Folded`],
+        /// [`Shown::AutoFolded`] or [`Shown::Over`].
+        shown: Shown,
+    },
+    /// The zone opened over its neighbour from its strip
+    /// ([`StripAction::Over`](super::StripAction::Over), by default on an
+    /// auto-folded strip).
+    OpenedOver {
+        /// The zone.
+        zone: ZoneName,
+    },
+    /// A zone opened over from its auto-folded strip was closed (its strip,
+    /// Escape or a press outside): it is back in its automatic state,
+    /// neither folded nor over, and unfolds by itself once the room comes
+    /// back. A zone the user had folded reports [`Folded`](Self::Folded)
+    /// instead.
+    ClosedOver {
         /// The zone.
         zone: ZoneName,
     },
