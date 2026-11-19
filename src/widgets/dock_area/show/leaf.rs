@@ -313,9 +313,16 @@ impl<Tab> DockArea<'_, Tab> {
         );
 
         let full_bar = tabbar_outer_rect - style.tab_bar.inner_margin;
-        // A float's move handle takes the right end of its top bar; the rest of the bar is laid
-        // out left of it.
-        let move_handle = self.move_handle_rect(path, full_bar);
+        // A float's move handle takes the right end of its top bar, left of its close window
+        // button when it has one; the rest of the bar is laid out left of them.
+        let (move_handle, float_close) = match self.move_handle_rect(path, full_bar) {
+            Some(slot)
+                if self.shows_float_close_button() && full_bar.width() >= 3.0 * slot.width() =>
+            {
+                (Some(slot.translate(vec2(-slot.width(), 0.0))), Some(slot))
+            }
+            slot => (slot, None),
+        };
         let tabbar_outer_rect = match move_handle {
             Some(handle) => {
                 Rect::from_min_max(full_bar.min, pos2(handle.left(), full_bar.bottom()))
@@ -514,6 +521,10 @@ impl<Tab> DockArea<'_, Tab> {
             if let Some(rect) = move_handle {
                 let rect = bar_button_rect(full_bar, rect.left(), rect.width());
                 self.window_move_handle(ui, path, rect, fade_style, bar);
+            }
+            if let Some(rect) = float_close {
+                let rect = bar_button_rect(full_bar, rect.left(), rect.width());
+                self.window_close_button(ui, path, rect, fade_style, bar);
             }
 
             (tabs_ui.min_rect().width(), tab_hovered)
@@ -1307,6 +1318,64 @@ impl<Tab> DockArea<'_, Tab> {
                 color,
                 Stroke::NONE,
             ));
+        }
+    }
+
+    /// Whether the float this area draws has a close window button beside its move handle: a
+    /// float over the main window without a title bar of its own.
+    fn shows_float_close_button(&self) -> bool {
+        self.space.as_ref().is_some_and(|space| space.close_button)
+    }
+
+    /// A float's close window button: clicked, it asks the [`FloatsArea`](crate::FloatsArea)
+    /// drawing the float to close it, as the close button of a title bar does: the float's
+    /// [`TabViewer::close_policy`] says what becomes of its tabs, whether or not they can be
+    /// closed one by one.
+    fn window_close_button(
+        &mut self,
+        ui: &Ui,
+        path: NodePath,
+        rect: Rect,
+        fade_style: Option<&Style>,
+        bar: (Rect, CornerRadius),
+    ) {
+        let Some(dock) = self.dock_name(path.surface).map(str::to_owned) else {
+            return;
+        };
+        let id = self.id.with((path.surface, "surface")).with("float_close");
+        let response = ui
+            .interact(rect, id, Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        let enabled = ui.is_enabled();
+        response
+            .widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.close_window));
+
+        let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
+        let lit = response.hovered() || response.has_focus();
+        paint_bar_button(
+            ui,
+            rect,
+            bar,
+            lit.then_some(style.buttons.close_all_tabs_bg_fill),
+            Some((rect.left(), style.buttons.close_all_tabs_border_color)),
+        );
+        let color = if lit {
+            style.buttons.close_all_tabs_active_color
+        } else {
+            style.buttons.close_all_tabs_color
+        };
+        let mut cross = rect;
+        rect_set_size_centered(&mut cross, Vec2::splat(Style::TAB_CLOSE_ALL_SIZE));
+        let stroke = Stroke::new(1.0_f32, color);
+        ui.painter()
+            .line_segment([cross.left_top(), cross.right_bottom()], stroke);
+        ui.painter()
+            .line_segment([cross.right_top(), cross.left_bottom()], stroke);
+
+        if response.clicked()
+            && let Some(space) = self.space.as_mut()
+        {
+            space.floating.close_asked.insert(dock);
         }
     }
 
