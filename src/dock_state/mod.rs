@@ -505,12 +505,45 @@ impl<Tab> DockState<Tab> {
     /// Makes the tab at `path` the active tab of its leaf, and that leaf the focused one, as
     /// clicking the tab does.
     ///
+    /// It does not expand the leaf if it is collapsed: focusing and expanding stay apart;
+    /// [`set_collapsed`](Self::set_collapsed) expands it.
+    ///
     /// # Errors
     ///
     /// Returns `Err` if there is no tab at `path`.
     pub fn focus_tab(&mut self, path: TabPath) -> Result {
         self.set_active_tab(path)?;
         self.set_focused_node_and_surface(path.node_path());
+        Ok(())
+    }
+
+    /// Collapses (or expands) the tab group at `path` as its collapse button does: the group
+    /// shows only its tab bar, and its tree is updated, so that a float whose groups are all
+    /// collapsed shrinks to its tab bars, and grows back to the height it had once one is
+    /// expanded. See [`Tree::set_leaf_collapsed`].
+    ///
+    /// [`Node::set_collapsed`](crate::Node::set_collapsed) sets the node's flag only, and
+    /// leaves its tree's state stale.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if there is no node at `path`, or if it is not a leaf.
+    pub fn set_collapsed(&mut self, path: NodePath, collapsed: bool) -> Result {
+        self.leaf(path)?;
+        let tree = &mut self[path.surface];
+        tree.set_leaf_collapsed(path.node, collapsed);
+        if !collapsed {
+            if let Some(window) = self.get_window_state_mut(path.surface) {
+                window.set_new(true);
+            }
+        } else if let Some(height) = tree
+            .root_node()
+            .filter(|root| root.is_collapsed())
+            .map(|root| root.rect().map_or(0.0, |rect| rect.height()))
+            && let Some(window) = self.get_window_state_mut(path.surface)
+        {
+            window.set_expanded_height(height);
+        }
         Ok(())
     }
 

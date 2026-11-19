@@ -245,3 +245,73 @@ fn a_float_restored_collapsed_expands_to_the_height_it_had() {
         shown(&harness).rect
     );
 }
+
+/// The float's group: its dock's root leaf.
+fn float_group(harness: &Harness<'_, App>) -> egui_stack::NodePath {
+    let dock = float_dock(harness);
+    let surface = harness.state().docked.space.dock_surface(&dock).unwrap();
+    egui_stack::NodePath::new(surface, NodeIndex::root())
+}
+
+/// Collapses or expands the float's group from code.
+fn set_collapsed(harness: &mut Harness<'_, App>, collapsed: bool) {
+    let path = float_group(harness);
+    harness
+        .state_mut()
+        .docked
+        .space
+        .state_mut()
+        .set_collapsed(path, collapsed)
+        .expect("the group is a leaf");
+    harness.run();
+    harness.run();
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_float_collapsed_by_its_button_expands_from_code() {
+    let mut harness = harness(app());
+    let before = shown(&harness).rect;
+
+    toggle_all(&mut harness);
+    assert!(
+        (shown(&harness).rect.height() - bars_height(&harness)).abs() < 1.0,
+        "collapsed by its button"
+    );
+
+    set_collapsed(&mut harness, false);
+    let after = shown(&harness).rect;
+    assert!(
+        (after.height() - before.height()).abs() < 1.0,
+        "expanded from code, the height it had is back: {after:?}, was {before:?}"
+    );
+    let path = float_group(&harness);
+    assert!(!harness.state().docked.space.state()[path].is_collapsed());
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_float_collapses_and_expands_from_code_as_with_its_button() {
+    let mut harness = harness(app());
+    let before = shown(&harness).rect;
+
+    set_collapsed(&mut harness, true);
+    let collapsed = shown(&harness).rect;
+    assert!(
+        (collapsed.height() - bars_height(&harness)).abs() < 1.0,
+        "collapsed from code, as tall as its tab bar: {collapsed:?}, bars {}",
+        bars_height(&harness)
+    );
+    assert_eq!(collapsed.min, before.min, "it stays where it was");
+
+    set_collapsed(&mut harness, false);
+    let after = shown(&harness).rect;
+    assert!(
+        (after.height() - before.height()).abs() < 1.0,
+        "expanded from code: {after:?}, was {before:?}"
+    );
+
+    // And the button still toggles it after.
+    toggle_all(&mut harness);
+    assert!((shown(&harness).rect.height() - bars_height(&harness)).abs() < 1.0);
+}

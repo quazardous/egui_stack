@@ -11,9 +11,9 @@ use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
-    DockArea, DraggedNode, DraggedTab, GroupHandles, NodeIndex, PartState, Style, SurfaceIndex,
-    TabAddAlign, TabBarGripPaint, TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose,
-    TabDestination, TabFocus, TabIndex, TabInsert, TabMeasure, TabPaint, TabStyle, TabViewer,
+    DockArea, DraggedNode, DraggedTab, GroupHandles, PartState, Style, SurfaceIndex, TabAddAlign,
+    TabBarGripPaint, TabBarPaint, TabBarTailPaint, TabBodyPaint, TabClose, TabDestination,
+    TabFocus, TabIndex, TabInsert, TabMeasure, TabPaint, TabStyle, TabViewer,
     dock_area::{
         drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
         state::State,
@@ -1113,9 +1113,8 @@ impl<Tab> DockArea<'_, Tab> {
             if on_secondary_button {
                 self.window_toggle_minimized(path.surface);
             } else {
-                self.dock_state[path].set_collapsed(!collapsed);
-                self.dock_state[path.surface].node_update_collapsed(path.node);
-                self.window_update_collapsed(path);
+                // A leaf: it cannot fail.
+                let _ = self.dock_state.set_collapsed(path, !collapsed);
             }
         }
 
@@ -1679,27 +1678,6 @@ impl<Tab> DockArea<'_, Tab> {
             color,
             Stroke::NONE,
         ));
-    }
-
-    /// Updates the collapsed state of the node and its parents.
-    fn window_update_collapsed(&mut self, path: NodePath) {
-        let surface = &mut self.dock_state[path.surface];
-        let collapsed = surface[path.node].is_collapsed();
-        if !collapsed {
-            if let Some(window_state) = self.dock_state.get_window_state_mut(path.surface) {
-                window_state.set_new(true);
-            }
-        } else if surface.root_node().is_some_and(|root| root.is_collapsed()) {
-            let root_index = NodeIndex::root();
-            let surface_height = if surface.root_node().is_some() {
-                surface[root_index].rect().unwrap().height()
-            } else {
-                0.0
-            };
-            if let Some(window_state) = self.dock_state.get_window_state_mut(path.surface) {
-                window_state.set_expanded_height(surface_height);
-            }
-        }
     }
 
     /// Lays out, interacts with and paints one tab. `state` holds the flags known before
