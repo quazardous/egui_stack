@@ -31,7 +31,11 @@ pub struct Float {
     pub content: Content,
     /// Inside the main window, or a native window of its own.
     pub host: FloatHost,
-    /// Where it is.
+    /// Where it is. A [`FloatsArea`](crate::FloatsArea) keeps it current as the user moves
+    /// the window; to move a float shown from code, set its rect's corner
+    /// ([`Layout::float_mut`](super::Layout::float_mut)): its window goes there in the next
+    /// frame, with no [`FloatEvent::Moved`](crate::FloatEvent::Moved) (a native float where
+    /// the system lets an application place its windows; not on Wayland).
     pub place: Place,
     /// Its stacking order: higher is in front.
     pub z: u32,

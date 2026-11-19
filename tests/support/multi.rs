@@ -30,14 +30,16 @@ struct Immediate {
     inputs: BTreeMap<ViewportId, RawInput>,
     shown: Vec<(ViewportId, ViewportBuilder, Vec<ViewportCommand>)>,
     shapes: BTreeMap<ViewportId, Vec<ClippedShape>>,
-    /// The labelled widgets of each window's last pass, from AccessKit.
-    labels: BTreeMap<ViewportId, Vec<(String, Rect)>>,
+    /// The labelled widgets of each window's last pass, from AccessKit, and whether each
+    /// takes the focus.
+    labels: BTreeMap<ViewportId, Vec<(String, Rect, bool)>>,
     /// The cursor each window asked for in its last pass.
     cursors: BTreeMap<ViewportId, egui::CursorIcon>,
 }
 
-/// The labelled widgets of a pass's AccessKit update, with their bounds (scale 1).
-fn labels_of(output: &egui::PlatformOutput) -> Vec<(String, Rect)> {
+/// The labelled widgets of a pass's AccessKit update, with their bounds (scale 1) and whether
+/// each takes the focus.
+fn labels_of(output: &egui::PlatformOutput) -> Vec<(String, Rect, bool)> {
     let Some(update) = &output.accesskit_update else {
         return Vec::new();
     };
@@ -53,6 +55,7 @@ fn labels_of(output: &egui::PlatformOutput) -> Vec<(String, Rect)> {
                     Pos2::new(b.x0 as f32, b.y0 as f32),
                     Pos2::new(b.x1 as f32, b.y1 as f32),
                 ),
+                node.supports_action(egui::accesskit::Action::Focus),
             ))
         })
         .collect()
@@ -233,8 +236,20 @@ impl Multi {
             .labels
             .get(&viewport)?
             .iter()
-            .find(|(l, _)| l == label)
-            .map(|(_, rect)| *rect)
+            .find(|(l, _, _)| l == label)
+            .map(|(_, rect, _)| *rect)
+    }
+
+    /// Whether the widget labelled `label` took the focus in a window's last pass (AccessKit's
+    /// `Focus` action), as a keyboard stop.
+    pub fn focusable(&self, viewport: ViewportId, label: &str) -> Option<bool> {
+        self.immediate
+            .borrow()
+            .labels
+            .get(&viewport)?
+            .iter()
+            .find(|(l, _, _)| l == label)
+            .map(|(_, _, focusable)| *focusable)
     }
 
     /// Where a window's content is on the desktop (points at scale 1), as the system tells.

@@ -32,6 +32,47 @@ pub trait TabViewer {
     /// Called after each tab button is shown, so you can add a tooltip, check for clicks, etc.
     fn on_tab_button(&mut self, _tab: &mut Self::Tab, _response: &egui::Response) {}
 
+    /// Called after the move handle of a float's window is shown
+    /// ([`GroupHandles::MOVE_WINDOW`](crate::GroupHandles::MOVE_WINDOW)), with the name of the
+    /// dock the float shows (its [`Content::Dock`](crate::layout::Content::Dock); a dock float
+    /// is usually keyed by its dock's name).
+    ///
+    /// The handle moves the window by the pointer and is no keyboard stop: Tab passes it by.
+    /// An application that wants it in the keyboard order makes it focusable here and moves
+    /// the window itself, through the float's [`Place`](crate::layout::Place):
+    ///
+    /// ```rust
+    /// # fn arrows(response: &egui::Response) -> egui::Vec2 {
+    /// // Tab stops on the handle from now on.
+    /// response
+    ///     .ctx
+    ///     .memory_mut(|m| m.interested_in_focus(response.id, response.layer_id));
+    /// if !response.has_focus() {
+    ///     return egui::Vec2::ZERO;
+    /// }
+    /// // The arrows are the handle's while it has the focus.
+    /// response.ctx.memory_mut(|m| {
+    ///     m.set_focus_lock_filter(
+    ///         response.id,
+    ///         egui::EventFilter {
+    ///             horizontal_arrows: true,
+    ///             vertical_arrows: true,
+    ///             ..Default::default()
+    ///         },
+    ///     )
+    /// });
+    /// response.ctx.input(|i| {
+    ///     let x = i.num_presses(egui::Key::ArrowRight) as f32
+    ///         - i.num_presses(egui::Key::ArrowLeft) as f32;
+    ///     let y = i.num_presses(egui::Key::ArrowDown) as f32
+    ///         - i.num_presses(egui::Key::ArrowUp) as f32;
+    ///     egui::vec2(x, y) * 16.0
+    /// })
+    /// // Then, after the frame: `layout.float_mut(key).place.rect` translated by it.
+    /// # }
+    /// ```
+    fn on_window_handle(&mut self, _dock: &str, _response: &egui::Response) {}
+
     /// This is called when the `_tab` gets closed by the user.
     ///
     /// Returns an `OnCloseResponse` which determines what happens to the tab after this function gets called.

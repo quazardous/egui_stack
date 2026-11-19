@@ -537,7 +537,7 @@ impl<Tab> DockArea<'_, Tab> {
 
             if let Some(rect) = move_handle {
                 let rect = bar_button_rect(full_bar, rect.left(), rect.width());
-                self.window_move_handle(ui, path, rect, fade_style, bar);
+                self.window_move_handle(ui, path, rect, fade_style, bar, tab_viewer);
             }
             if let Some(rect) = float_close {
                 let rect = bar_button_rect(full_bar, rect.left(), rect.width());
@@ -1272,7 +1272,9 @@ impl<Tab> DockArea<'_, Tab> {
 
     /// A float's move handle: dragged, it moves the float's window, which the
     /// [`FloatsArea`](crate::FloatsArea) drawing the float does (it reads this response by its
-    /// id). The pointer shows the move cursor over it.
+    /// id). The pointer shows the move cursor over it. It is no keyboard stop, as it does
+    /// nothing from the keyboard; the viewer gets its response
+    /// ([`TabViewer::on_window_handle`]) to make it one.
     fn window_move_handle(
         &self,
         ui: &Ui,
@@ -1280,6 +1282,7 @@ impl<Tab> DockArea<'_, Tab> {
         rect: Rect,
         fade_style: Option<&Style>,
         bar: (Rect, CornerRadius),
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
     ) {
         let Some(space) = self.space.as_ref() else {
             return;
@@ -1288,10 +1291,12 @@ impl<Tab> DockArea<'_, Tab> {
             return;
         };
         let id = crate::floats::move_handle_id(space.space_id, dock);
-        let response = ui.interact(rect, id, Sense::drag());
+        // `Sense::drag()` would make it focusable: a Tab stop that does nothing.
+        let response = ui.interact(rect, id, Sense::DRAG);
         let enabled = ui.is_enabled();
         response
             .widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &self.labels.move_window));
+        tab_viewer.on_window_handle(dock, &response);
         let active = response.hovered() || response.dragged();
         if active {
             ui.output_mut(|o| o.cursor_icon = CursorIcon::Move);

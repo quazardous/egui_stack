@@ -44,6 +44,8 @@ impl GroupHandles {
     /// ([`egui::ViewportCommand::StartDrag`]), on a float over the main window the
     /// `egui::Window` moves; the pointer shows [`egui::CursorIcon::Move`] over it. Whether the
     /// move can also dock the window is [`FloatsArea::float_move`](crate::FloatsArea::float_move).
+    /// It is no keyboard stop; [`TabViewer::on_window_handle`](crate::TabViewer::on_window_handle)
+    /// gives the application its response, to make it one.
     /// Only floats drawn by a [`FloatsArea`](crate::FloatsArea) have one.
     pub const MOVE_WINDOW: Self = Self(1 << 4);
     /// Every handle.

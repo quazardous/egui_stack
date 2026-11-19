@@ -26,6 +26,8 @@ const LABEL: &str = "Move window";
 #[derive(Default)]
 struct Viewer {
     tab_rects: Vec<(String, Rect)>,
+    /// The move handles shown this pass: their dock and rect (`TabViewer::on_window_handle`).
+    handles: Vec<(String, Rect)>,
     /// Refuses every drop into the main dock.
     refuse_main: bool,
 }
@@ -47,6 +49,10 @@ impl TabViewer for Viewer {
 
     fn on_tab_button(&mut self, tab: &mut String, response: &egui::Response) {
         self.tab_rects.push((tab.clone(), response.rect));
+    }
+
+    fn on_window_handle(&mut self, dock: &str, response: &egui::Response) {
+        self.handles.push((dock.to_owned(), response.rect));
     }
 
     fn dock_drop_allowed(&self, _tab: &String, drop: &DockDrop<'_>) -> DropVerdict {
@@ -104,6 +110,7 @@ fn app(host: FloatHost, float_move: FloatMove) -> App {
 fn frame(app: &mut App) -> impl FnMut(&mut Ui) + '_ {
     move |ui| {
         app.viewer.tab_rects.clear();
+        app.viewer.handles.clear();
         for (name, rect) in [("main", MAIN), ("side", SIDE)] {
             ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
                 DockArea::dock(&mut app.docked.space, name).show_inside(ui, &mut app.viewer);
@@ -396,6 +403,77 @@ fn the_move_handle_turned_off_is_not_there() {
         // The group grip stays.
         assert!(multi.find(viewport, "Move group").is_some(), "{host:?}");
     }
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn the_move_handle_is_no_keyboard_stop_and_the_viewer_gets_its_response() {
+    for host in [FloatHost::Native, FloatHost::InWindow] {
+        let mut multi = Multi::new();
+        let mut app = app(host, FloatMove::default());
+        detach_b(&mut multi, &mut app);
+        let viewport = match host {
+            FloatHost::Native => float_viewport(),
+            _ => ViewportId::ROOT,
+        };
+        // It does nothing from the keyboard: Tab passes it by.
+        assert_eq!(multi.focusable(viewport, LABEL), Some(false), "{host:?}");
+        let handle = multi.find(viewport, LABEL).unwrap();
+        assert_eq!(
+            app.viewer.handles,
+            [("float-1".to_owned(), handle)],
+            "{host:?}: on_window_handle gets the handle's response"
+        );
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_float_over_the_main_window_moves_to_the_place_the_app_sets() {
+    let mut multi = Multi::new();
+    let mut app = app(FloatHost::InWindow, FloatMove::default());
+    detach_b(&mut multi, &mut app);
+    app.docked.space.take_float_events();
+    let before = app.docked.layout.float("float-1").unwrap().place.rect;
+    let grip = handle(&multi, ViewportId::ROOT);
+    let to = before.translate(vec2(-40.0, -30.0));
+
+    app.docked.layout.float_mut("float-1").unwrap().place.rect = to;
+    multi.passes(3, frame(&mut app));
+    let after = app.docked.layout.float("float-1").unwrap().place.rect;
+    assert_eq!(after.min, to.min, "{before:?} → {after:?}");
+    assert_eq!(
+        handle(&multi, ViewportId::ROOT),
+        grip + vec2(-40.0, -30.0),
+        "the window moved"
+    );
+    assert!(
+        app.docked.space.take_float_events().is_empty(),
+        "the app's own move is not reported as the user's"
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_native_float_moves_to_the_place_the_app_sets() {
+    let mut multi = Multi::new();
+    let mut app = app(FloatHost::Native, FloatMove::default());
+    detach_b(&mut multi, &mut app);
+    let viewport = float_viewport();
+    multi.set_outer_position(viewport, pos2(700.0, 200.0));
+    multi.passes(3, frame(&mut app));
+    app.docked.space.take_float_events();
+
+    let place = &mut app.docked.layout.float_mut("float-1").unwrap().place;
+    place.rect = place.rect.translate(vec2(50.0, 20.0));
+    multi.passes(3, frame(&mut app));
+    assert_eq!(multi.inner_rect(viewport).unwrap().min, pos2(750.0, 220.0));
+    let after = app.docked.layout.float("float-1").unwrap().place.rect;
+    assert_eq!(after.min, pos2(750.0, 220.0));
+    assert!(
+        app.docked.space.take_float_events().is_empty(),
+        "the app's own move is not reported as the user's"
+    );
 }
 
 #[test]
