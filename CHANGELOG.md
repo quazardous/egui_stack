@@ -1,5 +1,16 @@
 # egui_stack changelog
 
+## egui_stack 0.30.2 - 2026-11-20
+
+### Added
+
+- `FloatsArea::show_add_buttons(bool)`: the floats' tab groups show their add button, as the docks' groups do with `DockArea::show_add_buttons`, and a click calls `TabViewer::on_add` with the floating group's path. By default `false`, as for a `DockArea`; before, a float's add button could only be turned on in `FloatsArea::configure`. A float of one group keeps a single close button on its top bar.
+
+### Fixed
+
+- A float over the main window resizes from its left and top edges and the corners on them, as from its right and bottom ones: without a title bar egui gave those edges no handle (the window is not movable, only its move handle moves it), and with one the dock's body took the drags on the left edge. The dragged sides follow the pointer and the others stay, within the float's least size and its work area region.
+- The demo's floats show the add button their group had in the dock.
+
 ## egui_stack 0.30.1 - 2026-11-19
 
 ### Fixed
