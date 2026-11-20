@@ -19,8 +19,8 @@ mod edges;
 mod gestures;
 mod work_area;
 
-pub use gestures::FloatMove;
-pub(crate) use gestures::{WindowMove, move_handle_id};
+pub use gestures::{FloatMove, MoveFrom};
+pub(crate) use gestures::{WindowMove, move_handle_id, mover_id};
 pub(crate) use work_area::BoundZones;
 pub use work_area::{Outside, WorkArea};
 
@@ -365,9 +365,11 @@ pub struct FloatsArea<'a, Tab> {
     handles: GroupHandles,
     modifiers: Modifiers,
     float_move: FloatMove,
+    move_from: MoveFrom,
     title_bar: bool,
     work_area: WorkArea,
     add_buttons: bool,
+    eject_buttons: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -419,9 +421,11 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             handles: GroupHandles::ALL,
             modifiers: Modifiers::SHIFT,
             float_move: FloatMove::Move,
+            move_from: MoveFrom::BAR,
             title_bar: false,
             work_area: WorkArea::window(),
             add_buttons: false,
+            eject_buttons: false,
             painter: None,
             configure: None,
             decorate: None,
@@ -510,6 +514,26 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
         self
     }
 
+    /// Sets where else than its move handle and title bar a drag moves a float's window: see
+    /// [`MoveFrom`]. By default [`MoveFrom::BAR`], only them. It combines with
+    /// [`float_move`](Self::float_move): a float moved from elsewhere docks as one moved by
+    /// its handle.
+    #[must_use]
+    pub fn move_from(mut self, move_from: MoveFrom) -> Self {
+        self.move_from = move_from;
+        self
+    }
+
+    /// Shows an Eject group button in each tab bar of the floats' docks
+    /// ([`DockArea::show_leaf_eject_buttons`]), as the application's docks may: a float of
+    /// several groups ejects one into a float of its own; a float of one group shows none. By
+    /// default `false`. A float's [`configure`](Self::configure) can still change it.
+    #[must_use]
+    pub fn show_leaf_eject_buttons(mut self, show_leaf_eject_buttons: bool) -> Self {
+        self.eject_buttons = show_leaf_eject_buttons;
+        self
+    }
+
     /// Sets whether a float over the main window ([`FloatHost::InWindow`]) has a title bar of
     /// its own, with its title and a close button, above its dock; by default it has none: its
     /// top tab bar is its top, the window's move handle ([`GroupHandles::MOVE_WINDOW`]) moves
@@ -561,9 +585,11 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             handles,
             modifiers,
             float_move,
+            move_from,
             title_bar,
             work_area,
             add_buttons,
+            eject_buttons,
             painter,
             configure,
             decorate,
@@ -572,8 +598,10 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             handles,
             modifiers,
             float_move,
+            move_from,
             title_bar,
             add_buttons,
+            eject_buttons,
             painter,
             configure,
             decorate,
@@ -640,10 +668,14 @@ struct Gestures<'a, Tab> {
     handles: GroupHandles,
     modifiers: Modifiers,
     float_move: FloatMove,
+    /// [`FloatsArea::move_from`].
+    move_from: MoveFrom,
     /// [`FloatsArea::title_bar`].
     title_bar: bool,
     /// [`FloatsArea::show_add_buttons`].
     add_buttons: bool,
+    /// [`FloatsArea::show_leaf_eject_buttons`].
+    eject_buttons: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -661,10 +693,17 @@ impl<'a, Tab> Gestures<'a, Tab> {
     where
         'a: 'd,
     {
+        // Moved from its empty space, a float's tab bars no longer drag their group from theirs.
+        let handles = if self.move_from.empty_space() {
+            self.handles & !GroupHandles::EMPTY_SPACE
+        } else {
+            self.handles
+        };
         let mut area = area
-            .group_handles(self.handles)
+            .group_handles(handles)
             .group_drag_modifiers(self.modifiers)
-            .show_add_buttons(self.add_buttons);
+            .show_add_buttons(self.add_buttons)
+            .show_leaf_eject_buttons(self.eject_buttons);
         if let Some(style) = style {
             area = area.style(style.clone());
         }
@@ -994,8 +1033,8 @@ pub(crate) fn tree_title<Tab>(
 const MIN_SIZE: Vec2 = vec2(120.0, 80.0);
 
 /// A float over the main window, as an `egui::Window`: moved by its move handle, or by its
-/// title bar when it has one ([`FloatsArea::title_bar`]), never by the empty part of a tab
-/// bar. Its left and top edges resize it by handles of its own (`edges`).
+/// title bar when it has one ([`FloatsArea::title_bar`]), and from elsewhere as
+/// [`FloatsArea::move_from`] says. Its left and top edges resize it by handles of its own (`edges`).
 #[allow(clippy::too_many_arguments)]
 fn show_in_window<Tab>(
     ctx: &Context,
@@ -1016,6 +1055,7 @@ fn show_in_window<Tab>(
     let mut open = true;
     let id = space.id().with(("egui_stack.float", key));
     let handle = move_handle_id(space.id(), dock);
+    let mover = mover_id(space.id(), dock);
     // Without a title bar, only the move handle moves the window: its body and the empty
     // part of its tab bars keep their own drags.
     let title_bar = gestures.title_bar || !gestures.handles.contains(GroupHandles::MOVE_WINDOW);
@@ -1064,7 +1104,7 @@ fn show_in_window<Tab>(
     // region moves or shrinks is kept and reported below, as one the user moved.
     let released_at = space.floating.released_at.remove(key);
     let region = space.floating.regions(space.docks()).and_then(|regions| {
-        let moved_by_user = [id.with("__title_click"), handle]
+        let moved_by_user = [id.with("__title_click"), handle, mover]
             .into_iter()
             .any(|id| ctx.read_response(id).is_some_and(|r| r.dragged()));
         let pointer = if moved_by_user {
@@ -1115,7 +1155,10 @@ fn show_in_window<Tab>(
     }
     // The move handle dragged in the last pass: the window follows the pointer, moved as egui
     // moves it by its title bar (a `current_pos` would be undone by the title-bar-only drag).
-    if ctx.read_response(handle).is_some_and(|r| r.dragged()) {
+    if [handle, mover]
+        .into_iter()
+        .any(|id| ctx.read_response(id).is_some_and(|r| r.dragged()))
+    {
         let delta = ctx.input(|i| i.pointer.delta());
         if delta != egui::Vec2::ZERO
             && let Some(mut state) = egui::AreaState::load(ctx, id)
@@ -1133,6 +1176,7 @@ fn show_in_window<Tab>(
         let area_id = space.id();
         let rect = ui.available_rect_before_wrap();
         content = Some(rect);
+        gestures::mover(ui, mover, rect, gestures.move_from, false);
         let mut area = DockArea::dock(space, dock);
         if !title_bar {
             // Its top tab bar is its top: the close button goes there, by the move handle.
@@ -1140,15 +1184,17 @@ fn show_in_window<Tab>(
         }
         gestures.area(&float, area, style).show_inside(ui, viewer);
         gestures.decorate(ui, space, area_id, key, dock, false, rect);
+        gestures::mover(ui, mover, rect, gestures.move_from, true);
     });
     if gestures.float_move == FloatMove::Dock {
         // egui's title bar of a window: its drag moves the window.
         let title_bar = ctx.read_response(id.with("__title_click"));
         let handle = ctx.read_response(handle);
-        let moving = [&title_bar, &handle]
+        let mover = ctx.read_response(mover);
+        let moving = [&title_bar, &handle, &mover]
             .iter()
             .any(|r| r.as_ref().is_some_and(|r| r.dragged()));
-        let released = [&title_bar, &handle]
+        let released = [&title_bar, &handle, &mover]
             .iter()
             .any(|r| r.as_ref().is_some_and(|r| r.drag_stopped()));
         let ours = space
@@ -1173,7 +1219,7 @@ fn show_in_window<Tab>(
             layout,
             space,
             key,
-            [id.with("__title_click"), handle],
+            [id.with("__title_click"), handle, mover],
             shown.response.rect,
         )
     {
@@ -1226,7 +1272,7 @@ fn tear_out<Tab>(
     layout: &mut Layout,
     space: &mut DockSpace<Tab>,
     key: &str,
-    movers: [Id; 2],
+    movers: [Id; 3],
     rect: Rect,
 ) -> bool {
     let responses = movers.map(|id| ctx.read_response(id));
@@ -1311,6 +1357,7 @@ fn show_native<Tab>(
     let docks_on_move =
         gestures.float_move == FloatMove::Dock && host.outer_rect(ctx, id).is_some();
     let handle = move_handle_id(space.id(), dock);
+    let mover = mover_id(space.id(), dock);
     let mut moved_by_handle = None;
     space.floating.viewports.insert(key.to_owned(), id);
     // The application changed the float's place: the window is told to go there, and the
@@ -1345,6 +1392,8 @@ fn show_native<Tab>(
             ui.ctx()
                 .send_viewport_cmd(ViewportCommand::OuterPosition(at));
         }
+        let whole = ui.max_rect();
+        gestures::mover(ui, mover, whole, gestures.move_from, false);
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
             let rect = ui.available_rect_before_wrap();
             gestures
@@ -1358,9 +1407,15 @@ fn show_native<Tab>(
                 .show_inside(ui, viewer);
             gestures.decorate(ui, space, area_id, key, dock, true, rect);
         });
-        if let Some(response) = ui.ctx().read_response(handle) {
+        gestures::mover(ui, mover, whole, gestures.move_from, true);
+        for id in [handle, mover] {
+            let Some(response) = ui.ctx().read_response(id) else {
+                continue;
+            };
             if docks_on_move {
-                moved_by_handle = handle_move(ui.ctx(), space, key, &response);
+                if moved_by_handle.is_none() {
+                    moved_by_handle = handle_move(ui.ctx(), space, key, &response);
+                }
             } else if response.drag_started() {
                 // The system moves the window, as by its title bar.
                 ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);

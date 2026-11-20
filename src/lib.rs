@@ -222,6 +222,9 @@
 //!         show_tab_bar_button: "Pokaż pasek zakładek".to_string(),
 //!         move_group_menu: "Przenieś grupę".to_string(),
 //!         move_group_new_window: "Nowe okno".to_string(),
+//!         eject_group_button: "Przenieś grupę do nowego okna".to_string(),
+//!         add_tab_button: "Dodaj zakładkę".to_string(),
+//!         close_all_tabs_button: "Zamknij wszystkie zakładki".to_string(),
 //!     },
 //!     leaf: LeafTranslations {
 //!         close_button_disabled_tooltip: "Ten węzeł zawiera niezamykalne zakładki.".to_string(),
@@ -265,8 +268,8 @@ pub use dock_state::*;
 pub use docked::{Docked, DockedRepair};
 pub use egui;
 pub use floats::{
-    ClosePolicy, EguiViewports, FloatClose, FloatEvent, FloatMove, FloatShown, FloatsArea, Outside,
-    ViewportHost, WorkArea,
+    ClosePolicy, EguiViewports, FloatClose, FloatEvent, FloatMove, FloatShown, FloatsArea,
+    MoveFrom, Outside, ViewportHost, WorkArea,
 };
 pub use style::*;
 pub use translations::*;

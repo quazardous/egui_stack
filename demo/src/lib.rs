@@ -23,8 +23,8 @@ use egui::{
 use egui_stack::layout::{Content, FloatHost, Layout, Zone};
 use egui_stack::{
     AllowedSplits, DockArea, DockPainter, DockRules, DockSpace, DockState, EguiViewports,
-    FloatsArea, GridLayout, GroupHandles, LinearDir, NodeIndex, NodePath, OverlayType, PartState,
-    Style, StylePainter, TabAddAlign, TabBodyPaint, TabViewer, Tree,
+    FloatsArea, GridLayout, GroupHandles, LinearDir, MoveFrom, NodeIndex, NodePath, OverlayType,
+    PartState, Style, StylePainter, TabAddAlign, TabBodyPaint, TabViewer, Tree,
 };
 
 pub mod picker;
@@ -59,6 +59,11 @@ pub struct DemoApp {
     pub group_handles: GroupHandles,
     /// Where the add tab button sits: right after the last tab by default.
     pub add_tab_align: TabAddAlign,
+    /// Whether tab bars show an Eject group button (`DockArea::show_leaf_eject_buttons`).
+    pub eject_buttons: bool,
+    /// Whether a float moves from its empty space and by Alt+drag anywhere
+    /// (`FloatsArea::move_from`), not only by its move handle.
+    pub move_floats_anywhere: bool,
     saved: Option<String>,
     status: String,
     opened: usize,
@@ -109,6 +114,8 @@ impl Default for DemoApp {
             focus_border: false,
             group_handles: GroupHandles::ALL,
             add_tab_align: TabAddAlign::Left,
+            eject_buttons: false,
+            move_floats_anywhere: false,
             saved: None,
             status: String::new(),
             opened: 0,
@@ -202,8 +209,10 @@ impl DemoApp {
             .group_handles(self.group_handles)
             .show_add_buttons(true)
             .show_leaf_collapse_buttons(true)
+            .show_leaf_eject_buttons(self.eject_buttons)
             .show_inside(ui, &mut self.tabs);
         // The floats, after the dock: their top tab bar ends with the window's move handle.
+        let move_from = self.move_from();
         FloatsArea::new(&mut self.dock_floats, &mut self.dock)
             .host(&mut EguiViewports)
             .style(style.clone())
@@ -211,6 +220,8 @@ impl DemoApp {
             .group_handles(self.group_handles)
             // As in the dock it came from: a floating group keeps its add button.
             .show_add_buttons(true)
+            .show_leaf_eject_buttons(self.eject_buttons)
+            .move_from(move_from)
             .show(ui.ctx(), &mut self.tabs);
         self.dock.take_float_events();
         self.picker.after_dock(
@@ -222,6 +233,15 @@ impl DemoApp {
         );
 
         self.take_add_request();
+    }
+
+    /// Where a float moves from, besides its move handle ([`FloatsArea::move_from`]).
+    fn move_from(&self) -> MoveFrom {
+        if self.move_floats_anywhere {
+            MoveFrom::EMPTY_SPACE | MoveFrom::modifier(egui::Modifiers::ALT)
+        } else {
+            MoveFrom::BAR
+        }
     }
 
     /// The second page: each dock of the space in its own place, drawn by its own call, the
@@ -241,6 +261,7 @@ impl DemoApp {
                         .painter(painter)
                         .group_handles(self.group_handles)
                         .show_leaf_collapse_buttons(true)
+                        .show_leaf_eject_buttons(self.eject_buttons)
                         .show_inside(ui, &mut self.tabs);
                 });
         }
@@ -250,8 +271,10 @@ impl DemoApp {
             .group_handles(self.group_handles)
             .show_add_buttons(true)
             .show_leaf_collapse_buttons(true)
+            .show_leaf_eject_buttons(self.eject_buttons)
             .show_inside(ui, &mut self.tabs);
         // The floats, after the docks: their top tab bar ends with the window's move handle.
+        let move_from = self.move_from();
         FloatsArea::new(&mut self.floats, &mut self.space)
             .host(&mut EguiViewports)
             .style(style.clone())
@@ -259,6 +282,8 @@ impl DemoApp {
             .group_handles(self.group_handles)
             // As in the dock it came from: a floating group keeps its add button.
             .show_add_buttons(true)
+            .show_leaf_eject_buttons(self.eject_buttons)
+            .move_from(move_from)
             .show(ui.ctx(), &mut self.tabs);
         self.space.take_float_events();
     }
@@ -452,6 +477,15 @@ impl DemoApp {
 
             ui.toggle_value(&mut self.tabs.ghost_preview, "Preview in the ghost")
                 .on_hover_text("Preview tab content in the ghost of a dragged tab or group");
+
+            ui.toggle_value(&mut self.move_floats_anywhere, "Move floats from anywhere")
+                .on_hover_text(
+                    "A floating window moves by a drag on its empty space, or by Alt+drag \
+                     anywhere in it, not only by its move handle",
+                );
+
+            ui.toggle_value(&mut self.eject_buttons, "Eject group buttons")
+                .on_hover_text("A button on each tab bar moves its group into a new window");
 
             let mut at_end = self.add_tab_align == TabAddAlign::Right;
             if ui

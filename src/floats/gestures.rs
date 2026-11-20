@@ -36,6 +36,120 @@ pub enum FloatMove {
     Dock,
 }
 
+/// Where a drag moves a floating window besides its move handle and its title bar, which
+/// always move it; set with [`FloatsArea::move_from`](crate::FloatsArea::move_from). By default
+/// [`BAR`](Self::BAR): only them. Combine the others with `|`:
+///
+/// ```
+/// # use egui_stack::MoveFrom;
+/// // Empty space, and Alt+drag anywhere.
+/// let from = MoveFrom::EMPTY_SPACE | MoveFrom::modifier(egui::Modifiers::ALT);
+/// assert!(from.empty_space());
+/// assert_eq!(from.modifiers(), egui::Modifiers::ALT);
+/// ```
+///
+/// A move from anywhere goes as one by the handle: [`FloatMove`] says whether it can dock the
+/// window. The move handle stays, named for screen readers, for those who move the window
+/// otherwise ([`TabViewer::on_window_handle`](crate::TabViewer::on_window_handle)).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct MoveFrom {
+    empty_space: bool,
+    modifiers: egui::Modifiers,
+}
+
+impl MoveFrom {
+    /// Only the move handle and the title bar move the window. The default.
+    pub const BAR: Self = Self {
+        empty_space: false,
+        modifiers: egui::Modifiers::NONE,
+    };
+
+    /// A drag on any part of the float no widget takes a drag from moves it too: the empty part
+    /// of a tab bar (which then no longer drags its group, [`GroupHandles::EMPTY_SPACE`]), the
+    /// background of a tab's body. Its content keeps its own drags: a slider, a tab, a scroll
+    /// area, a separator.
+    ///
+    /// [`GroupHandles::EMPTY_SPACE`]: crate::GroupHandles::EMPTY_SPACE
+    pub const EMPTY_SPACE: Self = Self {
+        empty_space: true,
+        modifiers: egui::Modifiers::NONE,
+    };
+
+    /// A drag begun with `modifiers` held moves the float from anywhere in it, over its widgets
+    /// too, as window managers move a window by Alt+drag or Super+drag. [`Modifiers::NONE`]
+    /// turns it off.
+    ///
+    /// [`Modifiers::NONE`]: egui::Modifiers::NONE
+    pub const fn modifier(modifiers: egui::Modifiers) -> Self {
+        Self {
+            empty_space: false,
+            modifiers,
+        }
+    }
+
+    /// Whether a drag on the float's empty space moves it.
+    pub const fn empty_space(self) -> bool {
+        self.empty_space
+    }
+
+    /// The modifiers that make a drag anywhere in the float move it; [`Modifiers::NONE`] when
+    /// none does.
+    ///
+    /// [`Modifiers::NONE`]: egui::Modifiers::NONE
+    pub const fn modifiers(self) -> egui::Modifiers {
+        self.modifiers
+    }
+}
+
+impl std::ops::BitOr for MoveFrom {
+    type Output = Self;
+
+    /// Both ways; the modifiers of `rhs` when it has some, else those of `self`.
+    fn bitor(self, rhs: Self) -> Self {
+        Self {
+            empty_space: self.empty_space || rhs.empty_space,
+            modifiers: if rhs.modifiers.is_none() {
+                self.modifiers
+            } else {
+                rhs.modifiers
+            },
+        }
+    }
+}
+
+/// The id of what moves the float showing the dock `dock` of the space `space` from elsewhere
+/// than its bar ([`MoveFrom`]).
+pub(crate) fn mover_id(space: Id, dock: &str) -> Id {
+    space.with(("egui_stack.float_mover", dock))
+}
+
+/// Lays out the mover of a float over `rect` in `ui`, called once before the float's content
+/// (`above` unset) and once after it (`above` set); it is laid out by one of them. Below the
+/// content, widgets keep their drags and it takes the drags on empty space
+/// ([`MoveFrom::EMPTY_SPACE`]); while the modifiers of [`MoveFrom::modifier`] are held, it lies
+/// above the content and takes every drag over the float.
+pub(crate) fn mover(ui: &egui::Ui, id: Id, rect: Rect, from: MoveFrom, above: bool) {
+    if from == MoveFrom::BAR {
+        return;
+    }
+    let ctx = ui.ctx();
+    let held =
+        !from.modifiers.is_none() && ui.input(|i| i.modifiers.matches_logically(from.modifiers));
+    let dragged = ctx.is_being_dragged(id);
+    let here = if above {
+        held
+    } else {
+        !held && (from.empty_space || dragged)
+    };
+    if !here {
+        return;
+    }
+    let response = ui.interact(rect, id, egui::Sense::DRAG);
+    if response.dragged() || (response.hovered() && ctx.dragged_id().is_none()) {
+        ctx.set_cursor_icon(egui::CursorIcon::Move);
+    }
+}
+
 /// The id of the move handle of the float showing the dock `dock` of the space `space`.
 pub(crate) fn move_handle_id(space: Id, dock: &str) -> Id {
     space.with(("egui_stack.float_move_handle", dock))
