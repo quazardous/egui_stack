@@ -206,3 +206,63 @@ fn new_float_opens_a_tab_in_a_float_on_both_pages() {
         );
     }
 }
+
+/// A float resizes from every edge and corner, its left and top ones included: the dragged
+/// sides follow the pointer, the others stay.
+#[test]
+fn a_float_resizes_from_its_left_and_top_edges_too() {
+    let float_rect =
+        |harness: &Harness<'static, DemoApp>| harness.state().dock_floats.floats[0].place.rect;
+    for (gx, gy) in [
+        (-1.0_f32, 0.0_f32),
+        (0.0, -1.0),
+        (-1.0, -1.0),
+        (1.0, 0.0),
+        (0.0, 1.0),
+        (1.0, 1.0),
+    ] {
+        let mut harness = harness_on(Page::Dock);
+        harness.get_by_label("New float").click();
+        harness.run();
+        let before = float_rect(&harness);
+        let at = |sign: f32, min: f32, max: f32| match sign {
+            s if s < 0.0 => min + 1.0,
+            s if s > 0.0 => max - 1.0,
+            _ => (min + max) / 2.0,
+        };
+        let from = egui::pos2(
+            at(gx, before.left(), before.right()),
+            at(gy, before.top(), before.bottom()),
+        );
+        let delta = egui::vec2(gx, gy) * 30.0;
+        harness.hover_at(from);
+        harness.step();
+        harness.drag_at(from);
+        harness.step();
+        for step in 1..=10 {
+            harness.hover_at(from + delta * (step as f32 / 10.0));
+            harness.step();
+        }
+        harness.drop_at(from + delta);
+        harness.run();
+        let after = float_rect(&harness);
+        let what = format!("grab ({gx}, {gy}): {before:?} -> {after:?}");
+        let near = |a: f32, b: f32| (a - b).abs() <= 2.0;
+        assert!(
+            near(after.left(), before.left() + delta.x.min(0.0)),
+            "left: {what}"
+        );
+        assert!(
+            near(after.right(), before.right() + delta.x.max(0.0)),
+            "right: {what}"
+        );
+        assert!(
+            near(after.top(), before.top() + delta.y.min(0.0)),
+            "top: {what}"
+        );
+        assert!(
+            near(after.bottom(), before.bottom() + delta.y.max(0.0)),
+            "bottom: {what}"
+        );
+    }
+}

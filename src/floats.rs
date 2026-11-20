@@ -15,6 +15,7 @@ use crate::{
     Tree,
 };
 
+mod edges;
 mod gestures;
 mod work_area;
 
@@ -989,9 +990,12 @@ pub(crate) fn tree_title<Tab>(
     Some(viewer.title(&mut leaf.tabs[active]))
 }
 
+/// The least size of a float's content over the main window.
+const MIN_SIZE: Vec2 = vec2(120.0, 80.0);
+
 /// A float over the main window, as an `egui::Window`: moved by its move handle, or by its
 /// title bar when it has one ([`FloatsArea::title_bar`]), never by the empty part of a tab
-/// bar.
+/// bar. Its left and top edges resize it by handles of its own (`edges`).
 #[allow(clippy::too_many_arguments)]
 fn show_in_window<Tab>(
     ctx: &Context,
@@ -1038,7 +1042,7 @@ fn show_in_window<Tab>(
         .id(id)
         .default_pos(place.rect.min)
         .default_size(place.rect.size())
-        .min_size(vec2(120.0, 80.0))
+        .min_size(MIN_SIZE)
         .collapsible(false)
         .resizable(true)
         .title_bar(title_bar)
@@ -1080,6 +1084,28 @@ fn show_in_window<Tab>(
         None if was_collapsed => window
             .min_height(place.rect.height())
             .max_height(place.rect.height()),
+        None => window,
+    };
+    // The left and top edges resize the float by handles of its own, added once it is drawn:
+    // egui leaves them out of a window it does not move (no title bar), and its own left edge
+    // lies under the dock's body, which takes its drags.
+    let edges = collapsed_height.is_none();
+    let window = match edges
+        .then(|| edges::dragged(ctx, id, place.rect, MIN_SIZE, region.map(|r| r.size())))
+        .flatten()
+    {
+        Some(rect) => {
+            // Placed as the move handle places it: egui's title bar drag would undo a
+            // `current_pos`. The sizes of an egui window are its outer ones.
+            if let Some(mut state) = egui::AreaState::load(ctx, id) {
+                state.set_left_top_pos(rect.min);
+                ctx.memory_mut(|mem| {
+                    mem.areas_mut()
+                        .set_state(LayerId::new(egui::Order::Middle, id), state);
+                });
+            }
+            window.min_size(rect.size()).max_size(rect.size())
+        }
         None => window,
     };
     if collapsed_height.is_some() {
@@ -1155,6 +1181,9 @@ fn show_in_window<Tab>(
     }
     if let Some(shown) = shown {
         let rect = shown.response.rect;
+        if edges {
+            edges::handles(ctx, id, shown.response.layer_id, rect);
+        }
         space.floating.layers.push(shown.response.layer_id);
         space.floating.rects.push(rect);
         if let Some(content) = content {
