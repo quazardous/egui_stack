@@ -945,11 +945,11 @@ impl<Tab> DockArea<'_, Tab> {
 
         ui.painter().line_segment(
             [plus_rect.center_top(), plus_rect.center_bottom()],
-            Stroke::new(1.0_f32, color),
+            icon_stroke(ui.ctx(), color),
         );
         ui.painter().line_segment(
             [plus_rect.right_center(), plus_rect.left_center()],
-            Stroke::new(1.0_f32, color),
+            icon_stroke(ui.ctx(), color),
         );
 
         let popup_id = ui.scope_id().with("tab_add_popup");
@@ -1094,11 +1094,11 @@ impl<Tab> DockArea<'_, Tab> {
 
             ui.painter().line_segment(
                 [close_all_rect.left_top(), close_all_rect.right_bottom()],
-                Stroke::new(1.0_f32, stroke_color),
+                icon_stroke(ui.ctx(), stroke_color),
             );
             ui.painter().line_segment(
                 [close_all_rect.right_top(), close_all_rect.left_bottom()],
-                Stroke::new(1.0_f32, stroke_color),
+                icon_stroke(ui.ctx(), stroke_color),
             );
         }
 
@@ -1255,15 +1255,15 @@ impl<Tab> DockArea<'_, Tab> {
                     .center_top()
                     .lerp(close_all_rect.left_top(), 0.5),
             ],
-            Stroke::new(1.0_f32, stroke_color),
+            icon_stroke(ui.ctx(), stroke_color),
         ));
         ui.painter().line_segment(
             [close_all_rect.center_top(), close_all_rect.right_center()],
-            Stroke::new(1.0_f32, stroke_color),
+            icon_stroke(ui.ctx(), stroke_color),
         );
         ui.painter().line_segment(
             [close_all_rect.center(), close_all_rect.right_top()],
-            Stroke::new(1.0_f32, stroke_color),
+            icon_stroke(ui.ctx(), stroke_color),
         );
     }
 
@@ -1526,7 +1526,7 @@ impl<Tab> DockArea<'_, Tab> {
         let center = rect.center();
         let reach = (rect.width().min(rect.height()) * 0.3).max(3.0);
         let head = reach * 0.4;
-        let stroke = Stroke::new(1.0, color);
+        let stroke = icon_stroke(ui.ctx(), color);
         for dir in [
             vec2(1.0, 0.0),
             vec2(-1.0, 0.0),
@@ -1598,7 +1598,7 @@ impl<Tab> DockArea<'_, Tab> {
         };
         let mut cross = rect;
         rect_set_size_centered(&mut cross, Vec2::splat(Style::TAB_CLOSE_ALL_SIZE));
-        let stroke = Stroke::new(1.0_f32, color);
+        let stroke = icon_stroke(ui.ctx(), color);
         ui.painter()
             .line_segment([cross.left_top(), cross.right_bottom()], stroke);
         ui.painter()
@@ -2323,6 +2323,14 @@ impl<Tab> DockArea<'_, Tab> {
             }
         }
     }
+}
+
+/// The stroke of a tab bar button's icon: one point wide, rounded to whole physical pixels of
+/// the window it is drawn in (one pixel at least), so that it stays sharp at a fractional scale
+/// such as 1.25 or 1.5 instead of blurring over two pixel rows.
+fn icon_stroke(ctx: &egui::Context, color: Color32) -> Stroke {
+    let ppp = ctx.pixels_per_point();
+    Stroke::new(ppp.round().max(1.0) / ppp, color)
 }
 
 #[cfg(test)]
