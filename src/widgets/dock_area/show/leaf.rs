@@ -2325,6 +2325,14 @@ impl<Tab> DockArea<'_, Tab> {
     }
 }
 
+/// The stroke of a tab bar button's icon: one point wide, rounded to whole physical pixels of
+/// the window it is drawn in (one pixel at least), so that it stays sharp at a fractional scale
+/// such as 1.25 or 1.5 instead of blurring over two pixel rows.
+fn icon_stroke(ctx: &egui::Context, color: Color32) -> Stroke {
+    let ppp = ctx.pixels_per_point();
+    Stroke::new(ppp.round().max(1.0) / ppp, color)
+}
+
 #[cfg(test)]
 mod tests {
     use super::tab_body_id;
@@ -2351,12 +2359,4 @@ mod tests {
             tab_body_id(dock_area_id, detached, tab_id)
         );
     }
-}
-
-/// The stroke of a tab bar button's icon: one point wide, rounded to whole physical pixels of
-/// the window it is drawn in (one pixel at least), so that it stays sharp at a fractional scale
-/// such as 1.25 or 1.5 instead of blurring over two pixel rows.
-fn icon_stroke(ctx: &egui::Context, color: Color32) -> Stroke {
-    let ppp = ctx.pixels_per_point();
-    Stroke::new(ppp.round().max(1.0) / ppp, color)
 }
