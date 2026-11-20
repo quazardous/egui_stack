@@ -1,5 +1,20 @@
 # egui_stack changelog
 
+## egui_stack 0.31.0 - 2026-11-20
+
+### Breaking changes
+
+- A right click on the empty part of a tab bar, in a dock or a float, opens the group's menu: what `TabViewer::group_context_menu` adds, then "Move group", "Eject group" (where the group can float out), "Add tab" (with add buttons) and "Close all tabs" (with the close all buttons). A right click on a tab still opens the tab's menu. `DockArea::group_context_menus(false)` turns it off. `TabContextMenuTranslations` has three new fields for its items, `eject_group_button`, `add_tab_button` and `close_all_tabs_button`. Migration: a `TabContextMenuTranslations` built field by field sets the three new fields, or ends with `..TabContextMenuTranslations::english()`.
+
+### Added
+
+- `FloatsArea::move_from` sets where else than its move handle and title bar a drag moves a float: `MoveFrom::EMPTY_SPACE`, a drag on the part of the float no widget takes a drag from (the empty part of a tab bar, which then no longer drags its group; the body's background), and `MoveFrom::modifier(Modifiers::ALT)`, a drag begun with the modifiers held anywhere in the float, over its widgets too; combine them with `|`. By default `MoveFrom::BAR`, as before. The move goes as one by the handle: `FloatsArea::float_move` says whether it can dock the float.
+- Tab bars can show an Eject group button, `DockArea::show_leaf_eject_buttons` (and `FloatsArea::show_leaf_eject_buttons` for the floats' docks), off by default: clicked, it moves the whole group, its tabs in order, into a new floating window at the group's place, as "Move group" then "New window" does. A group already alone in its window or float has none, nor a group with a tab kept out of windows. Its accessible name is `Labels::eject_group`, "Eject group". An application adds buttons of its own to a group's bar with `TabViewer::group_bar_buttons` (their accessible names) and `TabViewer::on_group_bar_button` (the group's path and each button's `Response`).
+
+### Fixed
+
+- The scroll handle of a tab bar whose tabs overflow is keyed by its surface too: two docks of a space, or a dock and a float, each with an overflowing bar on a leaf of the same index, no longer share an id (egui's debug assertion on a widget changing layers fired when a group was moved into a float).
+
 ## egui_stack 0.30.2 - 2026-11-20
 
 ### Added
