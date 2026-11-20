@@ -50,6 +50,9 @@ pub struct Labels {
     /// A floating window's move handle, which moves the window
     /// ([`GroupHandles::MOVE_WINDOW`](crate::GroupHandles::MOVE_WINDOW)).
     pub move_window: Cow<'static, str>,
+    /// The button on a tab bar that moves the whole tab group into a new floating window
+    /// ([`DockArea::show_leaf_eject_buttons`](crate::DockArea::show_leaf_eject_buttons)).
+    pub eject_group: Cow<'static, str>,
     /// A separator between two nodes, which resizes them, when they have no names: a line of
     /// a grid, or a neighbour with no tab.
     pub separator: Cow<'static, str>,
@@ -93,6 +96,7 @@ impl Labels {
         show_tab_bar: Cow::Borrowed("Show tab bar"),
         move_group: Cow::Borrowed("Move group"),
         move_window: Cow::Borrowed("Move window"),
+        eject_group: Cow::Borrowed("Eject group"),
         separator: Cow::Borrowed("Resize"),
         separator_between: Cow::Borrowed("Resize between {first} and {second}"),
         resize_section: Cow::Borrowed("Resize {section}"),

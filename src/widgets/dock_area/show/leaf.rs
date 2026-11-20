@@ -293,6 +293,9 @@ impl<Tab> DockArea<'_, Tab> {
     ) -> Rect {
         assert!(self.dock_state[path].is_leaf());
 
+        let app_buttons = tab_viewer.group_bar_buttons(path);
+        let eject = self.show_leaf_eject_buttons && self.may_eject_group(path, tab_viewer);
+
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
         let (tabbar_outer_rect, tabbar_response) = ui.allocate_exact_size(
             vec2(ui.available_width(), style.tab_bar.height),
@@ -367,6 +370,10 @@ impl<Tab> DockArea<'_, Tab> {
         if grip {
             available_width -= Style::TAB_GROUP_GRIP_SIZE;
         }
+
+        // The application's buttons, then the eject button, right of the grip.
+        let extra_buttons = app_buttons.len() + usize::from(eject);
+        available_width -= extra_buttons as f32 * Style::TAB_ADD_BUTTON_SIZE;
 
         let (actual_width, tab_hovered) = {
             // The tab list is named after its dock's title, else by `Labels::tab_list`.
@@ -464,16 +471,16 @@ impl<Tab> DockArea<'_, Tab> {
             }
             // The rest of the bar drags the whole group, as an editor group is dragged by its tab
             // bar. Registered before the bar's buttons, which keep their clicks.
-            if self.group_handles.contains(GroupHandles::EMPTY_SPACE) {
-                self.tab_bar_tail_drag(ui, state, path, tail);
-            }
+            // Right-clicked, it opens the group's menu.
+            let add_tab_align = style.buttons.add_tab_align;
+            self.tab_bar_tail(ui, state, path, tail, tab_viewer);
 
             // Add button at the ends of the tab bar.
             if self.show_add_buttons {
                 // Its slot, reserved at the end of the tabs' room, left of the grip: when the
                 // button follows the tabs, the grip and the close-all button stay side by side.
                 let slot = clip_rect.right();
-                let left = match style.buttons.add_tab_align {
+                let left = match add_tab_align {
                     // Right after the last tab, or in its slot once the tabs fill the bar.
                     TabAddAlign::Left => {
                         (clip_rect.left() + tabs_ui.min_rect().width()).at_most(slot)
@@ -538,6 +545,48 @@ impl<Tab> DockArea<'_, Tab> {
                 self.group_grip(
                     ui, state, path, tab_viewer, grip_rect, fade_style, collapsed, bar,
                 );
+            }
+
+            // The application's buttons and the eject button, right of the grip.
+            let mut left = clip_rect.right()
+                + if self.show_add_buttons {
+                    Style::TAB_ADD_BUTTON_SIZE
+                } else {
+                    0.0
+                }
+                + if grip {
+                    Style::TAB_GROUP_GRIP_SIZE
+                } else {
+                    0.0
+                };
+            for (index, name) in app_buttons.iter().enumerate() {
+                let rect = bar_button_rect(tabbar_outer_rect, left, Style::TAB_ADD_BUTTON_SIZE);
+                let (mut button_ui, response) = self.bar_button(
+                    ui,
+                    rect,
+                    (path.node, "group_bar_button", index),
+                    name,
+                    fade_style,
+                    bar,
+                );
+                tab_viewer.on_group_bar_button(&mut button_ui, path, index, &response);
+                left += Style::TAB_ADD_BUTTON_SIZE;
+            }
+            if eject {
+                let rect = bar_button_rect(tabbar_outer_rect, left, Style::TAB_ADD_BUTTON_SIZE);
+                let name = self.labels.eject_group.to_string();
+                let (button_ui, response) =
+                    self.bar_button(ui, rect, (path.node, "eject_group"), &name, fade_style, bar);
+                let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
+                let color = if response.hovered() || response.has_focus() {
+                    style.buttons.add_tab_active_color
+                } else {
+                    style.buttons.add_tab_color
+                };
+                Self::draw_eject_symbol(&button_ui, color, response.rect);
+                if response.clicked() {
+                    self.eject_group(path);
+                }
             }
 
             if let Some(rect) = move_handle {
@@ -1219,9 +1268,19 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     /// The empty part of a tab bar, right of its tabs: dragged, it drags the whole leaf with all
-    /// its tabs ([`DockArea::dragged_node`]).
-    fn tab_bar_tail_drag(&self, ui: &Ui, state: &mut State, path: NodePath, tail: Rect) {
-        if !self.draggable_tabs || !tail.is_positive() {
+    /// its tabs ([`DockArea::dragged_node`]) when [`GroupHandles::EMPTY_SPACE`] is on;
+    /// right-clicked, it opens the group's menu ([`DockArea::group_context_menus`]).
+    fn tab_bar_tail(
+        &mut self,
+        ui: &Ui,
+        state: &mut State,
+        path: NodePath,
+        tail: Rect,
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
+    ) {
+        let drag = self.draggable_tabs && self.group_handles.contains(GroupHandles::EMPTY_SPACE);
+        let menu = self.tab_context_menus && self.group_context_menus;
+        if !(drag || menu) || !tail.is_positive() {
             return;
         }
         let id = self
@@ -1229,16 +1288,158 @@ impl<Tab> DockArea<'_, Tab> {
             .with((path.surface, "surface"))
             .with((path.node, "node"))
             .with("tab_bar_drag");
-        let response = ui.interact(tail, id, Sense::drag());
-        if response.hovered() && ui.ctx().dragged_id().is_none() {
-            ui.output_mut(|o| o.cursor_icon = CursorIcon::Grab);
+        // A click only for its menu: no keyboard stop more than before.
+        let mut sense = if drag { Sense::drag() } else { Sense::hover() };
+        if menu {
+            sense |= Sense::CLICK;
         }
-        let dragged =
-            ui.ctx().is_being_dragged(id) && ui.input(|i| i.pointer.is_decidedly_dragging());
-        if dragged {
-            ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
-            self.try_initiate_node_drag(ui, state, path);
+        let response = ui.interact(tail, id, sense);
+        if drag {
+            if response.hovered() && ui.ctx().dragged_id().is_none() {
+                ui.output_mut(|o| o.cursor_icon = CursorIcon::Grab);
+            }
+            let dragged =
+                ui.ctx().is_being_dragged(id) && ui.input(|i| i.pointer.is_decidedly_dragging());
+            if dragged {
+                ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
+                self.try_initiate_node_drag(ui, state, path);
+            }
         }
+        if menu {
+            response.context_menu(|ui| self.group_menu(ui, path, tab_viewer));
+        }
+    }
+
+    /// The menu of the group at `path`: the viewer's items
+    /// ([`TabViewer::group_context_menu`]), then the built-in ones.
+    fn group_menu(
+        &mut self,
+        ui: &mut Ui,
+        path: NodePath,
+        tab_viewer: &mut impl TabViewer<Tab = Tab>,
+    ) {
+        tab_viewer.group_context_menu(ui, path);
+        if !self.show_builtin_tab_menu {
+            return;
+        }
+        if self.group_handles.contains(GroupHandles::MENU) {
+            self.move_group_menu(ui, path, tab_viewer);
+        }
+        if self.may_eject_group(path, tab_viewer) {
+            let label = &self
+                .dock_state
+                .translations
+                .tab_context_menu
+                .eject_group_button;
+            if ui.button(label.as_str()).clicked() {
+                self.eject_group(path);
+                ui.close();
+            }
+        }
+        if self.show_add_buttons {
+            let label = &self.dock_state.translations.tab_context_menu.add_tab_button;
+            if ui.button(label.as_str()).clicked() {
+                tab_viewer.on_add(path);
+                ui.close();
+            }
+        }
+        if self.show_leaf_close_all_buttons {
+            let closeable = self
+                .dock_state
+                .leaf_mut(path)
+                .is_ok_and(|leaf| leaf.tabs.iter_mut().all(|tab| tab_viewer.is_closeable(tab)));
+            let label = self
+                .dock_state
+                .translations
+                .tab_context_menu
+                .close_all_tabs_button
+                .clone();
+            if ui.add_enabled(closeable, Button::new(label)).clicked() {
+                self.to_remove.push(TabRemoval::Node(path));
+                ui.close();
+            }
+        }
+    }
+
+    /// Whether the group at `path` is alone in its window or float: moving it to a new window
+    /// would change nothing.
+    fn alone_in_window(&self, path: NodePath) -> bool {
+        (self.dock_state.is_window(path.surface) || self.is_float_dock(path.surface))
+            && self.dock_state[path.surface]
+                .iter()
+                .filter(|node| node.is_leaf())
+                .count()
+                == 1
+    }
+
+    /// Whether the group at `path` can be ejected into a new window: it is not alone in one
+    /// already, and each of its tabs may float.
+    fn may_eject_group(&mut self, path: NodePath, tab_viewer: &impl TabViewer<Tab = Tab>) -> bool {
+        !self.alone_in_window(path) && self.node_may_float(path, tab_viewer)
+    }
+
+    /// Moves the group at `path` into a new window at its place, once the area is drawn.
+    fn eject_group(&mut self, path: NodePath) {
+        if let Some(rect) = self.dock_state[path].rect() {
+            self.to_move_group
+                .push((path, TabDestination::Window(rect)));
+        }
+    }
+
+    /// A tab bar's button of the bar's look, in `rect`: a keyboard stop named `name`, lit
+    /// while hovered or focused. Returns a `Ui` covering it, to paint its symbol, and its
+    /// response.
+    fn bar_button(
+        &self,
+        ui: &mut Ui,
+        rect: Rect,
+        salt: impl std::hash::Hash + std::fmt::Debug,
+        name: &str,
+        fade_style: Option<&Style>,
+        bar: (Rect, CornerRadius),
+    ) -> (Ui, Response) {
+        let mut child = ui.new_child(
+            UiBuilder::new()
+                .max_rect(rect)
+                .layout(Layout::left_to_right(Align::Center))
+                .id_salt(salt),
+        );
+        let (rect, response) = child.allocate_exact_size(child.available_size(), Sense::click());
+        let enabled = child.is_enabled();
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, name));
+        let response = response.on_hover_cursor(CursorIcon::PointingHand);
+        let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
+        let lit = response.hovered() || response.has_focus();
+        paint_bar_button(
+            &child,
+            rect,
+            bar,
+            lit.then_some(style.buttons.add_tab_bg_fill),
+            Some((rect.left(), style.buttons.add_tab_border_color)),
+        );
+        (child, response)
+    }
+
+    /// The eject symbol: a window at the bottom left, an arrow leaving it to the top right.
+    fn draw_eject_symbol(ui: &Ui, color: Color32, rect: Rect) {
+        let mut icon = rect;
+        rect_set_size_centered(&mut icon, Vec2::splat(Style::TAB_ADD_PLUS_SIZE));
+        let stroke = Stroke::new(1.0, color);
+        let half = icon.width() * 0.6;
+        let window = Rect::from_min_max(
+            pos2(icon.left(), icon.bottom() - half),
+            pos2(icon.left() + half, icon.bottom()),
+        );
+        ui.painter()
+            .rect_stroke(window, 0.0, stroke, egui::StrokeKind::Inside);
+        let from = window.center();
+        let tip = icon.right_top();
+        ui.painter().line_segment([from, tip], stroke);
+        let head = icon.width() * 0.35;
+        ui.painter()
+            .line_segment([tip, tip - vec2(head, 0.0)], stroke);
+        ui.painter()
+            .line_segment([tip, tip + vec2(0.0, head)], stroke);
     }
 
     /// Where the move handle of the float showing `path` is drawn, at the right end of `bar`:
@@ -1511,14 +1712,7 @@ impl<Tab> DockArea<'_, Tab> {
         let mut targets: Vec<(WidgetText, TabDestination)> = Vec::new();
 
         // A new window, unless the group is already a window of its own.
-        let alone_in_window = (self.dock_state.is_window(path.surface)
-            || self.is_float_dock(path.surface))
-            && self.dock_state[path.surface]
-                .iter()
-                .filter(|node| node.is_leaf())
-                .count()
-                == 1;
-        if !alone_in_window && self.node_may_float(path, tab_viewer) {
+        if !self.alone_in_window(path) && self.node_may_float(path, tab_viewer) {
             let rect = leaf_rect.translate(vec2(24.0, 24.0));
             targets.push((
                 self.dock_state
@@ -1876,9 +2070,14 @@ impl<Tab> DockArea<'_, Tab> {
                     vec2(scroll_bar_handle_size, bar_height),
                 );
 
+                // Keyed by its surface too: two docks of a space, or a dock and a float, each
+                // have a leaf of the same index.
                 let scroll_bar_handle_response = ui.interact(
                     scroll_bar_handle_rect,
-                    self.id.with((path.node, "node")),
+                    self.id
+                        .with((path.surface, "surface"))
+                        .with((path.node, "node"))
+                        .with("tab_bar_scroll"),
                     Sense::drag(),
                 );
 

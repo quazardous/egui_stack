@@ -33,6 +33,13 @@ pub struct TabContextMenuTranslations {
     pub move_group_menu: String,
     /// Item of the Move group submenu that floats the group in a new window.
     pub move_group_new_window: String,
+    /// Item of a group's menu (a right click on the empty part of its tab bar) that moves the
+    /// group into a new floating window.
+    pub eject_group_button: String,
+    /// Item of a group's menu that adds a tab to it.
+    pub add_tab_button: String,
+    /// Item of a group's menu that closes all its tabs.
+    pub close_all_tabs_button: String,
 }
 
 /// Specifies text displayed in the primary buttons on a tab bar.
@@ -99,6 +106,9 @@ impl TabContextMenuTranslations {
             show_tab_bar_button: String::from("Show tab bar"),
             move_group_menu: String::from("Move group"),
             move_group_new_window: String::from("New window"),
+            eject_group_button: String::from("Eject group"),
+            add_tab_button: String::from("Add tab"),
+            close_all_tabs_button: String::from("Close all tabs"),
         }
     }
 }

@@ -54,6 +54,8 @@ pub struct DockArea<'tree, Tab> {
     show_window_collapse_buttons: bool,
     show_leaf_close_all_buttons: bool,
     show_leaf_collapse_buttons: bool,
+    show_leaf_eject_buttons: bool,
+    group_context_menus: bool,
     show_secondary_button_hint: bool,
     secondary_button_modifiers: Modifiers,
     secondary_button_on_modifier: bool,
@@ -280,6 +282,8 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             show_window_collapse_buttons: true,
             show_leaf_close_all_buttons: true,
             show_leaf_collapse_buttons: true,
+            show_leaf_eject_buttons: false,
+            group_context_menus: true,
             show_secondary_button_hint: true,
             secondary_button_modifiers: Modifiers::SHIFT,
             secondary_button_on_modifier: true,
@@ -630,6 +634,38 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     #[inline(always)]
     pub fn show_leaf_collapse_buttons(mut self, show_leaf_collapse_buttons: bool) -> Self {
         self.show_leaf_collapse_buttons = show_leaf_collapse_buttons;
+        self
+    }
+
+    /// Shows an Eject group button on tab bars: clicked, it moves the whole tab group, its tabs
+    /// in order, into a new floating window at the group's place, as "Move group" then "New
+    /// window" does: in a [`DockSpace`] whose floats are drawn, a float
+    /// ([`DockSpace::float_out_group`](crate::DockSpace::float_out_group)); else a window of
+    /// the [`DockState`]. The button is a keyboard stop named by [`Labels::eject_group`].
+    ///
+    /// A group already alone in its window or float has none, nor a group with a tab
+    /// [`TabViewer::allowed_in_windows`](crate::TabViewer::allowed_in_windows) keeps out of
+    /// windows, nor one in a dock that takes no windows.
+    /// By default it's `false`.
+    #[inline(always)]
+    pub fn show_leaf_eject_buttons(mut self, show_leaf_eject_buttons: bool) -> Self {
+        self.show_leaf_eject_buttons = show_leaf_eject_buttons;
+        self
+    }
+
+    /// Whether a right click on the empty part of a tab bar, right of its tabs, opens the
+    /// group's menu: what [`TabViewer::group_context_menu`](crate::TabViewer::group_context_menu)
+    /// adds, then the built-in items ([`show_builtin_tab_menu`](Self::show_builtin_tab_menu)):
+    /// "Move group" ([`GroupHandles::MENU`]), "Eject group" (where the group can float out),
+    /// "Add tab" (with [`show_add_buttons`](Self::show_add_buttons)) and "Close all tabs" (with
+    /// [`show_leaf_close_all_buttons`](Self::show_leaf_close_all_buttons), greyed while a tab
+    /// cannot be closed). A right click on a tab still opens the tab's menu. Every built-in item
+    /// has a keyboard path of its own: the group grip, the bar's buttons. Only with
+    /// [`tab_context_menus`](Self::tab_context_menus).
+    /// By default it's `true`.
+    #[inline(always)]
+    pub fn group_context_menus(mut self, group_context_menus: bool) -> Self {
+        self.group_context_menus = group_context_menus;
         self
     }
 }

@@ -29,6 +29,35 @@ pub trait TabViewer {
     /// [`focus_tab`](crate::DockState::focus_tab) and [`move_tab`](crate::DockState::move_tab).
     fn context_menu(&mut self, _ui: &mut Ui, _tab: &mut Self::Tab, _path: TabPath) {}
 
+    /// Content of a tab group's menu, shown when the empty part of its tab bar is right-clicked
+    /// ([`DockArea::group_context_menus`](crate::DockArea::group_context_menus)), above the
+    /// built-in items. `_path` is the group's leaf. By default it adds nothing.
+    fn group_context_menu(&mut self, _ui: &mut Ui, _path: NodePath) {}
+
+    /// The application's own buttons on the tab bar of the group at `_path`, by their
+    /// accessible names, in order: each gets a slot right of the bar's built-in buttons (the
+    /// add button, the group grip), before its close all button, and is drawn and answered by
+    /// [`on_group_bar_button`](Self::on_group_bar_button). By default none.
+    fn group_bar_buttons(&mut self, _path: NodePath) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Draws and answers the application's button `_index` of
+    /// [`group_bar_buttons`](Self::group_bar_buttons) on the tab bar of the group at `_path`.
+    /// The slot is already a button: it senses clicks, is a keyboard stop, carries its
+    /// accessible name and is lit while hovered or focused; `_ui` covers it, to paint the icon,
+    /// and `_response` tells its clicks (a tooltip: `_response.clone().on_hover_text(…)`).
+    /// [`DockSpace::float_out_group`](crate::DockSpace::float_out_group) or
+    /// [`DockState::move_node`](crate::DockState::move_node), for example, act on the group.
+    fn on_group_bar_button(
+        &mut self,
+        _ui: &mut Ui,
+        _path: NodePath,
+        _index: usize,
+        _response: &egui::Response,
+    ) {
+    }
+
     /// Called after each tab button is shown, so you can add a tooltip, check for clicks, etc.
     fn on_tab_button(&mut self, _tab: &mut Self::Tab, _response: &egui::Response) {}
 
