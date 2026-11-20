@@ -3,6 +3,8 @@
 //! beside the move handle, which asks `TabViewer::close_policy` as the title bar's close button
 //! does, whether or not its tabs can be closed. It is the bar's only close button while the
 //! float holds one tab group: the group's close all button would close the window too.
+//! With `FloatsArea::show_add_buttons`, the bar keeps its group's add button, as a docked
+//! group's bar does, and a click on it reaches `TabViewer::on_add` for the float's group.
 
 #[path = "support/multi.rs"]
 mod multi;
@@ -10,8 +12,8 @@ mod multi;
 use egui::{Id, Pos2, Rect, Ui, UiBuilder, ViewportId, WidgetText, pos2};
 use egui_stack::layout::{Content, Dir, FloatHost, Layout, Zone};
 use egui_stack::{
-    ClosePolicy, DockArea, DockRules, DockSpace, Docked, FloatClose, FloatEvent, TabViewer,
-    ViewportHost,
+    ClosePolicy, DockArea, DockRules, DockSpace, Docked, FloatClose, FloatEvent, NodePath,
+    TabViewer, ViewportHost,
 };
 use multi::Multi;
 
@@ -26,6 +28,8 @@ struct Viewer {
     closeable: bool,
     policy: ClosePolicy,
     asked: usize,
+    /// The paths `on_add` was called with.
+    added: Vec<NodePath>,
 }
 
 impl TabViewer for Viewer {
@@ -55,6 +59,10 @@ impl TabViewer for Viewer {
     fn on_tab_button(&mut self, tab: &mut String, response: &egui::Response) {
         self.tab_rects.push((tab.clone(), response.rect));
     }
+
+    fn on_add(&mut self, path: NodePath) {
+        self.added.push(path);
+    }
 }
 
 struct Host;
@@ -67,6 +75,8 @@ struct App {
     title_bar: bool,
     /// `DockArea::show_leaf_close_all_buttons` of the floats' areas.
     close_all: bool,
+    /// `FloatsArea::show_add_buttons`.
+    add: bool,
 }
 
 fn app(policy: ClosePolicy) -> App {
@@ -89,9 +99,11 @@ fn app(policy: ClosePolicy) -> App {
             closeable: false,
             policy,
             asked: 0,
+            added: Vec::new(),
         },
         title_bar: false,
         close_all: true,
+        add: false,
     }
 }
 
@@ -111,6 +123,7 @@ fn frame(app: &mut App) -> impl FnMut(&mut Ui) + '_ {
             .floats()
             .host(&mut host)
             .title_bar(app.title_bar)
+            .show_add_buttons(app.add)
             .configure(move |_float, area| area.show_leaf_close_all_buttons(close_all))
             .show(ui.ctx(), &mut app.viewer);
     }
@@ -270,9 +283,22 @@ fn a_float_of_one_group_has_one_close_button_on_its_top_bar() {
 #[test]
 #[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
 fn the_top_bar_of_a_float_snapshot() {
+    top_bar_snapshot(false, "float_top_bar.txt");
+}
+
+/// The same bar with add buttons on, against `tests/painting/float_top_bar_add.txt`: the
+/// group's add button after its tab, its close window button still the bar's only cross.
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn the_top_bar_of_a_float_with_add_buttons_snapshot() {
+    top_bar_snapshot(true, "float_top_bar_add.txt");
+}
+
+fn top_bar_snapshot(add: bool, file: &str) {
     let mut multi = Multi::new();
     let mut app = app(ClosePolicy::ReturnToOrigin);
     app.viewer.closeable = true;
+    app.add = add;
     detach_b(&mut multi, &mut app);
     let handle = multi.find(ViewportId::ROOT, "Move window").unwrap();
     let b = tab_rect(&app, "B").expect("B is shown");
@@ -294,14 +320,74 @@ fn the_top_bar_of_a_float_snapshot() {
             rect.right() - b.left()
         );
     }
-    let path = format!(
-        "{}/tests/painting/float_top_bar.txt",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path = format!("{}/tests/painting/{file}", env!("CARGO_MANIFEST_DIR"));
     if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
         std::fs::write(&path, &text).unwrap();
     }
     let expected = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("{path}: {e}; run with UPDATE_SNAPSHOTS=1 to write it"));
     assert_eq!(text, expected, "the float's top bar changed");
+}
+
+/// With add buttons on, a float's tab group shows its add button on the float's top bar, as a
+/// docked group does, left of the move handle and with one close button still; a click on it
+/// calls `TabViewer::on_add` with the float's group. Off, the bar has none.
+#[test]
+#[cfg_attr(miri, ignore = "drives a whole UI; too slow under Miri")]
+fn a_float_with_add_buttons_shows_one_add_button_that_reaches_on_add() {
+    for add in [false, true] {
+        let mut multi = Multi::new();
+        let mut app = app(ClosePolicy::ReturnToOrigin);
+        app.add = add;
+        detach_b(&mut multi, &mut app);
+        let handle = multi
+            .find(ViewportId::ROOT, "Move window")
+            .expect("the move handle is shown");
+        let pluses: Vec<_> = multi
+            .labels(ViewportId::ROOT)
+            .into_iter()
+            .filter(|(label, rect)| {
+                label == "Add tab" && (rect.center().y - handle.center().y).abs() < 1.0
+            })
+            .map(|(_, rect)| rect)
+            .collect();
+        assert_eq!(
+            pluses.len(),
+            usize::from(add),
+            "add buttons {add}: add buttons on the float's top bar: {pluses:?}"
+        );
+        let names: Vec<_> = close_buttons_on_top_bar(&multi)
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect();
+        assert_eq!(names, [CLOSE], "add buttons {add}: one close button");
+        if !add {
+            continue;
+        }
+        let plus = pluses[0];
+        let b = tab_rect(&app, "B").expect("B is shown");
+        assert!(
+            plus.left() >= b.right() - 1.0 && plus.right() <= handle.left() + 1.0,
+            "the add button {plus:?} is between the tab {b:?} and the move handle {handle:?}"
+        );
+
+        multi.press(ViewportId::ROOT, plus.center(), frame(&mut app));
+        multi.release(ViewportId::ROOT, plus.center(), frame(&mut app));
+        multi.passes(2, frame(&mut app));
+        let dock = app
+            .docked
+            .layout
+            .float("float-1")
+            .and_then(|float| float.dock_name())
+            .expect("the float shows a dock")
+            .to_owned();
+        let surface = app.docked.space.dock_surface(&dock);
+        assert_eq!(app.viewer.added.len(), 1, "on_add is called once");
+        assert_eq!(
+            Some(app.viewer.added[0].surface),
+            surface,
+            "on_add gets the float's group: {:?}",
+            app.viewer.added
+        );
+    }
 }

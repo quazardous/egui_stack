@@ -1,0 +1,6 @@
+B: x 0.0..48.2
+Close tab: x 24.2..48.2
+Add tab: x 48.2..72.2
+Move group: x 214.0..230.0
+Move window: x 230.0..246.0
+Close window: x 246.0..262.0

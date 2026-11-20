@@ -59,6 +59,61 @@ fn float_group_opens_a_float_with_a_move_handle() {
     );
 }
 
+/// A float's tab bar keeps the add button its group had in the dock, on both pages, and a
+/// click on it opens a new tab in that float's group.
+#[test]
+fn a_float_shows_an_add_button_that_adds_a_tab_to_its_group() {
+    for page in [Page::Dock, Page::Space] {
+        let mut harness = harness_on(page);
+        harness.get_by_label("New float").click();
+        harness.run();
+        let handle = harness.get_by_label("Move window").rect();
+        let on_bar = |rect: egui::Rect| (rect.center().y - handle.center().y).abs() < 1.0;
+        let pluses: Vec<_> = harness
+            .query_all_by_label("Add tab")
+            .map(|node| node.rect())
+            .filter(|rect| on_bar(*rect))
+            .collect();
+        assert_eq!(
+            pluses.len(),
+            1,
+            "{page:?}: one add button on the float's bar: {pluses:?}"
+        );
+        assert!(
+            pluses[0].right() <= handle.left() + 1.0,
+            "{page:?}: the add button is left of the move handle"
+        );
+
+        let float_tabs = |harness: &Harness<'static, DemoApp>| {
+            let app = harness.state();
+            let (layout, space) = match page {
+                Page::Dock => (&app.dock_floats, &app.dock),
+                Page::Space => (&app.floats, &app.space),
+            };
+            let float = layout.floats.first().expect("one float");
+            let dock = float.dock_name().expect("the float shows a dock");
+            let surface = space.dock_surface(dock).expect("its dock has a surface");
+            space.state()[surface]
+                .iter()
+                .filter_map(|node| node.get_leaf())
+                .map(|leaf| leaf.tabs.len())
+                .sum::<usize>()
+        };
+        let before = float_tabs(&harness);
+        harness
+            .query_all_by_label("Add tab")
+            .find(|node| on_bar(node.rect()))
+            .expect("the float's add button")
+            .click();
+        harness.run();
+        assert_eq!(
+            float_tabs(&harness),
+            before + 1,
+            "{page:?}: the add button adds a tab to the float's group"
+        );
+    }
+}
+
 #[test]
 fn a_dragged_tab_previews_its_content_in_its_ghost() {
     let mut harness = harness();

@@ -459,6 +459,10 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
 
     /// Shows or hides the tab add buttons.
     /// By default it's `false`.
+    ///
+    /// The floats' docks are drawn by [`FloatsArea`](crate::FloatsArea), not by this area: give
+    /// it the same value ([`FloatsArea::show_add_buttons`](crate::FloatsArea::show_add_buttons))
+    /// for a floating group to keep its add button.
     pub fn show_add_buttons(mut self, show_add_buttons: bool) -> Self {
         self.show_add_buttons = show_add_buttons;
         self

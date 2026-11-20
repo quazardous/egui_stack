@@ -366,6 +366,7 @@ pub struct FloatsArea<'a, Tab> {
     float_move: FloatMove,
     title_bar: bool,
     work_area: WorkArea,
+    add_buttons: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -419,6 +420,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             float_move: FloatMove::Move,
             title_bar: false,
             work_area: WorkArea::window(),
+            add_buttons: false,
             painter: None,
             configure: None,
             decorate: None,
@@ -522,6 +524,18 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
         self
     }
 
+    /// Shows an add button in each tab bar of the floats' docks
+    /// ([`DockArea::show_add_buttons`]), as the application's docks show theirs: give it the
+    /// value given to the docks, so that a group shows its add button whether it is docked or
+    /// floating. A click calls [`TabViewer::on_add`] with the group's path, the float's surface
+    /// in it. By default `false`, as for a [`DockArea`]. A float's
+    /// [`configure`](Self::configure) can still change it.
+    #[must_use]
+    pub fn show_add_buttons(mut self, show_add_buttons: bool) -> Self {
+        self.add_buttons = show_add_buttons;
+        self
+    }
+
     /// Sets where the floats over the main window may go, and where a tab dragged out of every
     /// dock may become one: see [`WorkArea`]. By default [`WorkArea::window`], the whole window.
     /// Native floats ignore it.
@@ -548,6 +562,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             float_move,
             title_bar,
             work_area,
+            add_buttons,
             painter,
             configure,
             decorate,
@@ -557,6 +572,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             modifiers,
             float_move,
             title_bar,
+            add_buttons,
             painter,
             configure,
             decorate,
@@ -625,6 +641,8 @@ struct Gestures<'a, Tab> {
     float_move: FloatMove,
     /// [`FloatsArea::title_bar`].
     title_bar: bool,
+    /// [`FloatsArea::show_add_buttons`].
+    add_buttons: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -644,7 +662,8 @@ impl<'a, Tab> Gestures<'a, Tab> {
     {
         let mut area = area
             .group_handles(self.handles)
-            .group_drag_modifiers(self.modifiers);
+            .group_drag_modifiers(self.modifiers)
+            .show_add_buttons(self.add_buttons);
         if let Some(style) = style {
             area = area.style(style.clone());
         }
@@ -998,7 +1017,7 @@ fn show_in_window<Tab>(
     let title_bar = gestures.title_bar || !gestures.handles.contains(GroupHandles::MOVE_WINDOW);
     // All its groups collapsed, the float is as tall as their tab bars and is not resized: its
     // place keeps the height it had, given back once a group is expanded.
-    let mut probe = DockArea::dock(space, dock);
+    let mut probe = DockArea::dock(space, dock).show_add_buttons(gestures.add_buttons);
     if let Some(style) = style {
         probe = probe.style(style.clone());
     }
