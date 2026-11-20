@@ -59,6 +59,61 @@ fn float_group_opens_a_float_with_a_move_handle() {
     );
 }
 
+/// A float's tab bar keeps the add button its group had in the dock, on both pages, and a
+/// click on it opens a new tab in that float's group.
+#[test]
+fn a_float_shows_an_add_button_that_adds_a_tab_to_its_group() {
+    for page in [Page::Dock, Page::Space] {
+        let mut harness = harness_on(page);
+        harness.get_by_label("New float").click();
+        harness.run();
+        let handle = harness.get_by_label("Move window").rect();
+        let on_bar = |rect: egui::Rect| (rect.center().y - handle.center().y).abs() < 1.0;
+        let pluses: Vec<_> = harness
+            .query_all_by_label("Add tab")
+            .map(|node| node.rect())
+            .filter(|rect| on_bar(*rect))
+            .collect();
+        assert_eq!(
+            pluses.len(),
+            1,
+            "{page:?}: one add button on the float's bar: {pluses:?}"
+        );
+        assert!(
+            pluses[0].right() <= handle.left() + 1.0,
+            "{page:?}: the add button is left of the move handle"
+        );
+
+        let float_tabs = |harness: &Harness<'static, DemoApp>| {
+            let app = harness.state();
+            let (layout, space) = match page {
+                Page::Dock => (&app.dock_floats, &app.dock),
+                Page::Space => (&app.floats, &app.space),
+            };
+            let float = layout.floats.first().expect("one float");
+            let dock = float.dock_name().expect("the float shows a dock");
+            let surface = space.dock_surface(dock).expect("its dock has a surface");
+            space.state()[surface]
+                .iter()
+                .filter_map(|node| node.get_leaf())
+                .map(|leaf| leaf.tabs.len())
+                .sum::<usize>()
+        };
+        let before = float_tabs(&harness);
+        harness
+            .query_all_by_label("Add tab")
+            .find(|node| on_bar(node.rect()))
+            .expect("the float's add button")
+            .click();
+        harness.run();
+        assert_eq!(
+            float_tabs(&harness),
+            before + 1,
+            "{page:?}: the add button adds a tab to the float's group"
+        );
+    }
+}
+
 #[test]
 fn a_dragged_tab_previews_its_content_in_its_ghost() {
     let mut harness = harness();
@@ -148,6 +203,66 @@ fn new_float_opens_a_tab_in_a_float_on_both_pages() {
         assert!(
             harness.query_by_label("Move window").is_some(),
             "{page:?}: the float has the window's move handle"
+        );
+    }
+}
+
+/// A float resizes from every edge and corner, its left and top ones included: the dragged
+/// sides follow the pointer, the others stay.
+#[test]
+fn a_float_resizes_from_its_left_and_top_edges_too() {
+    let float_rect =
+        |harness: &Harness<'static, DemoApp>| harness.state().dock_floats.floats[0].place.rect;
+    for (gx, gy) in [
+        (-1.0_f32, 0.0_f32),
+        (0.0, -1.0),
+        (-1.0, -1.0),
+        (1.0, 0.0),
+        (0.0, 1.0),
+        (1.0, 1.0),
+    ] {
+        let mut harness = harness_on(Page::Dock);
+        harness.get_by_label("New float").click();
+        harness.run();
+        let before = float_rect(&harness);
+        let at = |sign: f32, min: f32, max: f32| match sign {
+            s if s < 0.0 => min + 1.0,
+            s if s > 0.0 => max - 1.0,
+            _ => (min + max) / 2.0,
+        };
+        let from = egui::pos2(
+            at(gx, before.left(), before.right()),
+            at(gy, before.top(), before.bottom()),
+        );
+        let delta = egui::vec2(gx, gy) * 30.0;
+        harness.hover_at(from);
+        harness.step();
+        harness.drag_at(from);
+        harness.step();
+        for step in 1..=10 {
+            harness.hover_at(from + delta * (step as f32 / 10.0));
+            harness.step();
+        }
+        harness.drop_at(from + delta);
+        harness.run();
+        let after = float_rect(&harness);
+        let what = format!("grab ({gx}, {gy}): {before:?} -> {after:?}");
+        let near = |a: f32, b: f32| (a - b).abs() <= 2.0;
+        assert!(
+            near(after.left(), before.left() + delta.x.min(0.0)),
+            "left: {what}"
+        );
+        assert!(
+            near(after.right(), before.right() + delta.x.max(0.0)),
+            "right: {what}"
+        );
+        assert!(
+            near(after.top(), before.top() + delta.y.min(0.0)),
+            "top: {what}"
+        );
+        assert!(
+            near(after.bottom(), before.bottom() + delta.y.max(0.0)),
+            "bottom: {what}"
         );
     }
 }

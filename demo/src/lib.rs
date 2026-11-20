@@ -209,6 +209,8 @@ impl DemoApp {
             .style(style.clone())
             .painter(painter)
             .group_handles(self.group_handles)
+            // As in the dock it came from: a floating group keeps its add button.
+            .show_add_buttons(true)
             .show(ui.ctx(), &mut self.tabs);
         self.dock.take_float_events();
         self.picker.after_dock(
@@ -255,6 +257,8 @@ impl DemoApp {
             .style(style.clone())
             .painter(painter)
             .group_handles(self.group_handles)
+            // As in the dock it came from: a floating group keeps its add button.
+            .show_add_buttons(true)
             .show(ui.ctx(), &mut self.tabs);
         self.space.take_float_events();
     }

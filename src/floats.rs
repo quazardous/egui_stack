@@ -15,6 +15,7 @@ use crate::{
     Tree,
 };
 
+mod edges;
 mod gestures;
 mod work_area;
 
@@ -366,6 +367,7 @@ pub struct FloatsArea<'a, Tab> {
     float_move: FloatMove,
     title_bar: bool,
     work_area: WorkArea,
+    add_buttons: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -419,6 +421,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             float_move: FloatMove::Move,
             title_bar: false,
             work_area: WorkArea::window(),
+            add_buttons: false,
             painter: None,
             configure: None,
             decorate: None,
@@ -522,6 +525,18 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
         self
     }
 
+    /// Shows an add button in each tab bar of the floats' docks
+    /// ([`DockArea::show_add_buttons`]), as the application's docks show theirs: give it the
+    /// value given to the docks, so that a group shows its add button whether it is docked or
+    /// floating. A click calls [`TabViewer::on_add`] with the group's path, the float's surface
+    /// in it. By default `false`, as for a [`DockArea`]. A float's
+    /// [`configure`](Self::configure) can still change it.
+    #[must_use]
+    pub fn show_add_buttons(mut self, show_add_buttons: bool) -> Self {
+        self.add_buttons = show_add_buttons;
+        self
+    }
+
     /// Sets where the floats over the main window may go, and where a tab dragged out of every
     /// dock may become one: see [`WorkArea`]. By default [`WorkArea::window`], the whole window.
     /// Native floats ignore it.
@@ -548,6 +563,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             float_move,
             title_bar,
             work_area,
+            add_buttons,
             painter,
             configure,
             decorate,
@@ -557,6 +573,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             modifiers,
             float_move,
             title_bar,
+            add_buttons,
             painter,
             configure,
             decorate,
@@ -625,6 +642,8 @@ struct Gestures<'a, Tab> {
     float_move: FloatMove,
     /// [`FloatsArea::title_bar`].
     title_bar: bool,
+    /// [`FloatsArea::show_add_buttons`].
+    add_buttons: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -644,7 +663,8 @@ impl<'a, Tab> Gestures<'a, Tab> {
     {
         let mut area = area
             .group_handles(self.handles)
-            .group_drag_modifiers(self.modifiers);
+            .group_drag_modifiers(self.modifiers)
+            .show_add_buttons(self.add_buttons);
         if let Some(style) = style {
             area = area.style(style.clone());
         }
@@ -970,9 +990,12 @@ pub(crate) fn tree_title<Tab>(
     Some(viewer.title(&mut leaf.tabs[active]))
 }
 
+/// The least size of a float's content over the main window.
+const MIN_SIZE: Vec2 = vec2(120.0, 80.0);
+
 /// A float over the main window, as an `egui::Window`: moved by its move handle, or by its
 /// title bar when it has one ([`FloatsArea::title_bar`]), never by the empty part of a tab
-/// bar.
+/// bar. Its left and top edges resize it by handles of its own (`edges`).
 #[allow(clippy::too_many_arguments)]
 fn show_in_window<Tab>(
     ctx: &Context,
@@ -998,7 +1021,7 @@ fn show_in_window<Tab>(
     let title_bar = gestures.title_bar || !gestures.handles.contains(GroupHandles::MOVE_WINDOW);
     // All its groups collapsed, the float is as tall as their tab bars and is not resized: its
     // place keeps the height it had, given back once a group is expanded.
-    let mut probe = DockArea::dock(space, dock);
+    let mut probe = DockArea::dock(space, dock).show_add_buttons(gestures.add_buttons);
     if let Some(style) = style {
         probe = probe.style(style.clone());
     }
@@ -1019,7 +1042,7 @@ fn show_in_window<Tab>(
         .id(id)
         .default_pos(place.rect.min)
         .default_size(place.rect.size())
-        .min_size(vec2(120.0, 80.0))
+        .min_size(MIN_SIZE)
         .collapsible(false)
         .resizable(true)
         .title_bar(title_bar)
@@ -1061,6 +1084,28 @@ fn show_in_window<Tab>(
         None if was_collapsed => window
             .min_height(place.rect.height())
             .max_height(place.rect.height()),
+        None => window,
+    };
+    // The left and top edges resize the float by handles of its own, added once it is drawn:
+    // egui leaves them out of a window it does not move (no title bar), and its own left edge
+    // lies under the dock's body, which takes its drags.
+    let edges = collapsed_height.is_none();
+    let window = match edges
+        .then(|| edges::dragged(ctx, id, place.rect, MIN_SIZE, region.map(|r| r.size())))
+        .flatten()
+    {
+        Some(rect) => {
+            // Placed as the move handle places it: egui's title bar drag would undo a
+            // `current_pos`. The sizes of an egui window are its outer ones.
+            if let Some(mut state) = egui::AreaState::load(ctx, id) {
+                state.set_left_top_pos(rect.min);
+                ctx.memory_mut(|mem| {
+                    mem.areas_mut()
+                        .set_state(LayerId::new(egui::Order::Middle, id), state);
+                });
+            }
+            window.min_size(rect.size()).max_size(rect.size())
+        }
         None => window,
     };
     if collapsed_height.is_some() {
@@ -1136,6 +1181,9 @@ fn show_in_window<Tab>(
     }
     if let Some(shown) = shown {
         let rect = shown.response.rect;
+        if edges {
+            edges::handles(ctx, id, shown.response.layer_id, rect);
+        }
         space.floating.layers.push(shown.response.layer_id);
         space.floating.rects.push(rect);
         if let Some(content) = content {
