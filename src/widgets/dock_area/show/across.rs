@@ -282,6 +282,26 @@ impl<Tab> DockArea<'_, Tab> {
     ) {
         match report.outcome {
             Outcome::Drop(destination) => {
+                if !self.source_valid(&src) {
+                    return;
+                }
+                let surface = match destination {
+                    TabDestination::Node(path, _) => Some(path.surface),
+                    TabDestination::EmptySurface(surface) => Some(surface),
+                    TabDestination::Window(_) => None,
+                };
+                if surface.is_none_or(|surface| {
+                    self.dock_state.is_window(surface) || self.is_float_dock(surface)
+                }) {
+                    let may = match src {
+                        TreeComponent::Tab(path) => self.may_float(path, tab_viewer),
+                        TreeComponent::Node(path) => self.node_may_float(path, tab_viewer),
+                        TreeComponent::Surface(_) => false,
+                    };
+                    if !may {
+                        return;
+                    }
+                }
                 let dock = match destination {
                     TabDestination::Node(path, _) => self.dock_name(path.surface),
                     TabDestination::EmptySurface(surface) => self.dock_name(surface),
