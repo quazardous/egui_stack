@@ -545,8 +545,14 @@ mod tests {
         assert!(area.source_valid(&TreeComponent::Node(root)));
         assert!(!area.source_valid(&TreeComponent::Node(missing)));
         assert!(!area.source_valid(&TreeComponent::Tab((root, TabIndex(1)).into())));
-        assert!(area.destination_valid(&TabDestination::Node(root, TabInsert::Insert(TabIndex(1)))));
-        assert!(!area.destination_valid(&TabDestination::Node(root, TabInsert::Insert(TabIndex(2)))));
+        assert!(area.destination_valid(&TabDestination::Node(
+            root,
+            TabInsert::Insert(TabIndex(1)),
+        )));
+        assert!(!area.destination_valid(&TabDestination::Node(
+            root,
+            TabInsert::Insert(TabIndex(2)),
+        )));
         assert!(!area.destination_valid(&TabDestination::Node(missing, TabInsert::Append)));
         assert!(!area.destination_valid(&TabDestination::EmptySurface(SurfaceIndex::main())));
         let absent = SurfaceIndex(100);
