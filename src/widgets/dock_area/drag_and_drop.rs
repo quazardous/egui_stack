@@ -184,6 +184,12 @@ impl DragDropState {
     ) -> Option<TabDestination> {
         assert!(!self.is_on_title_bar());
 
+        if self.hover.outside {
+            self.update_lock(LockState::Unlocked, style, ui.ctx());
+            return windows_allowed.then(|| {
+                TabDestination::Window(Rect::from_min_size(self.pointer, self.drag.rect.size()))
+            });
+        }
         if !windows_allowed && self.dst_in_window {
             return None;
         }
@@ -600,6 +606,25 @@ mod tests {
                             windows_allowed,
                         ),
                         expected,
+                    );
+
+                    state.hover.outside = true;
+                    state.hover.rect = Rect::NOTHING;
+                    state.dst_in_window = false;
+                    assert_eq!(
+                        state.resolve_icon_based(
+                            ui,
+                            &style,
+                            &StylePainter,
+                            AllowedSplits::None,
+                            windows_allowed,
+                        ),
+                        windows_allowed.then(|| {
+                            TabDestination::Window(Rect::from_min_size(
+                                state.pointer,
+                                state.drag.rect.size(),
+                            ))
+                        }),
                     );
                 }
             },
