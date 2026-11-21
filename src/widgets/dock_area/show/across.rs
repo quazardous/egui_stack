@@ -40,6 +40,15 @@ impl<Tab> DockArea<'_, Tab> {
         drag_data: &mut Option<DragData>,
         tab_viewer: &mut impl TabViewer<Tab = Tab>,
     ) -> Across {
+        if self.space.as_ref().and_then(|space| space.floating.session.as_ref())
+            .is_some_and(|session| !self.source_valid(&session.src))
+        {
+            if let Some(space) = self.space.as_mut() {
+                space.floating.session = None;
+            }
+            Self::idle(state);
+            self.forget_verdicts();
+        }
         let Some(space) = self.space.as_mut() else {
             return Across::Here;
         };
