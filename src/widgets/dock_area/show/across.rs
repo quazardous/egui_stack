@@ -294,6 +294,9 @@ impl<Tab> DockArea<'_, Tab> {
         }
         match report.outcome {
             Outcome::Drop(destination) => {
+                if !self.destination_valid(&destination) {
+                    return;
+                }
                 let dock = match destination {
                     TabDestination::Node(path, _) => self.dock_name(path.surface),
                     TabDestination::EmptySurface(surface) => self.dock_name(surface),
@@ -359,6 +362,24 @@ impl<Tab> DockArea<'_, Tab> {
         }
     }
 
+    /// Whether a destination still refers to a usable surface or leaf.
+    pub(super) fn destination_valid(&self, destination: &TabDestination) -> bool {
+        match *destination {
+            TabDestination::Node(path, insert) => self.dock_state.leaf(path).is_ok_and(|leaf| {
+                match insert {
+                    TabInsert::Insert(index) => index.0 <= leaf.tabs.len(),
+                    _ => true,
+                }
+            }),
+            TabDestination::EmptySurface(surface) => self
+                .dock_state
+                .get_surface(surface)
+                .and_then(Surface::node_tree)
+                .is_some_and(|tree| !tree.iter().any(crate::Node::is_leaf)),
+            TabDestination::Window(_) => true,
+        }
+    }
+
     /// Moves `src`, a tab or a whole leaf, to `destination`, once: unless the source or the
     /// destination is gone (a window closed during the drag). A tab that leaves a dock for a
     /// float's records where it came from; one that lands in a dock no float shows forgets it.
@@ -372,37 +393,12 @@ impl<Tab> DockArea<'_, Tab> {
         if !self.source_valid(&src) {
             return false;
         }
+        if !self.destination_valid(&destination) {
+            return false;
+        }
         let to = match destination {
-            TabDestination::Node(path, _) => {
-                let there = self
-                    .dock_state
-                    .get_surface(path.surface)
-                    .and_then(Surface::node_tree)
-                    .is_some_and(|tree| tree.iter().nth(path.node.0).is_some());
-                if !there || self.dock_state.leaf(path).is_err() {
-                    return false;
-                }
-                if let TabDestination::Node(_, TabInsert::Insert(index)) = destination
-                    && self
-                        .dock_state
-                        .leaf(path)
-                        .is_ok_and(|leaf| index.0 > leaf.tabs.len())
-                {
-                    return false;
-                }
-                Some(path.surface)
-            }
-            TabDestination::EmptySurface(surface) => {
-                if self
-                    .dock_state
-                    .get_surface(surface)
-                    .and_then(Surface::node_tree)
-                    .is_none()
-                {
-                    return false;
-                }
-                Some(surface)
-            }
+            TabDestination::Node(path, _) => Some(path.surface),
+            TabDestination::EmptySurface(surface) => Some(surface),
             TabDestination::Window(_) => None,
         };
         if let Some(to) = to {
