@@ -246,6 +246,38 @@ impl<Tab> DockArea<'_, Tab> {
             )
         });
 
+        if drag_data
+            .as_ref()
+            .is_some_and(|drag: &DragData| !self.source_valid(&drag.src))
+        {
+            drag_data = None;
+            if let Some(space) = self.space.as_mut()
+                && space
+                    .floating
+                    .session
+                    .as_ref()
+                    .is_some_and(|session| session.source == ui.ctx().viewport_id())
+            {
+                space.floating.session = None;
+            }
+            if let Some(id) = ui.ctx().dragged_id() {
+                state.drag_lost = Some(id);
+                ui.ctx().stop_dragging();
+            }
+            state.reset_drag();
+            state.tab_in_air = None;
+            self.forget_verdicts();
+        }
+        if state
+            .dnd
+            .as_ref()
+            .is_some_and(|dnd| !self.source_valid(&dnd.drag.src) || !self.hover_valid(&dnd.hover))
+        {
+            state.dnd = None;
+            state.window_fade = None;
+        }
+        let hover_data = hover_data.filter(|hover| self.hover_valid(hover));
+
         // The tab whose drag began here: its ghost follows the pointer, even over another
         // viewport, so it stays out of its bar.
         let in_air = match &drag_data {
@@ -270,6 +302,14 @@ impl<Tab> DockArea<'_, Tab> {
                 return;
             }
         };
+        if drag_data
+            .as_ref()
+            .is_some_and(|drag| !self.source_valid(&drag.src))
+        {
+            drag_data = None;
+            state.reset_drag();
+            state.tab_in_air = None;
+        }
         let hover_data = if drag_data.is_some() {
             hover_data
         } else {
@@ -759,6 +799,15 @@ impl<Tab> DockArea<'_, Tab> {
         allowed.then_some(destination)
     }
 
+    /// Whether a cached hover still refers to an existing target.
+    fn hover_valid(&self, hover: &HoverData) -> bool {
+        hover.outside
+            || match hover.dst {
+                TreeComponent::Tab(_) => self.source_valid(&hover.dst),
+                _ => self.destination_valid(&hover.dst.as_tab_destination()),
+            }
+    }
+
     /// The viewer's veto for the dragged tab at `destination`; for a whole leaf, for each of its
     /// tabs, the first refusal said. `None` when allowed.
     fn drop_refusal(
@@ -781,6 +830,9 @@ impl<Tab> DockArea<'_, Tab> {
         destination: &TabDestination,
         fresh: bool,
     ) -> Option<Option<egui::WidgetText>> {
+        if !self.source_valid(src) || !self.destination_valid(destination) {
+            return Some(None);
+        }
         let (src, tabs, group) = match *src {
             TreeComponent::Tab(path) => (path.node_path(), path.tab.0..path.tab.0 + 1, false),
             TreeComponent::Node(path) => (path, 0..self.dock_state[path].tabs_count(), true),
