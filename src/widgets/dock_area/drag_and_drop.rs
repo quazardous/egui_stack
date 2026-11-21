@@ -544,19 +544,19 @@ fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::sync::Mutex;
 
     use super::*;
 
     #[derive(Default)]
     struct ButtonRecorder {
-        hovered: RefCell<Vec<Option<Split>>>,
+        hovered: Mutex<Vec<Option<Split>>>,
     }
 
     impl DockPainter for ButtonRecorder {
         fn drop_button(&self, _painter: &Painter, button: &DropButtonPaint<'_>) {
             if button.hovered {
-                self.hovered.borrow_mut().push(button.split);
+                self.hovered.lock().unwrap().push(button.split);
             }
         }
     }
@@ -609,7 +609,7 @@ mod tests {
                         _ => None,
                     })
                     .collect();
-                assert_eq!(*painter.hovered.borrow(), highlighted);
+                assert_eq!(*painter.hovered.lock().unwrap(), highlighted);
                 assert_eq!(
                     destination,
                     expected.map(|insert| TabDestination::Node(path, insert))
