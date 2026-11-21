@@ -370,6 +370,7 @@ pub struct FloatsArea<'a, Tab> {
     work_area: WorkArea,
     add_buttons: bool,
     eject_buttons: bool,
+    cycle_tabs: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -426,6 +427,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             work_area: WorkArea::window(),
             add_buttons: false,
             eject_buttons: false,
+            cycle_tabs: true,
             painter: None,
             configure: None,
             decorate: None,
@@ -534,6 +536,16 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
         self
     }
 
+    /// Sets whether Ctrl+Tab and Ctrl+Shift+Tab cycle the active tab of the tab group under the
+    /// pointer in the floats' docks ([`DockArea::cycle_tabs_with_keyboard`]), over the main
+    /// window and in native windows. By default `true`, as for a [`DockArea`]. A float's
+    /// [`configure`](Self::configure) can still change it.
+    #[must_use]
+    pub fn cycle_tabs_with_keyboard(mut self, cycle_tabs: bool) -> Self {
+        self.cycle_tabs = cycle_tabs;
+        self
+    }
+
     /// Sets whether a float over the main window ([`FloatHost::InWindow`]) has a title bar of
     /// its own, with its title and a close button, above its dock; by default it has none: its
     /// top tab bar is its top, the window's move handle ([`GroupHandles::MOVE_WINDOW`]) moves
@@ -590,6 +602,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             work_area,
             add_buttons,
             eject_buttons,
+            cycle_tabs,
             painter,
             configure,
             decorate,
@@ -602,6 +615,7 @@ impl<'a, Tab> FloatsArea<'a, Tab> {
             title_bar,
             add_buttons,
             eject_buttons,
+            cycle_tabs,
             painter,
             configure,
             decorate,
@@ -676,6 +690,8 @@ struct Gestures<'a, Tab> {
     add_buttons: bool,
     /// [`FloatsArea::show_leaf_eject_buttons`].
     eject_buttons: bool,
+    /// [`FloatsArea::cycle_tabs_with_keyboard`].
+    cycle_tabs: bool,
     painter: Option<&'a (dyn DockPainter + Sync)>,
     configure: Option<Configure<'a, Tab>>,
     decorate: Option<Decorate<'a>>,
@@ -703,7 +719,8 @@ impl<'a, Tab> Gestures<'a, Tab> {
             .group_handles(handles)
             .group_drag_modifiers(self.modifiers)
             .show_add_buttons(self.add_buttons)
-            .show_leaf_eject_buttons(self.eject_buttons);
+            .show_leaf_eject_buttons(self.eject_buttons)
+            .cycle_tabs_with_keyboard(self.cycle_tabs);
         if let Some(style) = style {
             area = area.style(style.clone());
         }

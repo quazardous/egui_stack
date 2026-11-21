@@ -10,12 +10,17 @@ use crate::NodeIndex;
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[non_exhaustive]
 pub enum GridLayout {
-    /// As many columns as the square root of the number of children, rounded up: 2 columns
-    /// for 2 to 4 children, 3 for 5 to 9, and so on. The rows fill from the top; the last
-    /// one may be short.
+    /// The number of columns whose cells come closest to a 4:3 aspect ratio in the grid's
+    /// rectangle, without leaving many cells empty: three views side by side in a wide strip,
+    /// stacked in a tall one, two rows of two in a box. The rows fill from the top; the last
+    /// one may be short. The count follows the grid's size, so resizing the grid may change
+    /// it; the shares are then fitted to the new columns and rows.
     ///
-    /// This is the rule of egui_tiles' automatic grid (<https://github.com/rerun-io/egui_tiles>,
-    /// MIT OR Apache-2.0).
+    /// Before the grid is first laid out (no rectangle yet), as many columns as the square root
+    /// of the number of children, rounded up.
+    ///
+    /// The heuristic is egui_tiles' `Behavior::grid_auto_column_count` with its default
+    /// `ideal_tile_aspect_ratio` (<https://github.com/rerun-io/egui_tiles>, MIT OR Apache-2.0).
     #[default]
     Auto,
 
@@ -120,7 +125,7 @@ impl GridNode {
 
     /// The number of columns: see [`GridLayout`]. At least 1, even with no children.
     pub fn columns(&self) -> usize {
-        columns(self.layout, self.children.len())
+        columns(self.layout, self.children.len(), self.rect)
     }
 
     /// The number of rows: enough for all children, the last row possibly short.
@@ -206,13 +211,45 @@ impl GridNode {
     }
 }
 
-/// The number of columns of a grid of `len` children.
-fn columns(layout: GridLayout, len: usize) -> usize {
+/// The aspect ratio (width over height) [`GridLayout::Auto`] aims at for each cell.
+const IDEAL_CELL_ASPECT: f32 = 4.0 / 3.0;
+
+/// The number of columns of a grid of `len` children laid out in `rect`.
+fn columns(layout: GridLayout, len: usize, rect: Rect) -> usize {
     match layout {
+        GridLayout::Auto
+            if rect.is_finite() && rect.width() > 0.0 && rect.height() > 0.0 && len > 0 =>
+        {
+            auto_columns(len, rect.size(), IDEAL_CELL_ASPECT)
+        }
         GridLayout::Auto => (len as f64).sqrt().ceil() as usize,
         GridLayout::Columns(columns) => columns.min(len),
     }
     .max(1)
+}
+
+/// The number of columns for `len` cells in an area of `size` whose cells come closest to
+/// `aspect` (width over height), each empty cell of the last row counting against it.
+///
+/// Taken from egui_tiles' `num_columns_heuristic`, the default of
+/// `Behavior::grid_auto_column_count` (<https://github.com/rerun-io/egui_tiles>, MIT OR
+/// Apache-2.0), without its gap between cells: the separators are thin here.
+fn auto_columns(len: usize, size: egui::Vec2, aspect: f32) -> usize {
+    let mut best = (f32::INFINITY, 1);
+    for columns in 1..=len {
+        // One column short of a single row leaves one cell alone on the second row.
+        if len >= 4 && columns == len - 1 {
+            continue;
+        }
+        let rows = len.div_ceil(columns);
+        let cell_aspect = (size.x / columns as f32) / (size.y / rows as f32);
+        let empty = columns * rows - len;
+        let loss = (aspect - cell_aspect).abs() * len as f32 + 2.0 * empty as f32;
+        if loss < best.0 {
+            best = (loss, columns);
+        }
+    }
+    best.1
 }
 
 #[cfg(test)]
@@ -224,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_columns_are_the_rounded_up_square_root() {
+    fn auto_columns_before_layout_are_the_rounded_up_square_root() {
         let expected = [
             (1, 1, 1),
             (2, 2, 1),
@@ -240,6 +277,40 @@ mod tests {
             assert_eq!(grid.row_shares().len(), rows);
         }
         assert_eq!(grid(10).columns(), 4);
+    }
+
+    #[test]
+    fn auto_columns_follow_the_shape_of_the_grid() {
+        let rect = |w, h| Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w, h));
+        let mut three = grid(3);
+        three.set_rect(rect(1200.0, 300.0));
+        assert_eq!(
+            (three.columns(), three.rows()),
+            (3, 1),
+            "a wide strip: one row"
+        );
+        three.set_rect(rect(300.0, 900.0));
+        assert_eq!(
+            (three.columns(), three.rows()),
+            (1, 3),
+            "a tall strip: one column"
+        );
+        let mut four = grid(4);
+        four.set_rect(rect(800.0, 600.0));
+        assert_eq!(
+            (four.columns(), four.rows()),
+            (2, 2),
+            "a box: two rows of two"
+        );
+    }
+
+    #[test]
+    fn four_cells_never_make_three_columns() {
+        // As in egui_tiles: 1, 2 or 4 columns, never a row of three over a lone cell.
+        for height in (1..=100).map(|i| i as f32 * 10.0) {
+            let columns = auto_columns(4, egui::vec2(100.0, height), IDEAL_CELL_ASPECT);
+            assert!(matches!(columns, 1 | 2 | 4), "{height}: {columns} columns");
+        }
     }
 
     #[test]
