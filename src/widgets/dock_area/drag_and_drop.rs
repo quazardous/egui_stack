@@ -541,3 +541,80 @@ fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
 
     Rect::from_min_size(pos, rect.size())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct ButtonRecorder {
+        hovered: RefCell<Vec<Option<Split>>>,
+    }
+
+    impl DockPainter for ButtonRecorder {
+        fn drop_button(&self, _painter: &Painter, button: &DropButtonPaint<'_>) {
+            if button.hovered {
+                self.hovered.borrow_mut().push(button.split);
+            }
+        }
+    }
+
+    #[test]
+    fn overlapping_icon_drop_targets_match_the_highlight() {
+        egui::__run_test_ui(|ui| {
+            let mut style = Style::from_egui(ui.style());
+            style.overlay.button_spacing = 10.0;
+            style.overlay.max_button_size = 100.0;
+            style.overlay.feel.interact_expansion = 20.0;
+            let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(160.0));
+            let center = rect.center();
+            let path = NodePath::new(SurfaceIndex::main(), NodeIndex::root());
+            // The buttons are 40 points wide and 50 points apart. The expanded
+            // hitboxes extend 36 points from their centers, so they overlap.
+            for (offset, expected) in [
+                (vec2(25.0, 0.0), Some(TabInsert::Append)),
+                (vec2(25.0, 25.0), Some(TabInsert::Append)),
+                (vec2(0.0, 50.0), Some(TabInsert::Split(Split::Below))),
+                (vec2(50.0, 0.0), Some(TabInsert::Split(Split::Right))),
+                (vec2(0.0, -50.0), Some(TabInsert::Split(Split::Above))),
+                (vec2(-50.0, 0.0), Some(TabInsert::Split(Split::Left))),
+                (vec2(75.0, 75.0), None),
+            ] {
+                let painter = ButtonRecorder::default();
+                let mut state = DragDropState {
+                    hover: HoverData {
+                        rect,
+                        dst: TreeComponent::Node(path),
+                        tab: None,
+                        tab_bar: None,
+                        outside: false,
+                    },
+                    drag: DragData {
+                        src: TreeComponent::Node(path),
+                        rect,
+                    },
+                    pointer: center + offset,
+                    locked: None,
+                    src_in_window: false,
+                    dst_in_window: false,
+                };
+                let destination =
+                    state.resolve_icon_based(ui, &style, &painter, AllowedSplits::All, false);
+                let highlighted: Vec<_> = expected
+                    .iter()
+                    .map(|insert| match insert {
+                        TabInsert::Split(split) => Some(*split),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(*painter.hovered.borrow(), highlighted);
+                assert_eq!(
+                    destination,
+                    expected.map(|insert| TabDestination::Node(path, insert))
+                );
+            }
+        });
+    }
+}
