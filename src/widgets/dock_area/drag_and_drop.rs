@@ -184,6 +184,9 @@ impl DragDropState {
     ) -> Option<TabDestination> {
         assert!(!self.is_on_title_bar());
 
+        if !windows_allowed && self.dst_in_window {
+            return None;
+        }
         draw_highlight_rect(self.hover.rect, ui, style, painter);
         let mut hovering_buttons = false;
         let total_button_spacing = style.overlay.button_spacing * 2.0;
@@ -541,4 +544,67 @@ fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
     pos = pos.round_to_pixels(ui.painter().pixels_per_point());
 
     Rect::from_min_size(pos, rect.size())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::StylePainter;
+    use egui_kittest::Harness;
+
+    #[test]
+    fn icon_drop_respects_window_restrictions() {
+        let mut harness = Harness::builder().build_ui_state(
+            |ui, _: &mut ()| {
+                let style = Style::from_egui(ui.style());
+                let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(300.0));
+                for (dst_in_window, windows_allowed) in
+                    [(true, false), (true, true), (false, false), (false, true)]
+                {
+                    let path = NodePath::new(
+                        if dst_in_window {
+                            SurfaceIndex(1)
+                        } else {
+                            SurfaceIndex::main()
+                        },
+                        NodeIndex::root(),
+                    );
+                    let mut state = DragDropState {
+                        hover: HoverData {
+                            rect,
+                            dst: TreeComponent::Node(path),
+                            tab: None,
+                            tab_bar: None,
+                            outside: false,
+                        },
+                        drag: DragData {
+                            src: TreeComponent::Node(NodePath::new(
+                                SurfaceIndex::main(),
+                                NodeIndex(2),
+                            )),
+                            rect,
+                        },
+                        pointer: rect.center(),
+                        locked: None,
+                        src_in_window: false,
+                        dst_in_window,
+                    };
+                    let expected = (!dst_in_window || windows_allowed)
+                        .then_some(TabDestination::Node(path, TabInsert::Append));
+                    assert_eq!(
+                        state.resolve_icon_based(
+                            ui,
+                            &style,
+                            &StylePainter,
+                            AllowedSplits::None,
+                            windows_allowed,
+                        ),
+                        expected,
+                    );
+                }
+            },
+            (),
+        );
+        harness.run();
+    }
 }
