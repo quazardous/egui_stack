@@ -550,6 +550,10 @@ mod tests {
     impl TabViewer for Viewer {
         type Tab = &'static str;
 
+        fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
+            egui::Id::new(*tab)
+        }
+
         fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
             (*tab).into()
         }
@@ -566,11 +570,7 @@ mod tests {
         for group in [false, true] {
             for allow_windows in [false, true] {
                 let mut space = DockSpace::new();
-                space.add_dock(
-                    "main",
-                    DockRules::default(),
-                    vec!["restricted", "allowed"],
-                );
+                space.add_dock("main", DockRules::default(), vec!["restricted", "allowed"]);
                 let main = space.dock_surface("main").unwrap();
                 let path = NodePath::new(main, NodeIndex::root());
                 let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(300.0, 200.0));
