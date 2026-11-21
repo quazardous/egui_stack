@@ -570,6 +570,10 @@ mod tests {
             style.overlay.feel.interact_expansion = 20.0;
             let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(160.0));
             let center = rect.center();
+            let source = NodePath {
+                surface: SurfaceIndex::main(),
+                node: NodeIndex(1),
+            };
             let path = NodePath {
                 surface: SurfaceIndex::main(),
                 node: NodeIndex::root(),
@@ -596,7 +600,7 @@ mod tests {
                         outside: false,
                     },
                     drag: DragData {
-                        src: TreeComponent::Node(path),
+                        src: TreeComponent::Node(source),
                         rect,
                     },
                     pointer: center + offset,
@@ -613,7 +617,11 @@ mod tests {
                         _ => None,
                     })
                     .collect();
-                assert_eq!(*painter.hovered.lock().unwrap(), highlighted);
+                assert_eq!(
+                    *painter.hovered.lock().unwrap(),
+                    highlighted,
+                    "pointer offset: {offset:?}"
+                );
                 assert_eq!(
                     destination,
                     expected.map(|insert| TabDestination::Node(path, insert)),
