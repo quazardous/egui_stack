@@ -40,6 +40,18 @@ impl<Tab> DockArea<'_, Tab> {
         drag_data: &mut Option<DragData>,
         tab_viewer: &mut impl TabViewer<Tab = Tab>,
     ) -> Across {
+        if self
+            .space
+            .as_ref()
+            .and_then(|space| space.floating.session.as_ref())
+            .is_some_and(|session| !self.source_valid(&session.src))
+        {
+            if let Some(space) = self.space.as_mut() {
+                space.floating.session = None;
+            }
+            Self::idle(state);
+            self.forget_verdicts();
+        }
         let Some(space) = self.space.as_mut() else {
             return Across::Here;
         };
@@ -280,9 +292,12 @@ impl<Tab> DockArea<'_, Tab> {
         rect: Rect,
         tab_viewer: &mut impl TabViewer<Tab = Tab>,
     ) {
+        if !self.source_valid(&src) {
+            return;
+        }
         match report.outcome {
             Outcome::Drop(destination) => {
-                if !self.source_valid(&src) {
+                if !self.destination_valid(&destination) {
                     return;
                 }
                 let surface = match destination {
@@ -356,14 +371,35 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     /// Whether `src` is still a tab or a leaf of the state.
-    fn source_valid(&self, src: &TreeComponent) -> bool {
+    pub(super) fn source_valid(&self, src: &TreeComponent) -> bool {
         match *src {
             TreeComponent::Tab(path) => self
                 .dock_state
                 .leaf(path.node_path())
                 .is_ok_and(|leaf| path.tab.0 < leaf.tabs.len()),
-            TreeComponent::Node(path) => self.dock_state.leaf(path).is_ok(),
+            TreeComponent::Node(path) => self
+                .dock_state
+                .leaf(path)
+                .is_ok_and(|leaf| !leaf.tabs.is_empty()),
             TreeComponent::Surface(_) => false,
+        }
+    }
+
+    /// Whether a destination still refers to a usable surface or leaf.
+    pub(super) fn destination_valid(&self, destination: &TabDestination) -> bool {
+        match *destination {
+            TabDestination::Node(path, ref insert) => {
+                self.dock_state.leaf(path).is_ok_and(|leaf| match insert {
+                    TabInsert::Insert(index) => index.0 <= leaf.tabs.len(),
+                    _ => true,
+                })
+            }
+            TabDestination::EmptySurface(surface) => self
+                .dock_state
+                .get_surface(surface)
+                .and_then(Surface::node_tree)
+                .is_some_and(|tree| tree.is_empty()),
+            TabDestination::Window(_) => true,
         }
     }
 
@@ -380,37 +416,12 @@ impl<Tab> DockArea<'_, Tab> {
         if !self.source_valid(&src) {
             return false;
         }
+        if !self.destination_valid(&destination) {
+            return false;
+        }
         let to = match destination {
-            TabDestination::Node(path, _) => {
-                let there = self
-                    .dock_state
-                    .get_surface(path.surface)
-                    .and_then(Surface::node_tree)
-                    .is_some_and(|tree| tree.iter().nth(path.node.0).is_some());
-                if !there || self.dock_state.leaf(path).is_err() {
-                    return false;
-                }
-                if let TabDestination::Node(_, TabInsert::Insert(index)) = destination
-                    && self
-                        .dock_state
-                        .leaf(path)
-                        .is_ok_and(|leaf| index.0 > leaf.tabs.len())
-                {
-                    return false;
-                }
-                Some(path.surface)
-            }
-            TabDestination::EmptySurface(surface) => {
-                if self
-                    .dock_state
-                    .get_surface(surface)
-                    .and_then(Surface::node_tree)
-                    .is_none()
-                {
-                    return false;
-                }
-                Some(surface)
-            }
+            TabDestination::Node(path, _) => Some(path.surface),
+            TabDestination::EmptySurface(surface) => Some(surface),
             TabDestination::Window(_) => None,
         };
         if let Some(to) = to {
@@ -551,7 +562,7 @@ impl<Tab> DockArea<'_, Tab> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DockRules, DockSpace, NodeIndex, NodePath};
+    use crate::{DockRules, DockSpace, DockState, NodeIndex, NodePath, SurfaceIndex};
     use egui::WidgetText;
 
     struct Viewer {
@@ -625,5 +636,30 @@ mod tests {
                 assert_eq!(tabs.contains(&"allowed"), group && allow_windows);
             }
         }
+    }
+
+    #[test]
+    fn stale_drag_paths_are_rejected() {
+        let mut dock = DockState::new(vec!["a"]);
+        let area = DockArea::new(&mut dock);
+        let root = NodePath::new(SurfaceIndex::main(), NodeIndex::root());
+        let missing = NodePath::new(SurfaceIndex::main(), NodeIndex(100));
+        assert!(area.source_valid(&TreeComponent::Node(root)));
+        assert!(!area.source_valid(&TreeComponent::Node(missing)));
+        assert!(!area.source_valid(&TreeComponent::Tab((root, TabIndex(1)).into())));
+        assert!(
+            area.destination_valid(&TabDestination::Node(root, TabInsert::Insert(TabIndex(1)),))
+        );
+        assert!(
+            !area.destination_valid(&TabDestination::Node(root, TabInsert::Insert(TabIndex(2)),))
+        );
+        assert!(!area.destination_valid(&TabDestination::Node(missing, TabInsert::Append)));
+        assert!(!area.destination_valid(&TabDestination::EmptySurface(SurfaceIndex::main())));
+        let absent = SurfaceIndex(100);
+        assert!(!area.destination_valid(&TabDestination::EmptySurface(absent)));
+        assert!(!area.source_valid(&TreeComponent::Node(NodePath::new(
+            absent,
+            NodeIndex::root(),
+        ))));
     }
 }
