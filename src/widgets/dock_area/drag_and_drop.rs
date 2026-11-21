@@ -1,5 +1,3 @@
-use std::ops::BitOrAssign;
-
 use egui::{
     Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, TextStyle, TextWrapMode, Ui, Vec2,
     WidgetText,
@@ -114,7 +112,7 @@ fn draw_highlight_rect(rect: Rect, ui: &Ui, style: &Style, painter: &dyn DockPai
     painter.drop_target(&make_overlay_painter(ui), &DropTargetPaint { rect, style });
 }
 
-// Draws one of the Tab drop destination icons inside `rect`, which one you get is specified by `is_top_bottom`.
+// Draws a drop destination button. The first hit wins when expanded hitboxes overlap.
 fn button_ui(
     rect: Rect,
     ui: &Ui,
@@ -125,20 +123,21 @@ fn button_ui(
     painter: &dyn DockPainter,
 ) -> bool {
     let inner = rect.shrink(rect.width() * 0.1);
-    let is_mouse_over = inner
-        .expand(style.overlay.feel.interact_expansion)
-        .contains(mouse_pos);
+    let hovered = !*lock
+        && inner
+            .expand(style.overlay.feel.interact_expansion)
+            .contains(mouse_pos);
     painter.drop_button(
         &make_overlay_painter(ui),
         &DropButtonPaint {
             rect,
             split,
-            hovered: is_mouse_over && !*lock,
+            hovered,
             style,
         },
     );
-    lock.bitor_assign(is_mouse_over);
-    is_mouse_over
+    *lock |= hovered;
+    hovered
 }
 
 #[derive(PartialEq, Eq)]
