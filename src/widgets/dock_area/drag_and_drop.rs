@@ -205,6 +205,26 @@ impl DragDropState {
         let mut destination: Option<TabDestination> = windows_allowed
             .then(|| TabDestination::Window(Rect::from_min_size(pointer, self.drag.rect.size())));
 
+        // A narrow leaf may have no room for the icon layout. Still allow joining
+        // the leaf, but do not create inverted or invisible split buttons.
+        if !shortest_side.is_finite() || shortest_side <= 0.0 {
+            let inside = self.hover.rect.contains(pointer);
+            self.update_lock(
+                if inside {
+                    LockState::SoftLock
+                } else {
+                    LockState::Unlocked
+                },
+                style,
+                ui.ctx(),
+            );
+            return if inside {
+                Some(self.hover.dst.as_tab_destination())
+            } else {
+                destination
+            };
+        }
+
         let center = rect.center();
         let rect = Rect::from_center_size(center, Vec2::splat(shortest_side));
 
@@ -603,6 +623,21 @@ mod tests {
                             &style,
                             &StylePainter,
                             AllowedSplits::None,
+                            windows_allowed,
+                        ),
+                        expected,
+                    );
+
+                    state.hover.rect = Rect::from_center_size(
+                        state.pointer,
+                        Vec2::splat(1.0),
+                    );
+                    assert_eq!(
+                        state.resolve_icon_based(
+                            ui,
+                            &style,
+                            &StylePainter,
+                            AllowedSplits::All,
                             windows_allowed,
                         ),
                         expected,
