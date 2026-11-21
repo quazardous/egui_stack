@@ -251,8 +251,16 @@ impl<Tab> DockArea<'_, Tab> {
             .is_some_and(|drag| !self.source_valid(&drag.src))
         {
             drag_data = None;
-            if let Some(space) = self.space.as_mut() {
+            if let Some(space) = self.space.as_mut()
+                && space.floating.session.as_ref().is_some_and(|session| {
+                    session.source == ui.ctx().viewport_id()
+                })
+            {
                 space.floating.session = None;
+            }
+            if let Some(id) = ui.ctx().dragged_id() {
+                state.drag_lost = Some(id);
+                ui.ctx().stop_dragging();
             }
             state.reset_drag();
             state.tab_in_air = None;
@@ -790,7 +798,11 @@ impl<Tab> DockArea<'_, Tab> {
     /// The viewer's veto for the dragged tab at `destination`; for a whole leaf, for each of its
     /// tabs, the first refusal said. `None` when allowed.
     fn hover_valid(&self, hover: &HoverData) -> bool {
-        hover.outside || self.destination_valid(&hover.dst.as_tab_destination())
+        hover.outside
+            || match hover.dst {
+                TreeComponent::Tab(_) => self.source_valid(&hover.dst),
+                _ => self.destination_valid(&hover.dst.as_tab_destination()),
+            }
     }
 
     fn drop_refusal(
