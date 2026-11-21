@@ -1,5 +1,15 @@
 # egui_stack changelog
 
+## egui_stack 0.31.1 - 2026-11-21
+
+### Fixed
+
+- The icons of a tab bar's buttons (add tab, close all tabs, close window, move window, the float's close button) are drawn one point wide rounded to whole physical pixels of their window, so they stay sharp at a fractional scale such as 1.25 or 1.5 (a native float on a screen of its own included) instead of blurring over two pixel rows.
+- When the expanded hitboxes of the icon-based docking overlay's buttons overlap, the highlighted button now determines the drop destination instead of a later, unhighlighted button overriding it.
+- Reject stale drag sources and drop destinations before resolving overlays, invoking drop vetoes or applying cross-viewport moves. Clear invalid drag sessions and cached target locks when their paths disappear.
+- Enforce floating-window restrictions in all docking overlays, including drops into DockSpace floats, and recheck floating permission and source validity when applying cross-viewport drops.
+  Avoid invalid icon geometry in narrow leaves and undefined interpolation in collapsed drop rectangles.
+
 ## egui_stack 0.31.0 - 2026-11-20
 
 ### Breaking changes
