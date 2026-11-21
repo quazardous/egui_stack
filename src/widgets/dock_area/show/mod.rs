@@ -795,8 +795,7 @@ impl<Tab> DockArea<'_, Tab> {
         allowed.then_some(destination)
     }
 
-    /// The viewer's veto for the dragged tab at `destination`; for a whole leaf, for each of its
-    /// tabs, the first refusal said. `None` when allowed.
+    /// Whether a cached hover still refers to an existing target.
     fn hover_valid(&self, hover: &HoverData) -> bool {
         hover.outside
             || match hover.dst {
@@ -805,6 +804,8 @@ impl<Tab> DockArea<'_, Tab> {
             }
     }
 
+    /// The viewer's veto for the dragged tab at `destination`; for a whole leaf, for each of its
+    /// tabs, the first refusal said. `None` when allowed.
     fn drop_refusal(
         &self,
         state: &State,
