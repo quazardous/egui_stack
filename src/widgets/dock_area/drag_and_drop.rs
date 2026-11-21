@@ -1,5 +1,3 @@
-use std::ops::BitOrAssign;
-
 use egui::{
     Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, TextStyle, TextWrapMode, Ui, Vec2,
     WidgetText,
@@ -114,7 +112,7 @@ fn draw_highlight_rect(rect: Rect, ui: &Ui, style: &Style, painter: &dyn DockPai
     painter.drop_target(&make_overlay_painter(ui), &DropTargetPaint { rect, style });
 }
 
-// Draws one of the Tab drop destination icons inside `rect`, which one you get is specified by `is_top_bottom`.
+// Draws a drop destination button. The first hit wins when expanded hitboxes overlap.
 fn button_ui(
     rect: Rect,
     ui: &Ui,
@@ -125,20 +123,21 @@ fn button_ui(
     painter: &dyn DockPainter,
 ) -> bool {
     let inner = rect.shrink(rect.width() * 0.1);
-    let is_mouse_over = inner
-        .expand(style.overlay.feel.interact_expansion)
-        .contains(mouse_pos);
+    let hovered = !*lock
+        && inner
+            .expand(style.overlay.feel.interact_expansion)
+            .contains(mouse_pos);
     painter.drop_button(
         &make_overlay_painter(ui),
         &DropButtonPaint {
             rect,
             split,
-            hovered: is_mouse_over && !*lock,
+            hovered,
             style,
         },
     );
-    lock.bitor_assign(is_mouse_over);
-    is_mouse_over
+    *lock |= hovered;
+    hovered
 }
 
 #[derive(PartialEq, Eq)]
@@ -582,9 +581,94 @@ fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
     use crate::StylePainter;
     use egui_kittest::Harness;
+
+    #[derive(Default)]
+    struct ButtonRecorder {
+        hovered: Mutex<Vec<Option<Split>>>,
+    }
+
+    impl DockPainter for ButtonRecorder {
+        fn drop_button(&self, _painter: &Painter, button: &DropButtonPaint<'_>) {
+            if button.hovered {
+                self.hovered.lock().unwrap().push(button.split);
+            }
+        }
+    }
+
+    #[test]
+    fn overlapping_icon_drop_targets_match_the_highlight() {
+        egui::__run_test_ui(|ui| {
+            let mut style = Style::from_egui(ui.style());
+            style.overlay.button_spacing = 10.0;
+            style.overlay.max_button_size = 100.0;
+            style.overlay.feel.interact_expansion = 20.0;
+            let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(160.0));
+            let center = rect.center();
+            let source = NodePath {
+                surface: SurfaceIndex::main(),
+                node: NodeIndex(1),
+            };
+            let path = NodePath {
+                surface: SurfaceIndex::main(),
+                node: NodeIndex::root(),
+            };
+            // The buttons are 40 points wide and 50 points apart. The expanded
+            // hitboxes extend 36 points from their centers, so they overlap.
+            for (offset, expected) in [
+                (Vec2::ZERO, Some(TabInsert::Append)),
+                (vec2(25.0, 0.0), Some(TabInsert::Append)),
+                (vec2(25.0, 25.0), Some(TabInsert::Append)),
+                (vec2(0.0, 50.0), Some(TabInsert::Split(Split::Below))),
+                (vec2(50.0, 0.0), Some(TabInsert::Split(Split::Right))),
+                (vec2(0.0, -50.0), Some(TabInsert::Split(Split::Above))),
+                (vec2(-50.0, 0.0), Some(TabInsert::Split(Split::Left))),
+                (vec2(75.0, 75.0), None),
+            ] {
+                let painter = ButtonRecorder::default();
+                let mut state = DragDropState {
+                    hover: HoverData {
+                        rect,
+                        dst: TreeComponent::Node(path),
+                        tab: None,
+                        tab_bar: None,
+                        outside: false,
+                    },
+                    drag: DragData {
+                        src: TreeComponent::Node(source),
+                        rect,
+                    },
+                    pointer: center + offset,
+                    locked: None,
+                    src_in_window: false,
+                    dst_in_window: false,
+                };
+                let destination =
+                    state.resolve_icon_based(ui, &style, &painter, AllowedSplits::All, false);
+                let highlighted: Vec<_> = expected
+                    .iter()
+                    .map(|insert| match insert {
+                        TabInsert::Split(split) => Some(*split),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    *painter.hovered.lock().unwrap(),
+                    highlighted,
+                    "pointer offset: {offset:?}"
+                );
+                assert_eq!(
+                    destination,
+                    expected.map(|insert| TabDestination::Node(path, insert)),
+                    "pointer offset: {offset:?}"
+                );
+            }
+        });
+    }
 
     #[test]
     fn icon_drop_respects_window_restrictions() {
