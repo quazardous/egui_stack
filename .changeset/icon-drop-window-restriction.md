@@ -2,4 +2,4 @@
 egui_stack: patch
 ---
 
-Enforce floating-window restrictions when resolving icon-based drop targets, consistently with the other docking overlays.
+Enforce floating-window restrictions in all docking overlays, including drops into DockSpace floats, and recheck floating permission and source validity when applying cross-viewport drops.
