@@ -536,3 +536,83 @@ impl<Tab> DockArea<'_, Tab> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DockRules, DockSpace, NodeIndex, NodePath};
+    use egui::WidgetText;
+
+    struct Viewer {
+        allow_windows: bool,
+    }
+
+    impl TabViewer for Viewer {
+        type Tab = &'static str;
+
+        fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
+            (*tab).into()
+        }
+
+        fn ui(&mut self, _ui: &mut Ui, _tab: &mut Self::Tab) {}
+
+        fn allowed_in_windows(&self, tab: &mut Self::Tab) -> bool {
+            self.allow_windows || *tab != "restricted"
+        }
+    }
+
+    #[test]
+    fn remote_release_rechecks_float_permission() {
+        for group in [false, true] {
+            for allow_windows in [false, true] {
+                let mut space = DockSpace::new();
+                space.add_dock(
+                    "main",
+                    DockRules::default(),
+                    vec!["restricted", "allowed"],
+                );
+                let main = space.dock_surface("main").unwrap();
+                let path = NodePath::new(main, NodeIndex::root());
+                let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(300.0, 200.0));
+                // Create a float without invoking the viewer's permission policy.
+                space.add_dock("other", DockRules::default(), vec!["target"]);
+                let other = space.dock_surface("other").unwrap();
+                let key = space
+                    .float_out(
+                        TabPath::new(other, NodeIndex::root(), TabIndex(0)),
+                        rect,
+                        |tab| egui::Id::new(*tab),
+                    )
+                    .unwrap();
+                let target = space.dock_surface(&key).unwrap();
+                let src = if group {
+                    TreeComponent::Node(path)
+                } else {
+                    TreeComponent::Tab(TabPath::new(main, NodeIndex::root(), TabIndex(0)))
+                };
+                let mut viewer = Viewer { allow_windows };
+                let mut area = DockArea::dock(&mut space, "main");
+                assert!(area.is_float_dock(target));
+                area.release_over(
+                    Report {
+                        stamp: 0,
+                        rank: 0,
+                        outcome: Outcome::Drop(TabDestination::Node(
+                            NodePath::new(target, NodeIndex::root()),
+                            TabInsert::Append,
+                        )),
+                        unfold: None,
+                    },
+                    src,
+                    rect,
+                    &mut viewer,
+                );
+                let tabs = area.dock_state[NodePath::new(target, NodeIndex::root())]
+                    .tabs()
+                    .unwrap();
+                assert_eq!(tabs.contains(&"restricted"), allow_windows);
+                assert_eq!(tabs.contains(&"allowed"), group && allow_windows);
+            }
+        }
+    }
+}
