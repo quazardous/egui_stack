@@ -359,6 +359,14 @@ impl DragDropState {
         // Main cases, splits, window creations, etc.
         let (hover_rect, pointer) = (self.hover.rect, self.pointer);
 
+        // A collapsed leaf may have a zero-sized axis; inverse_lerp is undefined
+        // there. Such a leaf cannot offer meaningful split regions.
+        if hover_rect.width() <= 0.0 || hover_rect.height() <= 0.0 {
+            return hover_rect
+                .contains(pointer)
+                .then(|| self.hover.dst.as_tab_destination());
+        }
+
         let tab_insertion = {
             // A reverse lerp of the pointers position relative to the hovered leaf rect.
             // Range is (-0.5, -0.5) to (0.5, 0.5)
@@ -628,12 +636,22 @@ mod tests {
                         expected,
                     );
 
-                    state.hover.rect = Rect::from_center_size(
-                        state.pointer,
-                        Vec2::splat(1.0),
-                    );
+                    state.hover.rect =
+                        Rect::from_center_size(state.pointer, Vec2::splat(1.0));
                     assert_eq!(
                         state.resolve_icon_based(
+                            ui,
+                            &style,
+                            &StylePainter,
+                            AllowedSplits::All,
+                            windows_allowed,
+                        ),
+                        expected,
+                    );
+
+                    state.hover.rect = Rect::from_center_size(state.pointer, Vec2::ZERO);
+                    assert_eq!(
+                        state.resolve_traditional(
                             ui,
                             &style,
                             &StylePainter,
