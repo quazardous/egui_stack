@@ -2271,10 +2271,9 @@ impl<Tab> DockArea<'_, Tab> {
                 Some(DragDropState {
                     drag: DragData { src, .. },
                     ..
-                }) => match *src {
+                }) => self.source_valid(src) && match *src {
                     TreeComponent::Tab(src_path) => {
                         !self.dock_state.is_window(path.surface)
-                            || !self.dock_state[src_path.node_path()].is_leaf()
                             || self.may_float(src_path, tab_viewer)
                     }
                     TreeComponent::Node(src_path) => {
