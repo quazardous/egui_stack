@@ -166,8 +166,8 @@
 //! each with a share of the space. Splitting a node along its parent's direction adds a child to
 //! that row or column, and the separator between two neighbours resizes those two.
 //! Its [`Grid`](Node::Grid) nodes lay out their children in rows and columns, by default as
-//! many columns as the square root of their number; [`Tree::arrange_as_grid`] turns a row or a
-//! column into a grid.
+//! many columns as bring their cells closest to 4:3 ([`GridLayout::Auto`]);
+//! [`Tree::arrange_as_grid`] turns a row or a column into a grid.
 //!
 //! The [`Tree`] API allows you to programatically manipulate the dock layout.
 //!

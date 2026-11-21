@@ -159,6 +159,11 @@ impl<Tab> DockArea<'_, Tab> {
             self.try_initiate_node_drag(ui, state, path);
         }
 
+        // After the body, so that a dock shown inside a tab takes the keys first.
+        if self.cycle_tabs_with_keyboard {
+            self.cycle_tab_by_keyboard(ui, path, rect);
+        }
+
         let tabs = self.dock_state[path]
             .tabs_mut()
             .expect("This node must be a leaf here");
@@ -170,6 +175,41 @@ impl<Tab> DockArea<'_, Tab> {
                 ));
             }
         }
+    }
+
+    /// Ctrl+Tab and Ctrl+Shift+Tab: the leaf at `path`, drawn in `rect`, selects its next or
+    /// previous tab, wrapping around, when the pointer is over it, on its layer, and no text
+    /// edit has the focus ([`DockArea::cycle_tabs_with_keyboard`]). The keys are consumed, so
+    /// the leaves around a dock shown inside a tab do not cycle too.
+    ///
+    /// Taken from egui_tiles' Ctrl+Tab cycling, `Behavior::cycle_tabs_with_keyboard`
+    /// (<https://github.com/rerun-io/egui_tiles>, MIT OR Apache-2.0).
+    fn cycle_tab_by_keyboard(&mut self, ui: &Ui, path: NodePath, rect: Rect) {
+        if !ui.rect_contains_pointer(rect) || ui.ctx().text_edit_focused() {
+            return;
+        }
+        // The more specific shortcut first: `consume_key` ignores an extra Shift.
+        let forward = if ui
+            .input_mut(|i| i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, Key::Tab))
+        {
+            false
+        } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, Key::Tab)) {
+            true
+        } else {
+            return;
+        };
+        let Ok(leaf) = self.dock_state.leaf_mut(path) else {
+            return;
+        };
+        let len = leaf.tabs.len();
+        if len < 2 {
+            return;
+        }
+        let step = if forward { 1 } else { len - 1 };
+        // As a click on the tab does.
+        leaf.active = TabIndex((leaf.active.0 + step) % len);
+        self.new_focused = Some(path);
+        ui.ctx().request_repaint();
     }
 
     /// Draws controls for the hidden tab bar: a triangle button to show it,

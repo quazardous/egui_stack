@@ -1,5 +1,5 @@
-//! A grid lays out its children in rows and columns: as many columns as the square root of
-//! their number, rounded up. A separator on a column line resizes the two columns beside it, in
+//! A grid lays out its children in rows and columns: the number of columns whose cells come
+//! closest to 4:3 in the grid's rectangle. A separator on a column line resizes the two columns beside it, in
 //! every row; a view added at run time or dropped on a grid child's edge joins the grid.
 
 use egui::{Id, Key, Modifiers, Pos2, Rect, Ui, WidgetText, accesskit::Role, pos2, vec2};

@@ -45,6 +45,7 @@ pub struct DockArea<'tree, Tab> {
     show_builtin_tab_menu: bool,
     draggable_tabs: bool,
     tab_focus: TabFocus,
+    cycle_tabs_with_keyboard: bool,
     hidable_tab_bars: bool,
     hidden_tab_bar_drags_group: bool,
     group_handles: GroupHandles,
@@ -264,6 +265,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             show_builtin_tab_menu: true,
             draggable_tabs: true,
             tab_focus: TabFocus::Each,
+            cycle_tabs_with_keyboard: true,
             hidable_tab_bars: false,
             hidden_tab_bar_drags_group: false,
             group_handles: GroupHandles::ALL,
@@ -458,6 +460,27 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     /// By default it's `false`.
     pub fn show_add_popup(mut self, show_add_popup: bool) -> Self {
         self.show_add_popup = show_add_popup;
+        self
+    }
+
+    /// Sets whether Ctrl+Tab and Ctrl+Shift+Tab cycle the active tab of the tab group under the
+    /// pointer: the next tab, or the previous one, wrapping around. By default `true`.
+    ///
+    /// The innermost group under the pointer cycles (a dock shown inside a tab gets the keys
+    /// before the group around it), and only when no other layer, a popup or a float, covers
+    /// it there. A focused text edit keeps the keys. The new tab becomes the active one and its
+    /// group the focused leaf, as when it is clicked. A tab hidden by
+    /// [`DockSpace::take_with_place`](crate::DockSpace::take_with_place) is out of its group,
+    /// so it is skipped.
+    ///
+    /// The floats' docks are drawn by [`FloatsArea`](crate::FloatsArea), not by this area: give
+    /// it the same value
+    /// ([`FloatsArea::cycle_tabs_with_keyboard`](crate::FloatsArea::cycle_tabs_with_keyboard)).
+    ///
+    /// Taken from egui_tiles' `Behavior::cycle_tabs_with_keyboard`
+    /// (<https://github.com/rerun-io/egui_tiles>, MIT OR Apache-2.0).
+    pub fn cycle_tabs_with_keyboard(mut self, cycle_tabs_with_keyboard: bool) -> Self {
+        self.cycle_tabs_with_keyboard = cycle_tabs_with_keyboard;
         self
     }
 
