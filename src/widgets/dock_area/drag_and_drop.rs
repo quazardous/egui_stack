@@ -1,5 +1,3 @@
-use std::ops::BitOrAssign;
-
 use egui::{
     Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, TextStyle, TextWrapMode, Ui, Vec2,
     WidgetText,
@@ -114,7 +112,7 @@ fn draw_highlight_rect(rect: Rect, ui: &Ui, style: &Style, painter: &dyn DockPai
     painter.drop_target(&make_overlay_painter(ui), &DropTargetPaint { rect, style });
 }
 
-// Draws one of the Tab drop destination icons inside `rect`, which one you get is specified by `is_top_bottom`.
+// Draws a drop destination button. The first hit wins when expanded hitboxes overlap.
 fn button_ui(
     rect: Rect,
     ui: &Ui,
@@ -125,20 +123,21 @@ fn button_ui(
     painter: &dyn DockPainter,
 ) -> bool {
     let inner = rect.shrink(rect.width() * 0.1);
-    let is_mouse_over = inner
-        .expand(style.overlay.feel.interact_expansion)
-        .contains(mouse_pos);
+    let hovered = !*lock
+        && inner
+            .expand(style.overlay.feel.interact_expansion)
+            .contains(mouse_pos);
     painter.drop_button(
         &make_overlay_painter(ui),
         &DropButtonPaint {
             rect,
             split,
-            hovered: is_mouse_over && !*lock,
+            hovered,
             style,
         },
     );
-    lock.bitor_assign(is_mouse_over);
-    is_mouse_over
+    *lock |= hovered;
+    hovered
 }
 
 #[derive(PartialEq, Eq)]
@@ -184,6 +183,15 @@ impl DragDropState {
     ) -> Option<TabDestination> {
         assert!(!self.is_on_title_bar());
 
+        if self.hover.outside {
+            self.update_lock(LockState::Unlocked, style, ui.ctx());
+            return windows_allowed.then(|| {
+                TabDestination::Window(Rect::from_min_size(self.pointer, self.drag.rect.size()))
+            });
+        }
+        if !windows_allowed && self.dst_in_window {
+            return None;
+        }
         draw_highlight_rect(self.hover.rect, ui, style, painter);
         let mut hovering_buttons = false;
         let total_button_spacing = style.overlay.button_spacing * 2.0;
@@ -195,6 +203,26 @@ impl DragDropState {
 
         let mut destination: Option<TabDestination> = windows_allowed
             .then(|| TabDestination::Window(Rect::from_min_size(pointer, self.drag.rect.size())));
+
+        // A narrow leaf may have no room for the icon layout. Still allow joining
+        // the leaf, but do not create inverted or invisible split buttons.
+        if !shortest_side.is_finite() || shortest_side <= 0.0 {
+            let inside = self.hover.rect.contains(pointer);
+            self.update_lock(
+                if inside {
+                    LockState::SoftLock
+                } else {
+                    LockState::Unlocked
+                },
+                style,
+                ui.ctx(),
+            );
+            return if inside {
+                Some(self.hover.dst.as_tab_destination())
+            } else {
+                destination
+            };
+        }
 
         let center = rect.center();
         let rect = Rect::from_center_size(center, Vec2::splat(shortest_side));
@@ -329,6 +357,14 @@ impl DragDropState {
 
         // Main cases, splits, window creations, etc.
         let (hover_rect, pointer) = (self.hover.rect, self.pointer);
+
+        // A collapsed leaf may have a zero-sized axis; inverse_lerp is undefined
+        // there. Such a leaf cannot offer meaningful split regions.
+        if hover_rect.width() <= 0.0 || hover_rect.height() <= 0.0 {
+            return hover_rect
+                .contains(pointer)
+                .then(|| self.hover.dst.as_tab_destination());
+        }
 
         let tab_insertion = {
             // A reverse lerp of the pointers position relative to the hovered leaf rect.
@@ -541,4 +577,196 @@ fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
     pos = pos.round_to_pixels(ui.painter().pixels_per_point());
 
     Rect::from_min_size(pos, rect.size())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+    use crate::StylePainter;
+    use egui_kittest::Harness;
+
+    #[derive(Default)]
+    struct ButtonRecorder {
+        hovered: Mutex<Vec<Option<Split>>>,
+    }
+
+    impl DockPainter for ButtonRecorder {
+        fn drop_button(&self, _painter: &Painter, button: &DropButtonPaint<'_>) {
+            if button.hovered {
+                self.hovered.lock().unwrap().push(button.split);
+            }
+        }
+    }
+
+    #[test]
+    fn overlapping_icon_drop_targets_match_the_highlight() {
+        egui::__run_test_ui(|ui| {
+            let mut style = Style::from_egui(ui.style());
+            style.overlay.button_spacing = 10.0;
+            style.overlay.max_button_size = 100.0;
+            style.overlay.feel.interact_expansion = 20.0;
+            let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(160.0));
+            let center = rect.center();
+            let source = NodePath {
+                surface: SurfaceIndex::main(),
+                node: NodeIndex(1),
+            };
+            let path = NodePath {
+                surface: SurfaceIndex::main(),
+                node: NodeIndex::root(),
+            };
+            // The buttons are 40 points wide and 50 points apart. The expanded
+            // hitboxes extend 36 points from their centers, so they overlap.
+            for (offset, expected) in [
+                (Vec2::ZERO, Some(TabInsert::Append)),
+                (vec2(25.0, 0.0), Some(TabInsert::Append)),
+                (vec2(25.0, 25.0), Some(TabInsert::Append)),
+                (vec2(0.0, 50.0), Some(TabInsert::Split(Split::Below))),
+                (vec2(50.0, 0.0), Some(TabInsert::Split(Split::Right))),
+                (vec2(0.0, -50.0), Some(TabInsert::Split(Split::Above))),
+                (vec2(-50.0, 0.0), Some(TabInsert::Split(Split::Left))),
+                (vec2(75.0, 75.0), None),
+            ] {
+                let painter = ButtonRecorder::default();
+                let mut state = DragDropState {
+                    hover: HoverData {
+                        rect,
+                        dst: TreeComponent::Node(path),
+                        tab: None,
+                        tab_bar: None,
+                        outside: false,
+                    },
+                    drag: DragData {
+                        src: TreeComponent::Node(source),
+                        rect,
+                    },
+                    pointer: center + offset,
+                    locked: None,
+                    src_in_window: false,
+                    dst_in_window: false,
+                };
+                let destination =
+                    state.resolve_icon_based(ui, &style, &painter, AllowedSplits::All, false);
+                let highlighted: Vec<_> = expected
+                    .iter()
+                    .map(|insert| match insert {
+                        TabInsert::Split(split) => Some(*split),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    *painter.hovered.lock().unwrap(),
+                    highlighted,
+                    "pointer offset: {offset:?}"
+                );
+                assert_eq!(
+                    destination,
+                    expected.map(|insert| TabDestination::Node(path, insert)),
+                    "pointer offset: {offset:?}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn icon_drop_respects_window_restrictions() {
+        let mut harness = Harness::builder().build_ui_state(
+            |ui, _: &mut ()| {
+                let style = Style::from_egui(ui.style());
+                let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(300.0));
+                for (dst_in_window, windows_allowed) in
+                    [(true, false), (true, true), (false, false), (false, true)]
+                {
+                    let path = NodePath::new(
+                        if dst_in_window {
+                            SurfaceIndex(1)
+                        } else {
+                            SurfaceIndex::main()
+                        },
+                        NodeIndex::root(),
+                    );
+                    let mut state = DragDropState {
+                        hover: HoverData {
+                            rect,
+                            dst: TreeComponent::Node(path),
+                            tab: None,
+                            tab_bar: None,
+                            outside: false,
+                        },
+                        drag: DragData {
+                            src: TreeComponent::Node(NodePath::new(
+                                SurfaceIndex::main(),
+                                NodeIndex(2),
+                            )),
+                            rect,
+                        },
+                        pointer: rect.center(),
+                        locked: None,
+                        src_in_window: false,
+                        dst_in_window,
+                    };
+                    let expected = (!dst_in_window || windows_allowed)
+                        .then_some(TabDestination::Node(path, TabInsert::Append));
+                    assert_eq!(
+                        state.resolve_icon_based(
+                            ui,
+                            &style,
+                            &StylePainter,
+                            AllowedSplits::None,
+                            windows_allowed,
+                        ),
+                        expected,
+                    );
+
+                    state.hover.rect = Rect::from_center_size(state.pointer, Vec2::splat(1.0));
+                    assert_eq!(
+                        state.resolve_icon_based(
+                            ui,
+                            &style,
+                            &StylePainter,
+                            AllowedSplits::All,
+                            windows_allowed,
+                        ),
+                        expected,
+                    );
+
+                    state.hover.rect = Rect::from_center_size(state.pointer, Vec2::ZERO);
+                    assert_eq!(
+                        state.resolve_traditional(
+                            ui,
+                            &style,
+                            &StylePainter,
+                            AllowedSplits::All,
+                            windows_allowed,
+                        ),
+                        expected,
+                    );
+
+                    state.hover.outside = true;
+                    state.hover.rect = Rect::NOTHING;
+                    state.dst_in_window = false;
+                    assert_eq!(
+                        state.resolve_icon_based(
+                            ui,
+                            &style,
+                            &StylePainter,
+                            AllowedSplits::None,
+                            windows_allowed,
+                        ),
+                        windows_allowed.then(|| {
+                            TabDestination::Window(Rect::from_min_size(
+                                state.pointer,
+                                state.drag.rect.size(),
+                            ))
+                        }),
+                    );
+                }
+            },
+            (),
+        );
+        // These synthetic drag states request repaint; no settling is needed.
+        harness.step();
+    }
 }
