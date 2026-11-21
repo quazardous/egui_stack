@@ -570,10 +570,14 @@ mod tests {
             style.overlay.feel.interact_expansion = 20.0;
             let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(160.0));
             let center = rect.center();
-            let path = NodePath::new(SurfaceIndex::main(), NodeIndex::root());
+            let path = NodePath {
+                surface: SurfaceIndex::main(),
+                node: NodeIndex::root(),
+            };
             // The buttons are 40 points wide and 50 points apart. The expanded
             // hitboxes extend 36 points from their centers, so they overlap.
             for (offset, expected) in [
+                (Vec2::ZERO, Some(TabInsert::Append)),
                 (vec2(25.0, 0.0), Some(TabInsert::Append)),
                 (vec2(25.0, 25.0), Some(TabInsert::Append)),
                 (vec2(0.0, 50.0), Some(TabInsert::Split(Split::Below))),
@@ -612,7 +616,8 @@ mod tests {
                 assert_eq!(*painter.hovered.lock().unwrap(), highlighted);
                 assert_eq!(
                     destination,
-                    expected.map(|insert| TabDestination::Node(path, insert))
+                    expected.map(|insert| TabDestination::Node(path, insert)),
+                    "pointer offset: {offset:?}"
                 );
             }
         });
