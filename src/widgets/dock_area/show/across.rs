@@ -280,6 +280,9 @@ impl<Tab> DockArea<'_, Tab> {
         rect: Rect,
         tab_viewer: &mut impl TabViewer<Tab = Tab>,
     ) {
+        if !self.source_valid(&src) {
+            return;
+        }
         match report.outcome {
             Outcome::Drop(destination) => {
                 let dock = match destination {
@@ -336,7 +339,7 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     /// Whether `src` is still a tab or a leaf of the state.
-    fn source_valid(&self, src: &TreeComponent) -> bool {
+    pub(super) fn source_valid(&self, src: &TreeComponent) -> bool {
         match *src {
             TreeComponent::Tab(path) => self
                 .dock_state
