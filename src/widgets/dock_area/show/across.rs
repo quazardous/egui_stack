@@ -495,13 +495,23 @@ impl<Tab> DockArea<'_, Tab> {
 
     /// Outlines the docks of this viewport that could take the space's drag of `src`, where
     /// window positions are hidden.
-    fn paint_outlines(&self, ui: &Ui, src: &TreeComponent, tab_viewer: &impl TabViewer<Tab = Tab>) {
-        let Some(space) = self.space.as_ref() else {
-            return;
-        };
+    fn paint_outlines(
+        &mut self,
+        ui: &Ui,
+        src: &TreeComponent,
+        tab_viewer: &impl TabViewer<Tab = Tab>,
+    ) {
         if !self.source_valid(src) {
             return;
         }
+        let may_float = match *src {
+            TreeComponent::Tab(path) => self.may_float(path, tab_viewer),
+            TreeComponent::Node(path) => self.node_may_float(path, tab_viewer),
+            TreeComponent::Surface(_) => false,
+        };
+        let Some(space) = self.space.as_ref() else {
+            return;
+        };
         let viewport = ui.ctx().viewport_id();
         let style = self.style.as_ref().unwrap();
         let painter = make_overlay_painter(ui);
@@ -513,6 +523,7 @@ impl<Tab> DockArea<'_, Tab> {
                 continue;
             };
             let refused = !dock.rules.accept_drops
+                || (dock.floating && !may_float)
                 || self.dock_target(&dock.name).is_none_or(|target| {
                     let destination = match target {
                         TreeComponent::Node(path) => TabDestination::Node(path, TabInsert::Append),
