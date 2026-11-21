@@ -357,7 +357,7 @@ impl<Tab> DockArea<'_, Tab> {
                 .dock_state
                 .leaf(path.node_path())
                 .is_ok_and(|leaf| path.tab.0 < leaf.tabs.len()),
-            TreeComponent::Node(path) => self.dock_state.leaf(path).is_ok(),
+            TreeComponent::Node(path) => self.dock_state.leaf(path).is_ok_and(|leaf| !leaf.tabs.is_empty()),
             TreeComponent::Surface(_) => false,
         }
     }
@@ -375,7 +375,7 @@ impl<Tab> DockArea<'_, Tab> {
                 .dock_state
                 .get_surface(surface)
                 .and_then(Surface::node_tree)
-                .is_some_and(|tree| !tree.iter().any(crate::Node::is_leaf)),
+                .is_some_and(|tree| tree.is_empty()),
             TabDestination::Window(_) => true,
         }
     }
@@ -522,5 +522,26 @@ impl<Tab> DockArea<'_, Tab> {
                 },
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DockState, NodeIndex, NodePath, SurfaceIndex};
+
+    #[test]
+    fn stale_drag_paths_are_rejected() {
+        let mut dock = DockState::new(vec!["a"]);
+        let area = DockArea::new(&mut dock);
+        let root = NodePath::new(SurfaceIndex::main(), NodeIndex::root());
+        let missing = NodePath::new(SurfaceIndex::main(), NodeIndex(100));
+        assert!(area.source_valid(&TreeComponent::Node(root)));
+        assert!(!area.source_valid(&TreeComponent::Node(missing)));
+        assert!(!area.source_valid(&TreeComponent::Tab((root, TabIndex(1)).into())));
+        assert!(area.destination_valid(&TabDestination::Node(root, TabInsert::Insert(TabIndex(1)))));
+        assert!(!area.destination_valid(&TabDestination::Node(root, TabInsert::Insert(TabIndex(2)))));
+        assert!(!area.destination_valid(&TabDestination::Node(missing, TabInsert::Append)));
+        assert!(!area.destination_valid(&TabDestination::EmptySurface(SurfaceIndex::main())));
     }
 }
