@@ -40,7 +40,10 @@ impl<Tab> DockArea<'_, Tab> {
         drag_data: &mut Option<DragData>,
         tab_viewer: &mut impl TabViewer<Tab = Tab>,
     ) -> Across {
-        if self.space.as_ref().and_then(|space| space.floating.session.as_ref())
+        if self
+            .space
+            .as_ref()
+            .and_then(|space| space.floating.session.as_ref())
             .is_some_and(|session| !self.source_valid(&session.src))
         {
             if let Some(space) = self.space.as_mut() {
@@ -357,7 +360,10 @@ impl<Tab> DockArea<'_, Tab> {
                 .dock_state
                 .leaf(path.node_path())
                 .is_ok_and(|leaf| path.tab.0 < leaf.tabs.len()),
-            TreeComponent::Node(path) => self.dock_state.leaf(path).is_ok_and(|leaf| !leaf.tabs.is_empty()),
+            TreeComponent::Node(path) => self
+                .dock_state
+                .leaf(path)
+                .is_ok_and(|leaf| !leaf.tabs.is_empty()),
             TreeComponent::Surface(_) => false,
         }
     }
@@ -543,5 +549,11 @@ mod tests {
         assert!(!area.destination_valid(&TabDestination::Node(root, TabInsert::Insert(TabIndex(2)))));
         assert!(!area.destination_valid(&TabDestination::Node(missing, TabInsert::Append)));
         assert!(!area.destination_valid(&TabDestination::EmptySurface(SurfaceIndex::main())));
+        let absent = SurfaceIndex(100);
+        assert!(!area.destination_valid(&TabDestination::EmptySurface(absent)));
+        assert!(!area.source_valid(&TreeComponent::Node(NodePath::new(
+            absent,
+            NodeIndex::root(),
+        ))));
     }
 }
