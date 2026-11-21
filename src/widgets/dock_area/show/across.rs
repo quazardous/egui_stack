@@ -562,7 +562,7 @@ mod tests {
         type Tab = &'static str;
 
         fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {
-            egui::Id::new(*tab)
+            egui::Id::unique(*tab)
         }
 
         fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
@@ -592,7 +592,7 @@ mod tests {
                     .float_out(
                         TabPath::new(other, NodeIndex::root(), TabIndex(0)),
                         rect,
-                        |tab| egui::Id::new(*tab),
+                        |tab| egui::Id::unique(*tab),
                     )
                     .unwrap();
                 let target = space.dock_surface(&key).unwrap();
