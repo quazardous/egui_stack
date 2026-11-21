@@ -246,10 +246,17 @@ impl<Tab> DockArea<'_, Tab> {
             )
         });
 
-        if drag_data.as_ref().is_some_and(|drag| !self.source_valid(&drag.src)) {
+        if drag_data
+            .as_ref()
+            .is_some_and(|drag| !self.source_valid(&drag.src))
+        {
             drag_data = None;
+            if let Some(space) = self.space.as_mut() {
+                space.floating.session = None;
+            }
             state.reset_drag();
             state.tab_in_air = None;
+            self.forget_verdicts();
         }
         if state.dnd.as_ref().is_some_and(|dnd| {
             !self.source_valid(&dnd.drag.src) || !self.hover_valid(&dnd.hover)
@@ -780,11 +787,15 @@ impl<Tab> DockArea<'_, Tab> {
     /// The viewer's veto for the dragged tab at `destination`; for a whole leaf, for each of its
     /// tabs, the first refusal said. `None` when allowed.
     fn hover_valid(&self, hover: &HoverData) -> bool {
-        hover.outside || match hover.dst {
-            TreeComponent::Surface(surface) => self.dock_state.get_surface(surface)
-                .and_then(crate::Surface::node_tree).is_some(),
-            _ => self.source_valid(&hover.dst),
-        }
+        hover.outside
+            || match hover.dst {
+                TreeComponent::Surface(surface) => self
+                    .dock_state
+                    .get_surface(surface)
+                    .and_then(crate::Surface::node_tree)
+                    .is_some(),
+                _ => self.source_valid(&hover.dst),
+            }
     }
 
     fn drop_refusal(
