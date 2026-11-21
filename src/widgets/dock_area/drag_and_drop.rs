@@ -636,8 +636,7 @@ mod tests {
                         expected,
                     );
 
-                    state.hover.rect =
-                        Rect::from_center_size(state.pointer, Vec2::splat(1.0));
+                    state.hover.rect = Rect::from_center_size(state.pointer, Vec2::splat(1.0));
                     assert_eq!(
                         state.resolve_icon_based(
                             ui,
@@ -683,6 +682,7 @@ mod tests {
             },
             (),
         );
-        harness.run();
+        // These synthetic drag states request repaint; no settling is needed.
+        harness.step();
     }
 }
