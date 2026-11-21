@@ -997,7 +997,8 @@ impl<Tab> DockArea<'_, Tab> {
         let drag_state = state.dnd.as_mut().unwrap();
         drag_state.src_in_window = self.dock_state.is_window(src_surface);
         drag_state.dst_in_window =
-            !drag_state.hover.outside && self.dock_state.is_window(dst_surface);
+            !drag_state.hover.outside
+                && (self.dock_state.is_window(dst_surface) || self.is_float_dock(dst_surface));
         let style = self.style.as_ref().unwrap();
 
         if let Some(pointer) = state.last_hover_pos {
