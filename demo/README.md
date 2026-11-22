@@ -27,5 +27,6 @@ the library's.
   (`cargo install wasm-bindgen-cli --version <it>`). The [online demo](https://quazardous.github.io/egui_stack/)
   is built the same way on each push to the main branch (`.github/workflows/pages.yml`).
 - The README's GIF, `images/demo.gif`, is recorded headless from the demo:
-  `cargo test -p egui_stack_demo --test record_gif -- --ignored` (it renders with wgpu, so it
-  needs a GPU or a software Vulkan driver).
+  `cargo test -p egui_stack_demo --features record --test record_gif -- --ignored` (the
+  `record` feature brings in wgpu, which default test builds leave out; it needs a GPU or a
+  software Vulkan driver).
