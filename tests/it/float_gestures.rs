@@ -4,8 +4,7 @@
 //! by default a move never docks; with `FloatMove::Dock` a window released over a dock docks
 //! whole, unless refused or where positions are hidden.
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use egui::{
     CursorIcon, Event, Id, Pos2, Rect, Ui, UiBuilder, ViewportCommand, ViewportId, WidgetText,

@@ -327,9 +327,9 @@ the native floats.
 - Not built: groups dragged back into their own leaf (a group returns into its origin dock's
   leaf, not as a leaf of its own), splits inside a float from a drag across windows, a drag
   across viewports (step 4), position snapping and joined groups (layout steps 6 to 8).
-- Tests: `tests/native_floats.rs` on a small multi-viewport harness (`tests/support/multi.rs`,
+- Tests: `tests/it/native_floats.rs` on a small multi-viewport harness (`tests/it/support/multi.rs`,
   immediate viewports run as eframe runs them, a close request, positions hidden, windows
-  moved), and `tests/bus_points.rs` on the `bus-kernel` crate's bus (a dev-dependency).
+  moved), and `tests/it/bus_points.rs` on the `bus-kernel` crate's bus (a dev-dependency).
 
 ### As built (step 4)
 
@@ -375,10 +375,10 @@ the native floats.
   builder is given unchanged, and its place follows the window (`FloatEvent::Moved` once it
   settles). A drop lands where it is released, on the new scale.
 - `TabDestination` and `TabInsert` are `Clone`, `Debug` and `PartialEq` (not `Copy`: semver-checks counts it as a break) now.
-- Tests: `tests/drag_across.rs` on the multi-viewport harness (main to float, float to main,
+- Tests: `tests/it/drag_across.rs` on the multi-viewport harness (main to float, float to main,
   float to float, a group, a veto, Escape, released over nothing, refused, a tear-off, the
   target closed during the drag, positions hidden with a taker and without, scales 1 and 2,
-  a float moved to a screen of scale 2 during a drag) and `tests/bus_points.rs` (the veto
+  a float moved to a screen of scale 2 during a drag) and `tests/it/bus_points.rs` (the veto
   across windows asked when it changes and at release).
 - A float's dock takes the same drop zones as any dock: a tab dropped on a float's edge band
   splits it, as `DockRules::splits` allows.
@@ -428,7 +428,7 @@ windows):
 - `DockSpace::carry_floats_from(&mut old)`: the floats' state moves from a space to the one
   rebuilt to replace it; the drag in progress is dropped if what it drags is not at the same
   place in the new space, and the tabs' origins the new space lacks are added.
-- Tests: `tests/float_dock_options.rs` on the multi-viewport harness (the application's
+- Tests: `tests/it/float_dock_options.rs` on the multi-viewport harness (the application's
   painter paints a float's tab bar and its outline where positions are hidden, `configure`
   hides a float's buttons and disables its splits, `decorate` reports the tab bar at scales 1
   and 2 and over the main window, a space rebuilt during a drag keeps its floats).
@@ -471,12 +471,12 @@ moves the window.
     title bar too when there is one.
 - Not built: docking a moved window into another float, or into a split zone (the whole float
   joins a leaf's tabs; dragging its group by the grip offers the zones).
-- Tests: `tests/float_gestures.rs` on the multi-viewport harness (the handle's system move and
+- Tests: `tests/it/float_gestures.rs` on the multi-viewport harness (the handle's system move and
   cursor, a move never docking by default, `Dock` docking by the handle and by the title bar,
-  a refused dock, hidden positions, the handle turned off), `tests/float_chrome.rs` (no title
+  a refused dock, hidden positions, the handle turned off), `tests/it/float_chrome.rs` (no title
   bar over the main window by default, `title_bar(true)` and a float without its handle keep
   it, the line under the bar under every button of a float's tab bar, hovered or not) and
-  `tests/add_button_place.rs`.
+  `tests/it/add_button_place.rs`.
 
 ## Risks
 

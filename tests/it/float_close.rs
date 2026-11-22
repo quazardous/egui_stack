@@ -6,8 +6,7 @@
 //! With `FloatsArea::show_add_buttons`, the bar keeps its group's add button, as a docked
 //! group's bar does, and a click on it reaches `TabViewer::on_add` for the float's group.
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use egui::{Id, Pos2, Rect, Ui, UiBuilder, ViewportId, WidgetText, pos2};
 use egui_stack::layout::{Content, Dir, FloatHost, Layout, Zone};

@@ -3,8 +3,7 @@
 //! the move handle moves it. The group's menu opens in a float too, on a right click on the
 //! empty part of its tab bar. On the multi-viewport harness (`support/multi.rs`).
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use egui::{
     Event, Id, Modifiers, PointerButton, Pos2, Rect, Ui, UiBuilder, ViewportId, WidgetText, pos2,

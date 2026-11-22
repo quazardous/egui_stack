@@ -4,8 +4,7 @@
 //! `decorate` tells where each float's tab bars are, at scales 1 and 2, and
 //! `DockSpace::carry_floats_from` keeps the floats of a space rebuilt during a drag.
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use std::sync::Mutex;
 

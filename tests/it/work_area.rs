@@ -7,8 +7,7 @@
 //! float where it was released (`Cancel` where viewports are embedded), and a native float's
 //! docks still take drops.
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use egui::{Event, Id, Pos2, Rect, Ui, UiBuilder, ViewportId, WidgetText, pos2, vec2};
 use egui_stack::layout::{Content, Dir, FloatHost, Laid, Layout, Screen, Solve, Zone};
