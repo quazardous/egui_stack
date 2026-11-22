@@ -17,6 +17,16 @@ eframe = { version = "0.37", default-features = false, features = [
 ] }
 serde_json = "1"
 
+# The GIF recorder's (tests/record_gif.rs), behind the `record` feature so
+# wgpu is not built with every test run (#178): enabled, Cargo would unify
+# `egui_kittest/wgpu` into the library's tests too in a workspace build.
+egui_kittest = { version = "0.37", features = ["wgpu"], optional = true }
+gif = { version = "0.14", optional = true }
+image = { version = "0.25", default-features = false, optional = true }
+
+[features]
+record = ["dep:egui_kittest", "dep:gif", "dep:image"]
+
 # The web runner. `wasm-bindgen` is pinned: the `wasm-bindgen` CLI that
 # processes the build must have the same version (see README.md here).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -24,6 +34,8 @@ wasm-bindgen = "=0.2.129"
 wasm-bindgen-futures = "0.4"
 
 [dev-dependencies]
-egui_kittest = { version = "0.37", features = ["wgpu"] }
-gif = "0.14"
-image = { version = "0.25", default-features = false }
+egui_kittest = "0.37"
+
+[[test]]
+name = "record_gif"
+required-features = ["record"]

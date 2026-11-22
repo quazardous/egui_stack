@@ -1,7 +1,7 @@
 //! Records `images/demo.gif`, the README's demo, from the demo app, headless:
 //!
 //! ```sh
-//! cargo test -p egui_stack_demo --test record_gif -- --ignored
+//! cargo test -p egui_stack_demo --features record --test record_gif -- --ignored
 //! ```
 //!
 //! A tab is dragged over the band along a leaf's left edge, which shows the zone it would
