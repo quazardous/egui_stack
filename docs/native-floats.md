@@ -172,7 +172,7 @@ the native floats.
 4. Rendering stays the application's: a tab draws what it draws anywhere, in `TabViewer::ui`,
    in whichever viewport it is now (`ui.ctx().viewport_id()`). With eframe's wgpu renderer a
    paint callback (`egui_wgpu::Callback`) works in every viewport, on the device eframe shares
-   between them; [`examples/wgpu_float.rs`](../examples/wgpu_float.rs) draws a 3D scene in a
+   between them; [`demo/examples/wgpu_float.rs`](../demo/examples/wgpu_float.rs) draws a 3D scene in a
    tab that can be detached.
 5. Decisions: `TabViewer::close_policy` says where a closed window's tabs go (back to their
    origin by default), `TabViewer::dock_drop_allowed` vetoes a drop in any window. With the
@@ -388,7 +388,7 @@ the native floats.
 
 ### As built (step 5)
 
-- `examples/wgpu_float.rs`, the reporter's "detached 3D viewport": eframe's wgpu renderer, a
+- `demo/examples/wgpu_float.rs`, the reporter's "detached 3D viewport": eframe's wgpu renderer, a
   "3D view" tab drawing a spinning triangle with an `egui_wgpu` paint callback (its pipeline,
   uniform buffer and bind group made once, in egui_wgpu's callback resources), and a
   `ViewportHost` of the application's (`Windows`) giving its own viewport ids and pairing a

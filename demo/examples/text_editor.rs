@@ -50,12 +50,15 @@ impl Default for MyApp {
         let mut buffers = BTreeMap::default();
         buffers.insert(
             "CHANGELOG.md".to_owned(),
-            include_str!("../CHANGELOG.md").to_owned(),
+            include_str!("../../CHANGELOG.md").to_owned(),
         );
-        buffers.insert("LICENSE".to_owned(), include_str!("../LICENSE").to_owned());
+        buffers.insert(
+            "LICENSE".to_owned(),
+            include_str!("../../LICENSE").to_owned(),
+        );
         buffers.insert(
             "README.md".to_owned(),
-            include_str!("../README.md").to_owned(),
+            include_str!("../../README.md").to_owned(),
         );
 
         let tree = DockState::new(vec!["README.md".to_owned(), "CHANGELOG.md".to_owned()]);

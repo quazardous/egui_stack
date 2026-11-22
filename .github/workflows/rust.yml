@@ -91,7 +91,7 @@ jobs:
           floats:: native_floats:: drag_across:: bus_points::
 
       - name: Build the examples
-        run: cargo build --example native_floats --example wgpu_float
+        run: cargo build -p egui_stack_demo --example native_floats --example wgpu_float
 
   # The demo (demo/) builds for the browser, as the Pages workflow
   # (pages.yml) builds it on main; nothing is deployed here.

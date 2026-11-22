@@ -2,10 +2,10 @@
 
 This directory contains examples of how to use `egui_stack`.
 
-To run an example, use the following command from the project root:
+To run an example, use the following command from the project root (they live in the demo package):
 
 ```bash
-cargo run --example <example_name>
+cargo run -p egui_stack_demo --example <example_name>
 ```
 
 Replace `<example_name>` with the name of the example file without the `.rs` extension.
