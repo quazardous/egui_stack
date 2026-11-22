@@ -21,7 +21,7 @@ Before it is merged:
 - a change users notice adds a changeset in `.changeset/` (see [.changeset/README](.changeset/README)); one users do
   not notice is labelled `internal`. CHANGELOG.md is written from the changesets at release time
   ([RELEASING.md](RELEASING.md)), not by hand;
-- public API has documentation comments; a major feature has an example in `examples/`.
+- public API has documentation comments; a major feature has an example in `demo/examples/`.
 
 ## Issues
 

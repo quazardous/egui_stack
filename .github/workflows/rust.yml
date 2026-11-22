@@ -47,6 +47,10 @@ jobs:
           command: clippy
           args: --all-targets --all-features -- -D warnings
 
+      # The examples live in the demo package (#178), outside the crate's targets.
+      - name: Clippy examples
+        run: cargo clippy -p egui_stack_demo --examples -- -D warnings
+
       - name: Test
         uses: actions-rs/cargo@v1
         with:
@@ -91,7 +95,7 @@ jobs:
           floats:: native_floats:: drag_across:: bus_points::
 
       - name: Build the examples
-        run: cargo build --example native_floats --example wgpu_float
+        run: cargo build -p egui_stack_demo --example native_floats --example wgpu_float
 
   # The demo (demo/) builds for the browser, as the Pages workflow
   # (pages.yml) builds it on main; nothing is deployed here.
