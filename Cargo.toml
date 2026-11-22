@@ -38,6 +38,9 @@ paste = "1.0"
 thiserror = "2.0.18"
 
 [dev-dependencies]
+# The tests lay text out, so they need egui's bundled fonts (the library
+# itself leaves the choice of fonts to the application).
+egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
 egui_kittest = "0.37"
 # MIT OR Apache-2.0: the bus the `bus` feature's tests run on, the
 # implementation applications use (with its ordering, deadlines and
