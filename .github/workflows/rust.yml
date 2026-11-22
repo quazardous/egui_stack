@@ -63,7 +63,7 @@ jobs:
   # Native floating docks on Windows and macOS for pull requests into
   # `next`, where the tests job runs on Linux only (pushes run every test
   # on the three systems above). The multi-viewport harness
-  # (tests/support/multi.rs) runs egui's viewports headless, with no window
+  # (tests/it/support/multi.rs) runs egui's viewports headless, with no window
   # and no GPU, so these tests need nothing of the system; the wgpu example
   # is built, not run. Windows is meant as a required check; macOS reports
   # only, as above.
@@ -87,8 +87,8 @@ jobs:
 
       - name: Test
         run: >-
-          cargo test --all-features
-          --test floats --test native_floats --test drag_across --test bus_points
+          cargo test --all-features --test it --
+          floats:: native_floats:: drag_across:: bus_points::
 
       - name: Build the examples
         run: cargo build --example native_floats --example wgpu_float

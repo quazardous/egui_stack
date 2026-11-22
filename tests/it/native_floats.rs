@@ -2,8 +2,7 @@
 //! a tab dragged out of every dock opens a float (native or over the main window), closing it
 //! applies the close policy, and a screen that goes moves or docks back its floats.
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use egui::{Id, Pos2, Rect, Ui, UiBuilder, ViewportCommand, ViewportId, WidgetText, pos2, vec2};
 use egui_stack::layout::{Content, Dir, FloatHost, Layout, Screen, ScreenGone, Zone};

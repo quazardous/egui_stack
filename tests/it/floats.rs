@@ -325,7 +325,7 @@ mod saved {
 
     #[test]
     fn a_saved_0_27_window_becomes_a_native_float() {
-        let json = include_str!("fixtures/docked-0.27-window.json");
+        let json = include_str!("../fixtures/docked-0.27-window.json");
         let mut loaded: Docked<String> = serde_json::from_str(json).unwrap();
         assert_eq!(
             loaded.space.dock_names().collect::<Vec<_>>(),
@@ -363,7 +363,7 @@ mod saved {
     #[test]
     fn a_version_2_pair_keeps_its_legacy_windows() {
         // Only a pair saved before floats migrates.
-        let json = include_str!("fixtures/docked-0.27-window.json").replacen(
+        let json = include_str!("../fixtures/docked-0.27-window.json").replacen(
             "\"version\": 1",
             "\"version\": 2",
             1,

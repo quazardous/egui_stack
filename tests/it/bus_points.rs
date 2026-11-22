@@ -5,8 +5,7 @@
 
 #![cfg(feature = "bus")]
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 

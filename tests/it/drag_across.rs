@@ -7,8 +7,7 @@
 //! As the system does, the window a drag began in gets every pointer event of the drag, its
 //! pointer following the drag past its edges; no other window sees the drag or its release.
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use egui::{
     Event, Id, Key, Modifiers, Pos2, Rect, Ui, UiBuilder, ViewportCommand, ViewportId, WidgetText,

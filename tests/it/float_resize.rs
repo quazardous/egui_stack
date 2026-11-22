@@ -3,8 +3,7 @@
 //! edges follow the pointer and the opposite ones stay where they were. The left and top
 //! edges, which move the window's origin, resize it as the right and bottom ones do.
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use egui::{Id, Pos2, Rect, Ui, UiBuilder, Vec2, WidgetText, pos2, vec2};
 use egui_stack::layout::{Content, FloatHost, Layout, Zone};

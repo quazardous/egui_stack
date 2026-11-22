@@ -5,8 +5,7 @@
 //! all, move window) keeps the line under the bar, at rest and hovered, as the close all button
 //! does.
 
-#[path = "support/multi.rs"]
-mod multi;
+use crate::multi;
 
 use egui::epaint::ClippedShape;
 use egui::{Id, Pos2, Rect, Shape, Ui, UiBuilder, ViewportId, WidgetText, pos2, vec2};
