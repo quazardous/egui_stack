@@ -53,3 +53,12 @@ serde_json = { version = "1" }
 [[example]]
 name = "save_load_dock_state"
 required-features = ["serde"]
+
+# Build time (#178): line tables are enough for test backtraces, and the
+# dependencies' debug info is what fills the disk and slows every link of
+# the test executables. The same settings as egui-pop.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
